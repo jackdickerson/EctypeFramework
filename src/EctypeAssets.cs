@@ -60,7 +60,8 @@ namespace Ectype
             { Plugin.Log.LogError("Ectype: framework-owned stat registration failed: " + e); }
 
             RoleRegistry.DiscoverOnce();
-            VanillaDump.EnsureDumped();
+            if (EctypeConfig.WriteVanillaDump != null && EctypeConfig.WriteVanillaDump.Value)
+                VanillaDump.EnsureDumped();
             try { Suppression.Resolve(); }
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: suppression resolution failed: " + e); }
@@ -431,9 +432,12 @@ namespace Ectype
             if (authored != null && !authored.Contains(def)) authored.Add(def);
         }
 
-        // hex item guid -> handled once (registered by us, or warned as already-claimed), so a
-        // retry into this stage neither re-registers nor re-warns every ~2s.
-        private static readonly HashSet<string> _unlockAttempted =
+        // hex item guid -> "role / perk" that first listed it this session, so a retry into
+        // this stage neither re-registers nor re-warns every ~2s.
+        private static readonly Dictionary<string, string> _unlockAttempted =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // "hex|role|perk" claimants already warned about.
+        private static readonly HashSet<string> _unlockDuplicateWarned =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
@@ -453,7 +457,20 @@ namespace Ectype
 
             foreach (string hex in spec.unlocks)   // already normalized 32-hex by ManifestLoader
             {
-                if (!_unlockAttempted.Add(hex)) continue;   // already handled this session
+                string claimant = "'" + rec.Manifest.roleName + "' perk '" + spec.key + "'";
+                string holder;
+                if (_unlockAttempted.TryGetValue(hex, out holder))
+                {
+                    // The same perk re-entering on a retry is silent; a different perk
+                    // listing an item already claimed this session is warned once.
+                    if (holder != claimant && _unlockDuplicateWarned.Add(hex + "|" + claimant))
+                        Plugin.Log.LogWarning("Ectype: " + claimant + " unlocks item " + hex +
+                                              ", which another role's perk (" + holder +
+                                              ") already claimed this session. Skipped: this " +
+                                              "perk grants no fabricator unlock for it.");
+                    continue;
+                }
+                _unlockAttempted[hex] = claimant;
 
                 GUIDUnion itemGuid = new GUIDUnion(hex);
                 if (container.HasItem(itemGuid))

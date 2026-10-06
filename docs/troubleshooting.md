@@ -249,6 +249,12 @@ A perk's `unlocks` entry names an item that already has an unlock definition. Th
 cannot repoint an existing definition, so that perk grants nothing for this item. The perk
 itself registers. Remove the entry or use an item with no unlock of its own.
 
+### `Ectype: '<name>' perk '<key>' unlocks item <guid>, which another role's perk ('<name>' perk '<key>') already claimed this session. Skipped: this perk grants no fabricator unlock for it.`
+
+Two installed roles list the same item in their `unlocks`. The first to register holds the
+unlock definition, and the second perk registers normally but grants nothing for that item.
+Remove the entry from one role, or give each role its own item.
+
 ### `Ectype: perk '<name>' (target <t>) has an effect on <stat> that matches no stat in <where> collection tree - it stays registered and changes nothing there.`
 
 A perk's effect names a stat that the perk's `target` does not hold. A stat's category never
@@ -320,11 +326,21 @@ The per-role colour stylesheets could not be attached to a terminal. Trees rende
 
 ### `Ectype geometry [<document>]: document is attached, shown and in a sized panel, but its tree row still has no width after 20s - layout failed.`
 
-The tree row of a terminal never received a width, so nothing shows. A dump of the row's
-layout follows in the log. Another mod's stylesheet or a game update is the usual cause. Set
+The tree row of a terminal never received a width, so nothing shows. The line
+carries a dump of the row's layout, and it appears only with `[Debug] VerboseLogging = true`,
+the only setting that runs the watcher. Another mod's stylesheet or a game update is the usual cause. Set
 `[Presentation] EnableScroll = false`, or add a substring of the document's name to
 `[Presentation] ScrollExcludeDocuments` (the dump prints each document's names) to keep the
 authored layout, and report the dump.
+
+### `Ectype: vanilla role dump written to <path> (<n> trees).` and `Ectype: vanilla dump attempt <n> failed: <message>`
+
+Both come from `[Dev] WriteVanillaDump = true`. The first confirms
+`BepInEx/EctypeDump/vanilla-roles.json` was written. The second is a failed attempt, retried
+on the next registration pass and logged on the first and the twentieth failure, after which
+the dump stops trying for that launch. If `vanilla-roles.json` does not exist, the switch is
+off: set it in `BepInEx/config/jack.voidcrew.ectype.cfg`, restart the game and reach the main
+menu.
 
 ### `Ectype: tree scroller install failed in [<document>]: <exception>` and `Ectype: no PerkTreeVE in this document - nothing to wrap.`
 

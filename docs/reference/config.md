@@ -8,12 +8,12 @@ launch.
 | `[General] Enabled` | `true` | Master switch. Off means no patches, no discovery and no registration: the framework is inert. |
 | `[General] RegisterStage` | `9` | Bisection aid. Stops each role's registration after stage N: 1 custom stats and perk assets built, 2 runtime assets registered, 3 context infos, 4 perk defs published, 5 tree asset registered, 6 tree def published. 9 runs everything. |
 | `[General] PublishTreeDefs` | `true` | Emergency brake on stage 6. A published tree def whose `PerkTreeVE` element failed to inject is filtered out of the terminal build so the terminal survives. Set false to keep every tree def unpublished: roles register but no tree renders. |
-| `[Debug] VerboseLogging` | `false` | Logs per-character, per-switch and per-open events: ability installs and adoptions, ability-display slot changes, HUD bar button register, build, remove and layout, stat value changes, gene-tree injection and scroller installs, per-perk unlock and USS palette lines. Off leaves warnings, errors and the one-time startup summaries. Role mods read the same key. |
+| `[Debug] VerboseLogging` | `false` | Also runs the layout watcher, which logs one warning if a terminal's tree row has no width 20 s after a build. Logs per-character, per-switch and per-open events: ability installs and adoptions, ability-display slot changes, HUD bar button register, build, remove and layout, stat value changes, gene-tree injection and scroller installs, per-perk unlock and USS palette lines. Off leaves warnings, errors and the one-time startup summaries. Role mods read the same key. |
 | `[Presentation] EnableScroll` | `true` | Wraps the tree row in the horizontal scroller when more than four trees survive (registered roles minus suppressed vanilla trees). Off lets the extra trees overflow off-layout. With four or fewer the layout is never touched. |
-| `[Presentation] ScrollExcludeDocuments` | (empty) | Comma-separated, case-insensitive substrings. A document whose `UIDocument` name, GameObject name or visual-tree-asset name matches any of them keeps its authored layout, with no scroller. The geometry log prints each document's names. |
-| `[Presentation] GeometryLog` | `true` | Watches each terminal document's tree row after every terminal build, sampling twice a second. A row that is attached and shown but still has no width after 20 s logs a warning with the full geometry dump. The dump of a healthy row is logged at first layout only with `VerboseLogging`. |
+| `[Presentation] ScrollExcludeDocuments` | (empty) | Comma-separated, case-insensitive substrings. A document whose `UIDocument` name, GameObject name or visual-tree-asset name matches any of them keeps its authored layout, with no scroller. The layout-failed warning (needs `VerboseLogging`) prints each document's names. |
 | `[Presentation] RoleWording` | `true` | Where the game's English text calls a playable role a "Class", it says "Role": the ability keybind in Settings -> Controls, the ability cooldown and duration lines on item tooltips, the stock hero-perk descriptions and the hub's "Class: <role>" projection headers. Display text only, and other languages are untouched. Off restores the game's wording; a screen already open keeps its text until the game rebuilds it. |
 | `[RoleSuppression] Suppress_<roleId>` | `false` | Host only, one per discovered role. Makes that role unavailable to everyone in the room. See [roles.md](roles.md#host-driven-suppression). |
+| `[Dev] WriteVanillaDump` | `false` | Writes the game's stock role trees to `BepInEx/EctypeDump/vanilla-roles.json` once per launch, for the perk builder's import. |
 | `[EnemyStatuses] Markers` | `true` | Countdown markers over objects carrying a status. Off runs statuses markerless. Each marker is a live UI entity the game's viewer repositions every frame, hence the cap. |
 | `[EnemyStatuses] MarkerCap` | `10` | Most status markers alive at once, across all statuses and targets. Past the cap a status runs without a marker until one frees up. |
 | `[EnemyStatuses] Vfx` | `true` | Attached status visuals. Off runs statuses without them. |
@@ -23,3 +23,7 @@ launch.
 
 F5 -> Ectype Framework shows the registration pipeline status for each role, the vanilla stat
 count, and the per-role suppress toggles. The toggles act only for the host.
+
+With VoidManager's debug mode on, a dev section adds the tree and HUD-bar dumps and, when
+`[Dev] LayoutWorkbench` is on, the layout workbench with its "Reload layout file, re-style and
+capture the terminal" button. No dev action has a keyboard shortcut.

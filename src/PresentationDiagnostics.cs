@@ -76,16 +76,17 @@ namespace Ectype
             _geometryWatches = new ConditionalWeakTable<VisualElement, GeometryWatch>();
 
         /// <summary>
-        /// The per-document evidence the presentation is judged by. An unshown document has
-        /// no resolved layout, which is expected rather than a fault, so it is reported once
-        /// at Info and the watcher keeps running until the document really does lay out.
+        /// A layout self-check, scheduled only while [Debug] VerboseLogging is on. An unshown
+        /// document has no resolved layout, which is expected rather than a fault, so it is
+        /// not reported and the watcher keeps running until the document really does lay out.
         ///
         /// Resolution is detected by POLLING the row's width, not by GeometryChangedEvent,
         /// which fires only on a layout *change* and so never arrives for a controller
         /// rebuilt into an already-sized document.
         ///
-        /// The one loud case left is a document attached, unhidden, in a sized panel and
-        /// still without a width: a real layout failure, warned with the full dump attached.
+        /// The only line it emits is for a document attached, unhidden, in a sized panel and
+        /// still without a width after 20 s: a real layout failure, warned once with the
+        /// geometry dump appended.
         /// </summary>
         internal static void ScheduleGeometryLog(VisualElement root, string docId,
                                                  int liveTreeCount, bool wrapped)
@@ -110,7 +111,6 @@ namespace Ectype
             _geometryWatches.Add(watch, state);
 
             int[] ticks = { 0 };
-            bool[] noted = { false };
             state.Item = watch.schedule.Execute((Action)delegate
             {
                 try
@@ -122,29 +122,21 @@ namespace Ectype
                     if (!float.IsNaN(w) && w >= 1f)
                     {
                         if (state.Item != null) state.Item.Pause();
-                        if (Plugin.Verbose) Plugin.Log.LogInfo(
-                                                BuildGeometryLog(root, docId, liveTreeCount, wrapped));
                         return;
                     }
 
-                    if (noted[0] || ticks[0] * GEOM_POLL_MS < GEOM_VERDICT_MS) return;
-                    noted[0] = true;
+                    if (ticks[0] * GEOM_POLL_MS < GEOM_VERDICT_MS) return;
 
-                    string hidden = DescribeUnshown(measured);
-                    if (hidden != null)
-                    {
-                        if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype geometry [" + docId + "]: not laid out " +
-                                                               "yet - " + hidden + ". Dump follows at first layout.");
-                        return;      // keep polling - the real dump is still owed
-                    }
+                    // Not laid out because it is unshown: expected, keep polling until it
+                    // really does lay out.
+                    if (DescribeUnshown(measured) != null) return;
 
                     if (state.Item != null) state.Item.Pause();
                     Plugin.Log.LogWarning("Ectype geometry [" + docId + "]: document is " +
                                           "attached, shown and in a sized panel, but its tree " +
                                           "row still has no width after " +
-                                          (GEOM_VERDICT_MS / 1000) + "s - layout failed.");
-                    Plugin.Log.LogWarning(
-                        BuildGeometryLog(root, docId, liveTreeCount, wrapped));
+                                          (GEOM_VERDICT_MS / 1000) + "s - layout failed. " +
+                                          BuildGeometryLog(root, docId, liveTreeCount, wrapped));
                 }
                 catch (Exception e)
                 {

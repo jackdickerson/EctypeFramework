@@ -4,6 +4,23 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.13
+
+- Removed `[Presentation] GeometryLog`. The geometry watcher now runs only with
+  `[Debug] VerboseLogging` on, and emits one line: the 20 s "layout failed" warning, with the
+  geometry dump appended to it. The healthy-row dump and the "not laid out yet" Info line are
+  gone. An existing `.cfg` keeps the orphaned key harmlessly.
+- Removed `[Dev] DemoHudButton` and the demo button on the HUD ability bar (it carried an F9
+  chip). An existing `.cfg` keeps the orphaned key harmlessly.
+- Removed the Shift+F10 layout reload key. The F5 page's layout workbench has the same
+  "Reload layout file, re-style and capture the terminal" button.
+- New `[Dev] WriteVanillaDump`, default off. `BepInEx\EctypeDump\vanilla-roles.json` is no longer
+  written every launch: it is written once per launch only with the switch on. The perk
+  builder's import needs the file, so turn the switch on and launch once before importing.
+- A second role whose perk lists an unlock item that another role's perk already claimed this
+  session now logs a named warning (it was skipped silently). Behaviour is otherwise unchanged:
+  the first claim holds.
+
 ## 0.19.12
 
 - New `[Presentation] RoleWording`, default on: where the game's English text calls a playable

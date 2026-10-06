@@ -176,8 +176,6 @@ namespace Ectype
         private static bool _templateWarned, _tickFailed;
         private static float _side = 68f, _top;
 
-        private static Handle _demoHandle;
-
         // ------------------------------------------------------------------ tick
 
         /// <summary>Driven every frame by the framework driver. Never throws.</summary>
@@ -186,7 +184,6 @@ namespace Ectype
             try
             {
                 if (!Plugin.PatchesApplied) return;
-                SyncDemo();
                 if (!EnsureDisplay()) return;
 
                 foreach (HudButton b in Buttons) b.Update(_container, _display);
@@ -777,67 +774,6 @@ namespace Ectype
             if (bg.vectorImage != null) return "vector:" + bg.vectorImage.name;
             if (bg.renderTexture != null) return "rt:" + bg.renderTexture.name;
             return "none";
-        }
-
-        // ------------------------------------------------------------------ demo
-
-        /// <summary>
-        /// A dev-only button ([Dev] DemoHudButton) that exercises the bar with no consumer
-        /// mod installed: a procedural ring glyph, key F9 on the chip, and an 8 s cycle of
-        /// 3 s ready then a 5 s cooldown.
-        /// </summary>
-        private static void SyncDemo()
-        {
-            bool want = EctypeConfig.DemoHudButton != null && EctypeConfig.DemoHudButton.Value;
-            if (want && _demoHandle == null)
-            {
-                _demoHandle = Register(new HudButtonSpec
-                {
-                    Id = EctypePluginInfo.PLUGIN_GUID + ".demo",
-                    Glyph = DemoGlyph(),
-                    ReadyColor = new Color(0.25f, 0.8f, 0.95f),
-                    Order = int.MaxValue,
-                    Key = () => UnityEngine.InputSystem.Key.F9,
-                    Fill = () =>
-                    {
-                        float t = Time.unscaledTime % 8f;
-                        return t < 3f ? 0f : 1f - (t - 3f) / 5f;
-                    },
-                });
-            }
-            else if (!want && _demoHandle != null)
-            {
-                _demoHandle.Dispose();
-                _demoHandle = null;
-            }
-        }
-
-        private static Texture2D _demoGlyph;
-
-        private static Texture2D DemoGlyph()
-        {
-            if (_demoGlyph != null) return _demoGlyph;
-            const int n = 128;
-            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false)
-            {
-                name = "EctypeHudDemoGlyph",
-                wrapMode = TextureWrapMode.Clamp,
-            };
-            var px = new Color32[n * n];
-            for (int y = 0; y < n; y++)
-            {
-                for (int x = 0; x < n; x++)
-                {
-                    float dx = x - n / 2f + 0.5f, dy = y - n / 2f + 0.5f;
-                    float r = Mathf.Sqrt(dx * dx + dy * dy);
-                    float a = Mathf.Clamp01(1f - Mathf.Abs(r - n * 0.32f) / (n * 0.08f));
-                    px[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255f));
-                }
-            }
-            tex.SetPixels32(px);
-            tex.Apply();
-            _demoGlyph = tex;
-            return tex;
         }
 
         // ------------------------------------------------------------------ diagnostics

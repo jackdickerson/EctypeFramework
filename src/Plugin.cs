@@ -6,7 +6,6 @@ using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 using VoidManager;
 using VoidManager.CustomGUI;
@@ -158,8 +157,6 @@ namespace Ectype
             GUILayout.Label(TreeDump.LastSummary);
             GUILayout.Space(8f);
 
-            EctypeConfig.DemoHudButton.Value = GUILayout.Toggle(EctypeConfig.DemoHudButton.Value,
-                "Demo button on the HUD ability bar (F9 chip, 8 s cooldown loop)");
             GUILayout.Label("HUD bar: " + HudAbilityBar.Buttons.Count + "/" +
                             HudAbilityBar.MaxButtons + " buttons");
             if (GUILayout.Button("Dump HUD ability bar to LogOutput.log"))
@@ -227,7 +224,6 @@ namespace Ectype
                 _nextRegister = Time.unscaledTime + 2f;
                 Step("register", EctypeAssets.EnsureRegistered);
             }
-            Step("layout key", PollLayoutReloadKey);
             Step("layout poll", DevLayout.Poll);
             Step("role toggles", EctypeConfig.EnsureRoleToggles);
             Step("room sync", RoomSync.Poll);
@@ -251,27 +247,6 @@ namespace Ectype
                     Plugin.Log.LogError("Ectype: driver step '" + name + "' failed, " +
                                         "suppressing further reports: " + e);
             }
-        }
-
-        /// <summary>
-        /// Shift+F10 reloads the layout file and re-styles the terminal you are standing at,
-        /// so a tuning pass never leaves the gene-tree screen (the F5 menu carries the same
-        /// action, but opening it closes the terminal being looked at). Shift is required
-        /// because a bare function key fires while the terminal has focus and while typing
-        /// anywhere else.
-        /// </summary>
-        private void PollLayoutReloadKey()
-        {
-            if (EctypeConfig.LayoutWorkbench == null || !EctypeConfig.LayoutWorkbench.Value)
-                return;
-            // kitbash mode closes the gate; see shared/devkeys/DevKeyGate.cs
-            if (!DevKeyGate.Open) return;
-            Keyboard kb = Keyboard.current;
-            if (kb == null || !kb[Key.F10].wasPressedThisFrame) return;
-            if (!kb[Key.LeftShift].isPressed && !kb[Key.RightShift].isPressed) return;
-
-            DevInspector.ReloadAndApply();
-            Plugin.Log.LogInfo("Ectype: Shift+F10 - " + DevInspector.LastSummary);
         }
     }
 }

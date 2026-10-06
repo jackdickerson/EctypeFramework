@@ -33,11 +33,10 @@ namespace Ectype
 
         public static ConfigEntry<bool> EnableScroll;
         public static ConfigEntry<string> ScrollExcludeDocuments;
-        public static ConfigEntry<bool> GeometryLog;
         public static ConfigEntry<bool> RoleWording;
+        public static ConfigEntry<bool> WriteVanillaDump;
         public static ConfigEntry<bool> LayoutWorkbench;
         public static ConfigEntry<float> LayoutPollSeconds;
-        public static ConfigEntry<bool> DemoHudButton;
         public static ConfigEntry<string> CharacterShipTestPerk;
 
         public static void Bind(ConfigFile cfg)
@@ -94,16 +93,8 @@ namespace Ectype
                 "Comma-separated, case-insensitive substrings; a document whose " +
                 "UIDocument name, GameObject name or visualTreeAsset name matches any " +
                 "of them keeps its authored layout (no scroller). The per-document " +
-                "opt-out for a layout that reacts badly to the wrap - the geometry log " +
-                "prints each document's names.");
-
-            GeometryLog = cfg.Bind("Presentation", "GeometryLog", true,
-                "On every terminal build, watch the tree row's resolved geometry (document " +
-                "identity, row and viewport widths, per-tree layout) every 500 ms " +
-                "after construction, and give a verdict after 20 s. A row that fails to " +
-                "lay out is always logged as a warning; " +
-                "the full dump of a healthy row also needs [Debug] VerboseLogging. The " +
-                "evidence the presentation work is verified against.");
+                "opt-out for a layout that reacts badly to the wrap - the layout-failed " +
+                "warning (needs [Debug] VerboseLogging) prints each document's names.");
 
             RoleWording = cfg.Bind("Presentation", "RoleWording", true,
                 "Where the game's English text calls a playable role a \"Class\", show " +
@@ -112,6 +103,10 @@ namespace Ectype
                 "descriptions and the hub's \"Class: <role>\" projections. Display text only; " +
                 "other languages are untouched. Off restores the game's wording; a screen " +
                 "already open keeps its text until the game rebuilds it.");
+
+            WriteVanillaDump = cfg.Bind("Dev", "WriteVanillaDump", false,
+                "Write the game's stock role trees to BepInEx/EctypeDump/vanilla-roles.json " +
+                "once per launch, for the perk builder's import.");
 
             LayoutWorkbench = cfg.Bind("Dev", "LayoutWorkbench", false,
                 "Show the layout workbench in the F5 menu: reload the gene-tree layout " +
@@ -127,11 +122,6 @@ namespace Ectype
                 "recorded in status.json - so a tuning loop needs no keypress and no " +
                 "window focus. The check is one timestamp read, so a short interval costs " +
                 "nothing; a long one only adds latency.");
-
-            DemoHudButton = cfg.Bind("Dev", "DemoHudButton", false,
-                "Put a demo button on the HUD ability bar: a ring glyph with F9 on its key " +
-                "chip, cycling 3 s ready and a 5 s cooldown. Exercises the bar with no mod " +
-                "registering a button. Presentation only.");
 
             CharacterShipTestPerk = cfg.Bind("Dev", "CharacterShipTestPerk", "",
                 "Test the characterShip perk target: name one framework perk as " +

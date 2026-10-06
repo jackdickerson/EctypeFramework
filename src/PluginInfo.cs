@@ -5,7 +5,7 @@ namespace Ectype
         public const string PLUGIN_GUID = "jack.voidcrew.ectype";
         public const string PLUGIN_NAME = "EctypeFramework";
         public const string USERS_PLUGIN_NAME = "Ectype Framework";
-        public const string PLUGIN_VERSION = "0.19.12";
+        public const string PLUGIN_VERSION = "0.19.13";
         public const string PLUGIN_DESCRIPTION =
             "General framework for Ectype-family mods. Owns the singleton machinery a playable " +
             "role needs (tree-ordinal allocation, the closed-set compatibility patches, the " +

@@ -30,6 +30,7 @@ Paths are relative to the framework project folder.
 | Hand attractor stats | `src/HandAttractorStats.cs` |
 | Runtime ability replication | `src/AbilitySync.cs` |
 | Geometry watcher | `src/PresentationDiagnostics.cs` |
+| Vanilla dump | `src/VanillaDump.cs` |
 | Role wording | `src/RoleWording.cs` |
 
 ## Hooks relied on
@@ -105,14 +106,23 @@ Refusals log at most once per 2 s per ability, and all of these lines share a bu
 
 ## Geometry watcher
 
-`[Presentation] GeometryLog` starts a watcher on every terminal build. It polls the tree row's
-width every 500 ms rather than waiting for a geometry-changed event, because that event fires
-only on a layout change and never arrives for a controller rebuilt into an already-sized
-document. A row with a width logs its dump (with `VerboseLogging`) and the watcher stops. After
-20 s without a width the watcher classifies the cause. A document that is detached, under a
-`display:none` ancestor or in an unsized panel is expected, and logs at Info under
-`VerboseLogging` while polling continues. A document that is attached, shown and in a sized
-panel logs the warning and stops.
+With `[Debug] VerboseLogging` on, a watcher starts on every terminal build. With it off, no
+watcher runs. It polls the tree row's width every 500 ms rather than waiting for a
+geometry-changed event, because that event fires only on a layout change and never arrives for
+a controller rebuilt into an already-sized document. A row with a width stops the watcher
+silently. After 20 s without a width the watcher classifies the cause. A document that is
+detached, under a `display:none` ancestor or in an unsized panel is expected, and polling
+continues without a log line. A document that is attached, shown and in a sized panel logs one
+warning, with the geometry dump appended, and the watcher stops.
+
+## Vanilla dump
+
+`[Dev] WriteVanillaDump` (default off) writes the game's stock role trees to
+`BepInEx/EctypeDump/vanilla-roles.json` once per launch, as soon as the perk and tree
+containers are populated. The file records perk names, tooltip text, grid positions, display
+types, targets and each level's stat modifiers, which is what the perk builder's import reads
+and what shows a game update's changes to a stock tree. With the switch off the framework
+never reads the stock trees for this purpose and writes nothing.
 
 ## Role wording
 

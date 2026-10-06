@@ -80,7 +80,7 @@ namespace Ectype
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: role-name styling failed: " + e); }
 
-            if (EctypeConfig.GeometryLog == null || EctypeConfig.GeometryLog.Value)
+            if (Plugin.Verbose)
                 PresentationDiagnostics.ScheduleGeometryLog(
                     root, docId, liveTreeCount, wrapped);
         }
