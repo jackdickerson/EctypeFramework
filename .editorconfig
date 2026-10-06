@@ -1,0 +1,10 @@
+# Line endings only, matching .gitattributes, so a save from a Windows editor does not
+# put CRLF back into a file Git keeps as LF. No formatting rules: saving a file never
+# reindents it.
+root = true
+
+[*]
+end_of_line = lf
+
+[*.{cmd,bat}]
+end_of_line = crlf

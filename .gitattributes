@@ -1,0 +1,14 @@
+# LF in the repository and in the working tree, so nothing is converted on checkout or on
+# `git add`. `eol` takes precedence over core.autocrlf, so this holds on a Windows machine
+# whose Git was installed with autocrlf=true.
+* text=auto eol=lf
+
+# Batch files run in cmd.exe, which expects CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Art. Auto-detection also catches these; a misclassified image would be corrupted.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary

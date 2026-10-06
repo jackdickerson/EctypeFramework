@@ -1,0 +1,176 @@
+<Project>
+
+  <!--
+    Build settings for EctypeFramework.csproj. MSBuild imports the nearest
+    Directory.Build.props above a project and stops there, so this file is the whole
+    build configuration: nothing above this folder applies. The examples carry their own
+    file in examples\, which stops this one from applying to them.
+
+    References come from a Void Crew install with BepInEx 5 and VoidManager, never from
+    NuGet: a NuGet build of BepInEx is not the build the game runs. The one package is
+    Microsoft.NETFramework.ReferenceAssemblies, which supplies the net472 targeting pack.
+  -->
+
+  <!-- Per-machine override, gitignored. Copy Local.props.example to Local.props and set
+       the one property. -->
+  <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
+
+  <!-- The game install, the folder that holds Void Crew.exe. Effective precedence,
+       highest first:
+         1. -p:VoidCrewDir=... on the command line (global properties beat any file),
+         2. VoidCrewDir in Local.props,
+         3. the VOID_CREW_DIR environment variable,
+         4. the default Steam path below. -->
+  <PropertyGroup>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">$(VOID_CREW_DIR)</VoidCrewDir>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Void Crew</VoidCrewDir>
+    <ManagedDir>$(VoidCrewDir)\Void Crew_Data\Managed</ManagedDir>
+    <BepInExCoreDir>$(VoidCrewDir)\BepInEx\core</BepInExCoreDir>
+    <PluginsDir>$(VoidCrewDir)\BepInEx\plugins</PluginsDir>
+    <!-- VoidManager installs either flat in plugins\ or in a VoidManager\ subfolder. -->
+    <VoidManagerDll Condition="'$(VoidManagerDll)' == '' and Exists('$(PluginsDir)\VoidManager.dll')">$(PluginsDir)\VoidManager.dll</VoidManagerDll>
+    <VoidManagerDll Condition="'$(VoidManagerDll)' == ''">$(PluginsDir)\VoidManager\VoidManager.dll</VoidManagerDll>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+
+    <!-- src\AssemblyInfo.cs writes the assembly attributes from PLUGIN_VERSION, which
+         VoidManager reads through FileVersionInfo. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <!-- Sources are listed explicitly in the csproj. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+
+    <!-- Output lands in bin\<Configuration>\, with no net472\ subfolder. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- Deterministic build: the same source and references give a byte-identical DLL on
+         any machine. PathMap strips this folder's absolute path from the PDB and from the
+         PDB path recorded in the DLL. -->
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
+    <DebugType>portable</DebugType>
+
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Progression-flag build variant:
+         dotnet build                              normal
+         dotnet build -p:NoProgressionFlag=true    defines NO_SESSION_FLAG
+       The framework declares MultiplayerType.All either way; the switch changes only the
+       ModCategories metadata and the build tag ModFlagPolicy reports. -->
+  <PropertyGroup Condition="'$(NoProgressionFlag)' == 'true'">
+    <DefineConstants>$(DefineConstants);NO_SESSION_FLAG</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Never copy a referenced game, BepInEx or VoidManager assembly into the output. -->
+  <ItemDefinitionGroup>
+    <Reference>
+      <Private>false</Private>
+    </Reference>
+  </ItemDefinitionGroup>
+
+  <!--
+    The reference set. Entries the framework does not use cost nothing: the compiler
+    ignores them. The non-obvious ones, and the error without them:
+      Opsive.Shared                    Opsive's Ability derives from StateObject (CS0012)
+      ResourceAssets                   ClassAbility signatures expose ISelfReferencingResourceAsset
+      Newtonsoft.Json                  GUIDUnion has a JToken constructor, so overload
+                                       resolution needs it (CS0012)
+      UnityEngine.TextRenderingModule  TextAnchor is forwarded here (CS1070)
+      Photon*                          base-type chains of the game's MonoBehaviours
+    The game's netstandard.dll is not referenced: the net472 reference assemblies already
+    provide netstandard 2.0, and both together give CS1703.
+  -->
+  <ItemGroup>
+    <!-- loader and manager -->
+    <Reference Include="BepInEx"                               HintPath="$(BepInExCoreDir)\BepInEx.dll" />
+    <Reference Include="0Harmony"                              HintPath="$(BepInExCoreDir)\0Harmony.dll" />
+    <Reference Include="VoidManager"                           HintPath="$(VoidManagerDll)" />
+
+    <!-- game -->
+    <Reference Include="Assembly-CSharp"                       HintPath="$(ManagedDir)\Assembly-CSharp.dll" />
+    <Reference Include="Assembly-CSharp-firstpass"             HintPath="$(ManagedDir)\Assembly-CSharp-firstpass.dll" />
+    <Reference Include="VoidCrewCommon"                        HintPath="$(ManagedDir)\VoidCrewCommon.dll" />
+    <Reference Include="ResourceAssets"                        HintPath="$(ManagedDir)\ResourceAssets.dll" />
+    <Reference Include="PALCore"                               HintPath="$(ManagedDir)\PALCore.dll" />
+    <Reference Include="CoroutineHelper"                       HintPath="$(ManagedDir)\CoroutineHelper.dll" />
+    <Reference Include="TypeSerializer"                        HintPath="$(ManagedDir)\TypeSerializer.dll" />
+
+    <!-- Opsive character controller -->
+    <Reference Include="Opsive.UltimateCharacterController"     HintPath="$(ManagedDir)\Opsive.UltimateCharacterController.dll" />
+    <Reference Include="Opsive.Shared"                         HintPath="$(ManagedDir)\Opsive.Shared.dll" />
+    <Reference Include="Opsive.Shared.Events"                  HintPath="$(ManagedDir)\Opsive.Shared.Events.dll" />
+    <Reference Include="Opsive.Shared.Game"                    HintPath="$(ManagedDir)\Opsive.Shared.Game.dll" />
+    <Reference Include="Opsive.Shared.Inventory"               HintPath="$(ManagedDir)\Opsive.Shared.Inventory.dll" />
+    <Reference Include="Opsive.Shared.Utility"                 HintPath="$(ManagedDir)\Opsive.Shared.Utility.dll" />
+
+    <!-- networking -->
+    <Reference Include="PhotonUnityNetworking"                 HintPath="$(ManagedDir)\PhotonUnityNetworking.dll" />
+    <Reference Include="PhotonUnityNetworking.Utilities"       HintPath="$(ManagedDir)\PhotonUnityNetworking.Utilities.dll" />
+    <Reference Include="PhotonRealtime"                        HintPath="$(ManagedDir)\PhotonRealtime.dll" />
+    <Reference Include="Photon3Unity3D"                        HintPath="$(ManagedDir)\Photon3Unity3D.dll" />
+
+    <!-- serialization and third party -->
+    <Reference Include="Newtonsoft.Json"                       HintPath="$(ManagedDir)\Newtonsoft.Json.dll" />
+    <Reference Include="Sirenix.OdinInspector.Attributes"      HintPath="$(ManagedDir)\Sirenix.OdinInspector.Attributes.dll" />
+    <Reference Include="Sirenix.Serialization"                 HintPath="$(ManagedDir)\Sirenix.Serialization.dll" />
+    <Reference Include="Sirenix.Serialization.Config"          HintPath="$(ManagedDir)\Sirenix.Serialization.Config.dll" />
+    <Reference Include="Sirenix.Utilities"                     HintPath="$(ManagedDir)\Sirenix.Utilities.dll" />
+    <Reference Include="DOTween"                               HintPath="$(ManagedDir)\DOTween.dll" />
+    <Reference Include="FMODUnity"                             HintPath="$(ManagedDir)\FMODUnity.dll" />
+    <Reference Include="Cinemachine"                           HintPath="$(ManagedDir)\Cinemachine.dll" />
+
+    <!-- Unity packages -->
+    <Reference Include="Unity.Addressables"                    HintPath="$(ManagedDir)\Unity.Addressables.dll" />
+    <Reference Include="Unity.ResourceManager"                 HintPath="$(ManagedDir)\Unity.ResourceManager.dll" />
+    <Reference Include="Unity.Burst"                           HintPath="$(ManagedDir)\Unity.Burst.dll" />
+    <Reference Include="Unity.Collections"                     HintPath="$(ManagedDir)\Unity.Collections.dll" />
+    <Reference Include="Unity.Mathematics"                     HintPath="$(ManagedDir)\Unity.Mathematics.dll" />
+    <Reference Include="Unity.InputSystem"                     HintPath="$(ManagedDir)\Unity.InputSystem.dll" />
+    <Reference Include="Unity.Localization"                    HintPath="$(ManagedDir)\Unity.Localization.dll" />
+    <Reference Include="Unity.TextMeshPro"                     HintPath="$(ManagedDir)\Unity.TextMeshPro.dll" />
+    <Reference Include="Unity.RenderPipelines.Core.Runtime"    HintPath="$(ManagedDir)\Unity.RenderPipelines.Core.Runtime.dll" />
+    <Reference Include="Unity.RenderPipelines.HighDefinition.Runtime" HintPath="$(ManagedDir)\Unity.RenderPipelines.HighDefinition.Runtime.dll" />
+
+    <!-- Unity engine modules -->
+    <Reference Include="UnityEngine"                           HintPath="$(ManagedDir)\UnityEngine.dll" />
+    <Reference Include="UnityEngine.CoreModule"                HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" />
+    <Reference Include="UnityEngine.AnimationModule"           HintPath="$(ManagedDir)\UnityEngine.AnimationModule.dll" />
+    <Reference Include="UnityEngine.AssetBundleModule"         HintPath="$(ManagedDir)\UnityEngine.AssetBundleModule.dll" />
+    <Reference Include="UnityEngine.AudioModule"               HintPath="$(ManagedDir)\UnityEngine.AudioModule.dll" />
+    <Reference Include="UnityEngine.ImageConversionModule"     HintPath="$(ManagedDir)\UnityEngine.ImageConversionModule.dll" />
+    <Reference Include="UnityEngine.IMGUIModule"               HintPath="$(ManagedDir)\UnityEngine.IMGUIModule.dll" />
+    <Reference Include="UnityEngine.InputLegacyModule"         HintPath="$(ManagedDir)\UnityEngine.InputLegacyModule.dll" />
+    <Reference Include="UnityEngine.ParticleSystemModule"      HintPath="$(ManagedDir)\UnityEngine.ParticleSystemModule.dll" />
+    <Reference Include="UnityEngine.PhysicsModule"             HintPath="$(ManagedDir)\UnityEngine.PhysicsModule.dll" />
+    <Reference Include="UnityEngine.PropertiesModule"          HintPath="$(ManagedDir)\UnityEngine.PropertiesModule.dll" />
+    <Reference Include="UnityEngine.SharedInternalsModule"     HintPath="$(ManagedDir)\UnityEngine.SharedInternalsModule.dll" />
+    <Reference Include="UnityEngine.SubsystemsModule"          HintPath="$(ManagedDir)\UnityEngine.SubsystemsModule.dll" />
+    <Reference Include="UnityEngine.TextCoreTextEngineModule"  HintPath="$(ManagedDir)\UnityEngine.TextCoreTextEngineModule.dll" />
+    <Reference Include="UnityEngine.TextRenderingModule"       HintPath="$(ManagedDir)\UnityEngine.TextRenderingModule.dll" />
+    <Reference Include="UnityEngine.UI"                        HintPath="$(ManagedDir)\UnityEngine.UI.dll" />
+    <Reference Include="UnityEngine.UIElementsModule"          HintPath="$(ManagedDir)\UnityEngine.UIElementsModule.dll" />
+    <Reference Include="UnityEngine.VFXModule"                 HintPath="$(ManagedDir)\UnityEngine.VFXModule.dll" />
+  </ItemGroup>
+
+  <!-- A wrong game folder otherwise surfaces as one MSB3245 per reference followed by a
+       wall of CS0246. Stop first, naming the folder and the ways to set it. -->
+  <Target Name="EctypeCheckGameDir" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(ManagedDir)\Assembly-CSharp.dll')"
+           Text="Void Crew not found at '$(VoidCrewDir)'. Set the folder that holds Void Crew.exe with -p:VoidCrewDir=&quot;&lt;path&gt;&quot;, a VoidCrewDir in Local.props beside Directory.Build.props (copy Local.props.example), or the VOID_CREW_DIR environment variable." />
+    <Error Condition="!Exists('$(BepInExCoreDir)\BepInEx.dll')"
+           Text="BepInEx not found at '$(BepInExCoreDir)'. Install BepInEx 5 into the game folder." />
+    <Error Condition="!Exists('$(VoidManagerDll)')"
+           Text="VoidManager.dll not found in '$(PluginsDir)' or its VoidManager subfolder. Install VoidManager, or set VoidManagerDll to its path." />
+  </Target>
+
+</Project>

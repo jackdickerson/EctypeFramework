@@ -1,0 +1,196 @@
+# Class mods
+
+A class in Void Crew is a perk tree whose row-0 perk has display type `Hero`. The game's
+screens assume exactly four trees: several are closed sets keyed on the four stock roles. The
+framework patches those once per process, and a class mod carries only content: a JSON
+manifest, PNG icons and, optionally, code for a class ability.
+
+This page covers what a class mod consists of, how the framework loads it, and what the
+framework does with suppression, abilities and ship-targeted perks. Every manifest field is
+in [manifest.md](../manifest.md), and the stat names an effect can use are in
+[stat-names.md](../stat-names.md).
+
+## What a class mod consists of
+
+1. A plugin with `[BepInDependency("jack.voidcrew.ectype")]` and a `VoidPlugin` that declares
+   `MultiplayerType.All` (see [../multiplayer.md](../multiplayer.md) for why a class mod cannot
+   be anything else).
+2. An embedded JSON manifest whose resource name ends `ectype-class.json`. That suffix is the
+   discovery marker; a data-only class needs no reference to the framework assembly.
+3. Icons as PNGs embedded in the assembly, named by the manifest's icon keys. An icon
+   resolves in this order: the embedded PNG, then the perk's `iconDonor` if it names one, then
+   the framework's own placeholder, built with the same sprite settings:
+
+   | Slot | Placeholder |
+   | --- | --- |
+   | Perk icon, Normal and Hero cells (the hero perk's icon feeds the HUD ability button) | square, 512x512 |
+   | Perk icon, the row-2 Wide cell | wide, 2048x512 |
+   | Class role icon (crew HUD, lobby room list, gene tree) | square, 512x512 |
+4. Optionally, a call to `ClassRegistry.RegisterAbilityFactory` at plugin `Awake` with a
+   factory that returns an `EctypeClassAbility` subclass (see "Class ability wiring" below).
+   Without it the class is data-only and its hero perk grants no ability.
+
+Two lookups help class code:
+
+- `ClassRegistry.PerkGuid(classId, perkKey)` returns the asset GUID a perk registers under,
+  the same derivation registration uses. Code that reads `PlayerPerkLoader.PerkBuffLevels`
+  for one of its own perks needs no pinned literal.
+- `ClassRegistry.IsAvailableInRoom(classId)` is true while the class is registered and
+  nothing suppresses it in the current room: neither the host's per-class toggle nor another
+  class's `suppressClasses`. The toggle is a room property every client applies, so every
+  client gives the same answer. Gate class-owned content (loot, spawns) on it.
+
+## Manifest rules in brief
+
+The details are in [manifest.md](../manifest.md). The rules that shape a class:
+
+- **The grid is the stock tree's grid.** Each class tree is a copy of the game's authored
+  Scavenger tree, and the manifest's `row` and `col` only mark which of its cells are filled.
+  The manifest has no field to change the shape or the row gating: every tree renders as 8
+  rows `[1,3,1,3,3,1,3,1]` and gates at 3 points per prior row.
+- **`wide` marks the wide cells.** A perk on row 2, 5 or 7 sets `"wide": true`. A perk on any
+  other row leaves it out or sets `false`, and either mistake rejects the class.
+- **`color` is the class's entry in the game's named-colour dictionary.** The framework
+  clones every consumer stylesheet with a renamed role-colour family per class, so trees,
+  loadout slots and role UI all colour through the game's own functions.
+- **`classId` and every perk `key` are GUID seeds.** Renaming one orphans saved selections
+  exactly like deleting the perk. A perk may pin an explicit `guid` to survive a rename.
+- **A perk's `target` picks where its effects land**: `character`, `seat`, `seatShip` or
+  `characterShip`.
+- **Custom stats** get deterministic ids under bit `0x20000000` (space the game never uses)
+  and a `StatStructure` in the live `StatTable`, so tooltips render them. A custom stat is
+  inert until code reads it.
+- **Framework-owned stats** are named from any manifest without being declared. See
+  [framework-stats.md](framework-stats.md).
+
+## How the framework loads a class
+
+- **Fail-inert patching.** A partial patch set is fatal: Harmony does not roll back a
+  `PatchAll` that aborts midway. The framework logs one named error, starts no driver, and
+  every registration entry point checks that the patches fully applied before it does
+  anything.
+- **Discovery.** The framework scans the loaded BepInEx plugin assemblies for manifests once,
+  and the scan closes at the first terminal build. A class mod's plugin therefore has to
+  load before the terminal does, which `[BepInDependency]` on the framework guarantees.
+- **Ordinal allocation.** Classes sort by `classId` (ordinal comparison) and are numbered
+  from `(EPerkTree)4`. Identical mod sets, which VoidManager's `MPType.All` matching enforces
+  room-wide, give identical ordinals on every client.
+- **Registration pipeline.** Registration runs in stages, each step guarded and re-runnable.
+  One failed class means one named error and one absent class; the terminal stays intact.
+  `[General] RegisterStage` in [config.md](config.md) stops registration after a chosen
+  stage, to bisect a failure.
+- **Tree UI injection.** One `PerkTreeVE` is created per class, lifted from a pristine
+  instantiation of the owning document. It is never cloned from the live document, which
+  carries runtime state. A class whose element cannot be built is filtered out of that
+  terminal build, so the terminals survive without it.
+- **Tree-row scrolling.** Past four surviving trees, the row becomes a horizontal carousel
+  with mouse-wheel and gamepad support and a page indicator (lit pips, one per class, above
+  the row). Four or fewer trees never touch the layout. A document can opt out by name with
+  `[Presentation] ScrollExcludeDocuments`.
+- **Stat registry.** Vanilla aliases are enumerated from the game's `StatType` at runtime,
+  then each class's custom stats, then the framework's own.
+
+## Class ability wiring
+
+A factory-built ability installs into the local player's Opsive locomotion on spawn, with its
+perk-identity fields pointed at the class's hero, row-5 and row-7 banner perks. After that
+the game's own machinery owns it: perk investment selects it, the shared UseClassAbility key
+binds it, cooldown and duration tick natively, and manifest `StatMod`s on
+`ClassAbilityDuration` and `ClassAbilityCooldown` tune it like any stock hero. The HUD gets a
+fifth ability slot built the way the game builds its own four.
+
+`EctypeClassAbility` wraps the effect hooks so a throwing ability logs once instead of
+breaking Opsive's update loop. A failed factory or wiring fails only that class's ability.
+The stop path always runs and the start path may not have finished, so write the remove hook
+to tolerate a half-applied effect.
+
+`ClassStats.RegisterAbilityTiming` registers an ability's own duration and cooldown under two
+class-declared custom stats. Use it to scope a perk to one class's ability, because the
+vanilla `ClassAbilityDuration` and `ClassAbilityCooldown` reach every class ability on the
+character. Avoid the `*Pip` stat variants on class abilities unless you know the pip system.
+
+The framework registers its class abilities for network replication under the key
+`ectype:<classId>`; see [runtime-abilities.md](runtime-abilities.md).
+
+## Suppression
+
+Three mechanisms remove a tree from the game while a class mod is installed. All three leave
+the class registered, so every player still needs the mod (see
+[../multiplayer.md](../multiplayer.md)).
+
+### Vanilla-tree suppression
+
+A manifest's `suppress` list names vanilla perk-tree GUIDs that should not exist while that
+class is installed (the "this class replaces Gunner" mechanism), unioned across all class
+mods. A suppressed tree is filtered out of every terminal build, and its perks are scrubbed
+from saved loadouts with vanilla refund semantics. A framework class's GUID in `suppress` is
+refused.
+
+### Modded-class suppression
+
+A manifest's `suppressClasses` list names other framework classes by `classId`. Each is
+suppressed like a host-toggled class while the listing class is itself active, and its
+payloads are not adopted. The list is resolved from the manifests alone, because tree and
+perk GUIDs derive from the `classId`, so registration order between class mods does not
+matter. A cycle is broken in `classId` order with a warning. An id that is not installed is
+ignored with a warning.
+
+### Host-driven suppression
+
+The per-class suppress toggles under F5 -> Ectype Framework (and in the config) belong to the
+host. They are published as a room property and applied live on every client: already-built
+gene-tree screens rebuild, the class ability deselects, the perks stop applying and their
+points count as unspent. The save is never written. The perks stay in each loadout and are
+read as absent, so lifting suppression restores the build. Leaving the room clears it.
+Suppressing a class changes what every player in the room can do, so it arms the
+modded-session flag, which is one-way. See [../multiplayer.md](../multiplayer.md).
+
+### Adoption
+
+Suppressing a stock tree orphans two things the game keys to its perks in code rather than
+data: the class ability, and every fabricator unlock whose `PlayerPerk` criteria names one of
+those perks. The suppressing class inherits both. The vanilla ability's identity fields
+repoint at the new class's banners and the game's own selection check re-runs, so behaviour,
+cooldown, input binding and HUD slot stay vanilla and only "which perk grants this" changes.
+A class with its own ability factory keeps its own ability instead. A capstone `StatMod`
+payload on an adopted ability is taken over if the adopting class authors its own capstone
+effects, and otherwise left untouched.
+
+## The characterShip target
+
+`characterShip` is `PerkBuffTarget` value 4. It needs framework 0.18.1 or newer, so a class
+that uses it sets `minFrameworkVersion` to at least `0.18.1`. The effects stay on the perk asset's levels,
+where the tooltip renders them. The game's perk loader skips the value, so the game never
+applies them itself. After `ReApplyPerks` the framework deep-copies the holder's level into
+the player ship's collection with the perk as `InformationSource`, one contribution per
+holder, and `ResetPerks` takes it off again. Both run on every client for every player, so
+every client carries every holder's effects.
+
+- Each `StatMod` gets its own source object. Standing up removes every ship modifier sourced
+  from the player, so a player-sourced one would not survive leaving a chair.
+- A new player ship gets every holder's contribution rebuilt onto it, and a player leaving the
+  room takes theirs off. Death and respawn keep the perk loader, so nothing is done for them.
+- The ship's collection does not reach every module. A module joins the ship's tree through
+  its build socket or by registering itself, and a core system nested in the ship prefab that
+  does neither (the Fabricator) roots its own tree. The contribution therefore also goes onto
+  the root of every ship module collection that does not chain up to the ship's. When such a
+  root later gains a parent, the parent replays its modifiers into it and every holder is
+  rebuilt, so the contribution sits there once.
+- `seatShip` has no such step: a vanilla seat-ship modifier never reaches the Fabricator.
+
+## Target reach
+
+A stat's category never constrains a perk's target, so an effect can name a stat that its
+target's collection tree does not hold. It still registers and changes nothing. After
+`ReApplyPerks` the framework walks that tree (the `Stats` keys, recursively through
+`ChildCollections`, the same match `ApplyModifiers` makes) and logs one warning per perk,
+stat and target. A miss counts only when a reapply at least 10 s later still misses, because
+modules and abilities join the tree after spawn. Seat effects are checked against the player
+ship's tree, which contains every mannable module.
+
+## Related pages
+
+- [manifest.md](../manifest.md): every manifest field.
+- [stat-names.md](../stat-names.md): the stat names an effect can use.
+- [framework-stats.md](framework-stats.md): stats the framework registers for every player.
+- [config.md](config.md): the framework's config keys.

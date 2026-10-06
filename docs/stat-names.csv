@@ -1,0 +1,126 @@
+Name,Id,Category,Type,Source
+Damage,1,weapon/module,pip-float,vanilla
+FireRate,2,weapon/module,pip-float,vanilla
+Range,3,weapon/module,float,vanilla
+ProjectileSpeed,4,weapon/module,float,vanilla
+Accuracy,5,weapon/module,pip-float,vanilla
+RotationSpeed,6,weapon/module,float,vanilla
+DamageSecondary,257,weapon/module,unused,vanilla
+MaxZoom,4097,weapon/module,float,vanilla
+ReloadTime,4098,weapon/module,float,vanilla
+MagazineReservoirTick,4099,weapon/module,float,vanilla
+ActiveReloadThreshold,4100,weapon/module,float,vanilla
+HeatPerShot,4101,weapon/module,float,vanilla
+HeatDissipationPerSec,4102,weapon/module,float,vanilla
+AmmoConsumptionEfficiency,4103,weapon/module,float,vanilla
+MaxOvercharge,268439560,weapon/module,int,vanilla
+DamagePip,268500993,weapon/module,int,vanilla
+FireRatePip,268500994,weapon/module,int,vanilla
+RangePip,268500995,weapon/module,int,vanilla
+ProjectileSpeedPip,268500996,weapon/module,int,vanilla
+AccuracyPip,268500997,weapon/module,int,vanilla
+RotationSpeedPip,268500998,weapon/module,int,vanilla
+MaxZoomPip,268505089,weapon/module,int,vanilla
+ReloadTimePip,268505090,weapon/module,int,vanilla
+MagazineReservoirTickPip,268505091,weapon/module,int,vanilla
+ActiveReloadThresholdPip,268505092,weapon/module,int,vanilla
+HeatPerShotPip,268505093,weapon/module,int,vanilla
+HeatDissipationPerSecPip,268505094,weapon/module,int,vanilla
+KpdTrackingRange,1052673,ship defense,float,vanilla
+KpdCooldownAfterBurst,1052674,ship defense,float,vanilla
+ShieldMaxHitPoints,1056769,ship defense,float,vanilla
+ShieldRechargeSpeed,1056770,ship defense,float,vanilla
+ShieldRechargeDelay,1056771,ship defense,float,vanilla
+ShieldAbsorption,1056772,ship defense,float,vanilla
+ShieldGenerationEnabled,269492229,ship defense,bool,vanilla
+Invulnerability,269496320,ship defense,bool,vanilla
+AsphyxiationVulnerability,1060865,ship defense,float,vanilla
+KineticVulnerability,1060866,ship defense,float,vanilla
+ElectricVulnerability,1060867,ship defense,float,vanilla
+EnergyVulnerability,1060868,ship defense,float,vanilla
+FireVulnerability,1060869,ship defense,float,vanilla
+FreezingVulnerability,1060870,ship defense,float,vanilla
+PhysicalVulnerability,1060871,ship defense,float,vanilla
+RadiationVulnerability,1060872,ship defense,float,vanilla
+VoidVulnerability,1060873,ship defense,float,vanilla
+Vulnerability,1060880,ship defense,float,vanilla
+MaxHitPoints,1064961,ship defense,float,vanilla
+ForwardPower,2097153,ship movement,float,vanilla
+YawTorque,2097154,ship movement,float,vanilla
+ElevationPower,2097155,ship movement,float,vanilla
+StrafePower,2097156,ship movement,float,vanilla
+EnginePower,2097157,ship movement,pip-float,vanilla
+PilotAidLevel,2097158,ship movement,float,vanilla
+JumpChargeSpeed,2101249,ship movement,float,vanilla
+VoidJumpCapable,270536706,ship movement,bool,vanilla
+SignatureVelocity,2105345,ship movement,float,vanilla
+SignatureAngularVelocity,2105346,ship movement,float,vanilla
+ThrusterBoosterDuration,2109441,ship movement,float,vanilla
+ThrusterBoosterCooldown,2109442,ship movement,float,vanilla
+ThrusterBoosterRechargeSpeed,2109443,ship movement,float,vanilla
+MaxFlightSpeed,2113537,ship movement,float,vanilla
+ForwardPowerPip,270598145,ship movement,int,vanilla
+YawTorquePip,270598146,ship movement,int,vanilla
+ElevationPowerPip,270598147,ship movement,int,vanilla
+StrafePowerPip,270598148,ship movement,int,vanilla
+EnginePowerPip,270598149,ship movement,int,vanilla
+PilotAidLevelPip,270598150,ship movement,int,vanilla
+JumpChargeSpeedPip,270602241,ship movement,int,vanilla
+SignatureVelocityPip,270606337,ship movement,int,vanilla
+SignatureAngularVelocityPip,270606338,ship movement,int,vanilla
+ThrusterBoosterDurationPip,270610433,ship movement,int,vanilla
+PowerWanted,271581185,ship power,int,vanilla
+PowerProvided,271581186,ship power,int,vanilla
+BatteryRechargeAmount,3149825,ship power,float,vanilla
+BreakerTemperatureShift,3153921,ship power,float,vanilla
+ProcessingSpeed,4194305,ship utility,float,vanilla
+HealingSpeed,4198401,ship utility,float,vanilla
+ActionCooldown,4202497,ship utility,float,vanilla
+EffectRadius,4202498,ship utility,float,vanilla
+AttractorMaxRange,4206593,ship utility,float,vanilla
+AttractorPullVelocity,4206594,ship utility,float,vanilla
+LifeSupportEffectivity,4210689,ship utility,float,vanilla
+PassiveTemperatureShift,4210690,ship utility,float,vanilla
+JetpackThrust,5242881,EVA suit,float,vanilla
+JetpackOxygenCapacity,5242882,EVA suit,float,vanilla
+JetpackDashOxygen,5246977,EVA suit,float,vanilla
+JetpackDashThrust,5246978,EVA suit,float,vanilla
+JetpackDashDuration,5246979,EVA suit,float,vanilla
+JetpackDashCooldown,5246980,EVA suit,float,vanilla
+JetpackEnhanced,273686529,EVA suit,bool,vanilla
+PassiveHealingAmount,6291458,character,float,vanilla
+PassiveHealingInterval,6291459,character,float,vanilla
+PassiveHealingCap,6291460,character,float,vanilla
+PushForceCounter,6295553,character,float,vanilla
+InstantCrypticWinChance,6299649,character,float,vanilla
+CrypticSkill,6299650,character,float,vanilla
+BreachRepairSkill,6299651,character,float,vanilla
+EnhancementProficiency,6303745,character,float,vanilla
+EnhancementDurationMultiplier,6303746,character,float,vanilla
+EnhancementRepairSkill,274739203,character,bool,vanilla
+ThrowForce,6307841,character,float,vanilla
+ClassAbilityDuration,6311937,character,float,vanilla
+ClassAbilityCooldown,6311938,character,float,vanilla
+GrapplingHookRange,6311939,character,float,vanilla
+TargetLockDamage,6316033,character,float,vanilla
+TargetLockCount,274751490,character,int,vanilla
+ScanRange,6316035,character,float,vanilla
+ScanSpeedIncreased,274751492,character,int,vanilla
+GrapplingHookFlightSpeed,618578050,character,float,framework
+GrapplingHookPullSpeed,625628439,character,float,framework
+GrapplingHookPullAcceleration,574325611,character,float,framework
+GrapplingHookMissCooldown,558887583,character,float,framework
+GrapplingHookCooldown,662977649,character,float,framework
+ExternalForceDamping,793426109,EVA suit,float,framework
+ExternalForceDampingTime,713983662,EVA suit,float,framework
+MotorDamping,693842163,character,float,framework
+MotorAcceleration,558597805,character,float,framework
+GravityAmount,798720955,character,float,framework
+IncomingProjectileSpeed,573323413,ship defense,float,framework
+HandAttractorMaxRange,786075466,character,float,framework
+HandAttractorPullVelocity,618829903,character,float,framework
+HandAttractorDuration,599926723,character,float,framework
+HandAttractorCooldown,670551379,character,float,framework
+HandAttractorBeams,701901862,character,float,framework
+ModuleInstallSpeed,592760197,character,float,framework
+ShipDrag,554310235,ship movement,float,framework

@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ectype class manifest (contract version 1)",
+  "description": "The JSON document a class mod embeds in its assembly under a resource name ending in \"ectype-class.json\". Property names are matched case-insensitively by the framework; this schema uses the canonical spelling. Unknown properties are ignored by the framework and allowed here. String values for \"type\", \"target\", \"kind\", \"displayType\" and the tag criteria are matched case-insensitively and trimmed by the framework; the enums here list the canonical lower-case or documented spelling.",
+  "type": "object",
+  "required": ["contractVersion", "classId", "className", "hero"],
+  "properties": {
+    "contractVersion": {
+      "description": "Must equal the contract version the installed framework implements. Any other value rejects the class.",
+      "const": 1
+    },
+    "minFrameworkVersion": {
+      "description": "Oldest framework version the class works with, \"major.minor.patch\". A framework older than this rejects the class. Absent means no minimum.",
+      "type": ["string", "null"],
+      "pattern": "^\\s*\\d+(\\.\\d+){1,3}\\s*$"
+    },
+    "classId": {
+      "description": "Namespaced stable id, conventionally the plugin GUID. Seeds every derived GUID and the ordinal sort key across installed class mods. Never rename after shipping.",
+      "type": "string",
+      "minLength": 1
+    },
+    "className": {
+      "description": "Display name. Shown upper-cased as the tree title.",
+      "type": "string",
+      "minLength": 1
+    },
+    "classDesc": {
+      "description": "Class tooltip body. Rich text allowed.",
+      "type": ["string", "null"]
+    },
+    "roleIcon": {
+      "description": "Icon key (embedded PNG resource name without extension) for the role icon the crew HUD, lobby and gene tree draw for the class.",
+      "type": ["string", "null"]
+    },
+    "roleIconDonor": {
+      "description": "PerkBuffContainer GUID whose icon the class borrows when roleIcon names nothing loadable. 32 hex characters, dashes allowed.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-fA-F-]*$"
+    },
+    "color": {
+      "description": "Accent colour as an HTML hex string. Omitted or unparseable renders the tree white with a warning; R+G+B of 700 or more (of 765) is warned as too close to white.",
+      "type": ["string", "null"],
+      "pattern": "^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+    },
+    "hero": {
+      "description": "The row-0 banner perk. Its key defaults to \"hero\"; row, col and wide are forced to 0, 0 and true. Its name is not validated. An unrecognised target rejects the class.",
+      "$ref": "#/$defs/heroPerk"
+    },
+    "perks": {
+      "description": "Perks in rows 1 to 7. Partial grids are legal.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/perk" }
+    },
+    "customStats": {
+      "description": "Stats declared by this class. Inert until code reads them.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/customStat" }
+    },
+    "suppress": {
+      "description": "Vanilla perk-tree GUIDs (32 hex, dashes allowed) whose trees do not exist while this class is installed.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/guid" }
+    },
+    "suppressClasses": {
+      "description": "classIds of other framework classes whose trees do not exist while this class is installed.",
+      "type": ["array", "null"],
+      "items": { "type": ["string", "null"] }
+    }
+  },
+  "$defs": {
+    "guid": {
+      "description": "32 hex characters; dashes are removed and case is ignored.",
+      "type": "string",
+      "pattern": "^(?:[0-9A-Fa-f]-?){32}$"
+    },
+    "target": {
+      "description": "Where a perk's effects land. character: the player, always on (default). seat: the manned module, applied on sit and removed on stand. seatShip: the ship's stat collection while seated in any chair. characterShip: the ship's stat collection for every holder, seated or not (added in framework 0.18.1). An unrecognised value skips the perk, or rejects the class when it is on the hero.",
+      "type": ["string", "null"],
+      "enum": ["", "character", "seat", "seatShip", "characterShip", null]
+    },
+    "heroPerk": {
+      "type": "object",
+      "properties": {
+        "key": { "type": ["string", "null"] },
+        "guid": { "$ref": "#/$defs/nullableGuid" },
+        "name": { "type": ["string", "null"] },
+        "desc": { "type": ["string", "null"] },
+        "icon": { "type": ["string", "null"] },
+        "iconDonor": { "$ref": "#/$defs/nullableGuid" },
+        "row": { "description": "Forced to 0.", "type": "integer" },
+        "col": { "description": "Forced to 0.", "type": "integer" },
+        "wide": { "description": "Forced to true.", "type": "boolean" },
+        "target": { "$ref": "#/$defs/target" },
+        "mods": { "$ref": "#/$defs/levels" },
+        "levels": { "$ref": "#/$defs/levelCount" },
+        "unlocks": { "$ref": "#/$defs/guidList" },
+        "emptyOk": { "type": "boolean" }
+      }
+    },
+    "nullableGuid": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9A-Fa-f-]*$"
+    },
+    "guidList": {
+      "description": "Item GUIDs, 32 hex each, dashes allowed.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/guid" }
+    },
+    "levelCount": {
+      "description": "Level (pip) count. The effective count is the largest of 1, this value and the number of entries in mods.",
+      "type": "integer"
+    },
+    "levels": {
+      "description": "One entry per level; each entry is the complete effect list at that level, not an increment.",
+      "type": ["array", "null"],
+      "items": {
+        "type": ["array", "null"],
+        "items": { "$ref": "#/$defs/effect" }
+      }
+    },
+    "perk": {
+      "type": "object",
+      "required": ["key", "name", "row"],
+      "properties": {
+        "key": {
+          "description": "Stable id within the class, unique case-insensitively across hero and perks. The perk GUID derives from (classId, key) unless guid pins one.",
+          "type": "string",
+          "minLength": 1
+        },
+        "guid": {
+          "description": "Explicit perk GUID overriding the derivation.",
+          "$ref": "#/$defs/nullableGuid"
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "desc": { "type": ["string", "null"] },
+        "icon": { "description": "Icon key: an embedded PNG whose resource name ends with <key>.png.", "type": ["string", "null"] },
+        "iconDonor": {
+          "description": "PerkBuffContainer GUID whose icon this perk borrows when icon names nothing loadable.",
+          "$ref": "#/$defs/nullableGuid"
+        },
+        "row": {
+          "description": "1 to 7. Row 0 is the hero. The grid is 8 rows shaped [1,3,1,3,3,1,3,1]; a row past 7 fails when the terminal builds. The framework itself rejects only a row below 1.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "col": {
+          "description": "0 to 2 on the three-cell rows (1, 3, 4, 6). Single-cell rows (2, 5, 7) force the column to 0.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "wide": {
+          "description": "Whether the perk fills a wide cell. A perk in a wide cell must declare true; a perk anywhere else must omit it or declare false, and true there is rejected. Absent means false. The wide cells are rows 2, 5 and 7.",
+          "type": "boolean"
+        },
+        "target": { "$ref": "#/$defs/target" },
+        "mods": { "$ref": "#/$defs/levels" },
+        "levels": { "$ref": "#/$defs/levelCount" },
+        "unlocks": { "$ref": "#/$defs/guidList" },
+        "emptyOk": {
+          "description": "Declares that an empty level is intentional, which silences the per-launch empty-level warning for this perk.",
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": { "row": { "enum": [2, 5, 7] } },
+        "required": ["row"]
+      },
+      "then": {
+        "required": ["wide"],
+        "properties": { "wide": { "const": true } }
+      },
+      "else": {
+        "properties": { "wide": { "const": false } }
+      }
+    },
+    "effect": {
+      "description": "One stat modifier at one level. A missing or unresolvable stat or type skips the effect with a logged error and the level registers without it.",
+      "type": "object",
+      "required": ["stat", "type"],
+      "properties": {
+        "stat": {
+          "description": "A StatType name, a custom stat declared in this manifest, or a raw integer id.",
+          "type": ["string", "integer"]
+        },
+        "type": {
+          "description": "percent: +X% (AdditiveMultiplier). scalar: xN (ExponentialMultiplier). flat: PrimaryAddend. flat2: SecondaryAddend. Or an exact ModifierType name.",
+          "enum": [
+            "percent", "scalar", "flat", "flat2",
+            "AdditiveMultiplier", "ExponentialMultiplier", "PrimaryAddend", "SecondaryAddend"
+          ]
+        },
+        "value": {
+          "description": "percent 0.25 is +25%. scalar 0.25 is x1.25. flat is the addend. Negative values reduce. Truncated to an integer when kind is int.",
+          "type": "number"
+        },
+        "kind": {
+          "description": "float (default) builds a FloatModifier, int builds an IntModifier. Any other value falls back to float with a warning.",
+          "type": ["string", "null"],
+          "enum": ["", "float", "int", null]
+        },
+        "requiredTags": { "$ref": "#/$defs/tagList" },
+        "requiredTagCriteria": { "$ref": "#/$defs/criteria" },
+        "requiredLocalTags": { "$ref": "#/$defs/tagList" },
+        "requiredLocalTagCriteria": { "$ref": "#/$defs/criteria" },
+        "disablingTags": { "$ref": "#/$defs/tagList" },
+        "tagsToAdd": { "$ref": "#/$defs/tagList" }
+      }
+    },
+    "tagList": {
+      "description": "Tag names resolved against the game's tag table, for example \"Tag_DamageType_Kinetic\". The \"Tag_\" prefix is optional.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "criteria": {
+      "description": "and: every listed tag must be present (default). or: any one. Any other value falls back to and with a warning.",
+      "type": ["string", "null"],
+      "enum": ["", "and", "or", null]
+    },
+    "customStat": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "description": "Stat name referenced from effect lines. The id derives from (classId, name).", "type": "string", "minLength": 1 },
+        "displayName": { "description": "Tooltip header. Defaults to name.", "type": ["string", "null"] },
+        "desc": { "type": ["string", "null"] },
+        "icon": { "type": ["string", "null"] },
+        "lowerIsBetter": { "description": "Colours reductions as buffs in tooltips.", "type": "boolean" },
+        "displayType": {
+          "description": "How the stat renders in tooltips. percentage is the default, also used for any unrecognised value.",
+          "type": ["string", "null"],
+          "enum": ["", "value", "percentage", "bool", null]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+<Project>
+  <!-- Copy to Local.props (gitignored) and set the folder that contains Void Crew.exe. -->
+  <PropertyGroup>
+    <VoidCrewDir>D:\Steam\steamapps\common\Void Crew</VoidCrewDir>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,184 @@
+{
+  "_note": "Preview spec for a HUD ability bar button on the framework's default chrome, beside the stock widget. Swap the grapple layers' image for a new glyph. Tints are measured from the game's tree dump; fill is the fraction of Fill revealed (1 = ready).",
+  "readyColor": "#E6A42D",
+  "backdrop": "#0E121A",
+  "zoom": 4,
+  "states": [
+    {
+      "name": "ready",
+      "fill": 1.0
+    },
+    {
+      "name": "recovering",
+      "fill": 0.4
+    }
+  ],
+  "widgets": [
+    {
+      "name": "vanilla",
+      "width": 269,
+      "height": 68,
+      "layers": [
+        {
+          "name": "GlowContainer",
+          "image": "WideHeroBtn_glow",
+          "box": [
+            -24,
+            -22.5,
+            317,
+            113
+          ],
+          "tint": {
+            "*": "#E6A42D"
+          },
+          "states": [
+            "ready"
+          ]
+        },
+        {
+          "name": "PerkItem",
+          "image": "WideHeroBtn_background",
+          "tint": {
+            "*": "#231F20"
+          },
+          "plate": true
+        },
+        {
+          "name": "Icon",
+          "image": "PerkBuff_Pilot_IconWide_Ability",
+          "tint": {
+            "*": "#FFFFFF"
+          },
+          "glyph": true
+        },
+        {
+          "name": "Fill",
+          "image": "WideHeroBtn_background",
+          "tint": {
+            "ready": "#E6A42D",
+            "*": "#FFFFFF"
+          },
+          "fill": true
+        },
+        {
+          "name": "IconFilled",
+          "image": "PerkBuff_Pilot_IconWide_Ability",
+          "tint": {
+            "*": "#000000"
+          },
+          "fill": true,
+          "glyph": true
+        },
+        {
+          "name": "Shadow",
+          "image": "wideherobtn_border_shadow",
+          "tint": {
+            "*": "#000000A6"
+          }
+        },
+        {
+          "name": "Frame",
+          "image": "WideHeroBtn_border",
+          "tint": {
+            "*": "#696A6D"
+          }
+        }
+      ],
+      "chip": {
+        "anchor": [
+          1,
+          1
+        ],
+        "size": 18,
+        "label": "2"
+      }
+    },
+    {
+      "name": "button",
+      "width": 68,
+      "height": 68,
+      "gap": 15.5,
+      "texelHeight": 512,
+      "dump": true,
+      "layers": [
+        {
+          "name": "GlowContainer",
+          "image": "WideHeroBtn_glow",
+          "slice": 250,
+          "scale": 0.8,
+          "pad": 60,
+          "tint": {
+            "*": "$ready"
+          },
+          "states": [
+            "ready"
+          ]
+        },
+        {
+          "name": "PerkItem",
+          "image": "WideHeroBtn_background",
+          "slice": 190,
+          "tint": {
+            "*": "#231F20"
+          },
+          "plate": true
+        },
+        {
+          "name": "Icon",
+          "image": "../assets/hud-button-glyph.png",
+          "size": 0.76,
+          "tint": {
+            "*": "#FFFFFF"
+          },
+          "glyph": true,
+          "trim": 0.4395
+        },
+        {
+          "name": "Fill",
+          "image": "WideHeroBtn_background",
+          "slice": 190,
+          "tint": {
+            "ready": "$ready",
+            "*": "#FFFFFF"
+          },
+          "fill": true
+        },
+        {
+          "name": "IconFilled",
+          "image": "../assets/hud-button-glyph.png",
+          "size": 0.76,
+          "tint": {
+            "*": "#000000"
+          },
+          "fill": true,
+          "glyph": true,
+          "trim": 0.4395
+        },
+        {
+          "name": "Shadow",
+          "image": "wideherobtn_border_shadow",
+          "slice": 190,
+          "tint": {
+            "*": "#000000A6"
+          }
+        },
+        {
+          "name": "Frame",
+          "image": "WideHeroBtn_border",
+          "slice": 190,
+          "tint": {
+            "*": "#696A6D"
+          }
+        }
+      ],
+      "chip": {
+        "anchor": [
+          1,
+          1
+        ],
+        "size": 18,
+        "label": "F9"
+      }
+    }
+  ]
+}

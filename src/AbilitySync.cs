@@ -1,0 +1,312 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+
+using HarmonyLib;
+using Opsive.UltimateCharacterController.Character;
+using Opsive.UltimateCharacterController.Character.Abilities;
+using Photon.Pun;
+using Photon.Realtime;
+using UnityEngine;
+using VoidManager.ModMessages;
+using VoidManager.MPModChecks;
+
+namespace Ectype
+{
+    /// <summary>
+    /// Replicates the active state of runtime-installed Opsive abilities by KEY, on a
+    /// channel the framework owns, instead of by array index on the game's own RPC: the
+    /// owner's vanilla send is suppressed and (view id, key, active) goes out on
+    /// VoidManager's ModMessage channel to the peers that run this framework, each of which
+    /// resolves the key against its own replica's array and ignores keys it has no ability
+    /// for. Array order across clients stops mattering.
+    ///
+    /// Two registration rules, both enforced by the sender rather than the receiver:
+    ///  * the key must be computed from the same literal on every client - a string the
+    ///    installing mod owns, namespaced by that mod, never derived from runtime state;
+    ///  * an unregistered runtime ability still goes through the vanilla RPC and still
+    ///    breaks the index premise. Registering is what opts it in.
+    /// </summary>
+    public static class RuntimeAbilities
+    {
+        // Weak so a key dies with its ability rather than pinning every dead character's
+        // abilities for the life of the process.
+        private static readonly ConditionalWeakTable<Ability, string> Keys =
+            new ConditionalWeakTable<Ability, string>();
+
+        /// <summary>
+        /// Opt an installed ability into key-based replication. Call after the ability is
+        /// in its locomotion's array; the key must be identical on every client for the
+        /// same ability (a literal, namespaced by the registering mod).
+        /// </summary>
+        public static void Register(Ability ability, string key)
+        {
+            if (ability == null) throw new ArgumentNullException("ability");
+            if (string.IsNullOrEmpty(key)) throw new ArgumentException("key is empty", "key");
+            Keys.Remove(ability);
+            Keys.Add(ability, key);
+        }
+
+        /// <summary>Forgets the key registered for an ability; a no-op for null or an unregistered one.</summary>
+        public static void Unregister(Ability ability)
+        {
+            if (ability != null) Keys.Remove(ability);
+        }
+
+        /// <summary>The registered key, or null for a prefab (or unregistered) ability.</summary>
+        public static string KeyOf(Ability ability)
+        {
+            string key;
+            return ability != null && Keys.TryGetValue(ability, out key) ? key : null;
+        }
+
+        internal static Ability Find(UltimateCharacterLocomotion loco, string key)
+        {
+            Ability[] abilities = loco != null ? loco.Abilities : null;
+            if (abilities == null) return null;
+            for (int i = 0; i < abilities.Length; i++)
+            {
+                string k;
+                if (abilities[i] != null && Keys.TryGetValue(abilities[i], out k) && k == key)
+                    return abilities[i];
+            }
+            return null;
+        }
+
+        // ------------------------------------------------------------------ send
+
+        /// <summary>Peers that run this framework, excluding this client. Empty in solo.</summary>
+        internal static Player[] Recipients()
+        {
+            try
+            {
+                List<Player> with = SelectionGate.PeersWithMod(EctypePluginInfo.PLUGIN_GUID);
+                if (with.Count == 0) return new Player[0];
+                Player me = PhotonNetwork.LocalPlayer;
+                List<Player> others = new List<Player>(with.Count);
+                foreach (Player p in with)
+                    if (p != null && (me == null || p.ActorNumber != me.ActorNumber)) others.Add(p);
+                return others.ToArray();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: resolving ability-sync recipients failed: " + e);
+                return new Player[0];
+            }
+        }
+
+        internal static void Send(Player[] to, int viewId, string key, bool active,
+                                  object[] startData, object[] extendedStartData, bool lateJoin)
+        {
+            if (to == null || to.Length == 0) return;
+            ModMessage.Send(EctypePluginInfo.PLUGIN_GUID,
+                            ModMessage.GetIdentifier(typeof(AbilityActiveMessage)),
+                            to,
+                            new object[]
+                            {
+                                viewId, key, active,
+                                startData ?? new object[0],
+                                extendedStartData ?? new object[0],
+                                lateJoin
+                            },
+                            reliable: true);
+        }
+
+        internal static object[] ExtendedStartData(Ability ability)
+        {
+            IExtendedStartSyncAbility ext = ability as IExtendedStartSyncAbility;
+            return ext != null ? ext.StartData : null;
+        }
+    }
+
+    /// <summary>
+    /// Receiver. VoidManager discovers concrete ModMessage subclasses at load and routes
+    /// matching payloads to <see cref="Handle"/> - there is no registration call.
+    /// Arguments: [int viewId, string key, bool active, object[] startData,
+    ///             object[] extendedStartData, bool lateJoin].
+    /// </summary>
+    public sealed class AbilityActiveMessage : ModMessage
+    {
+        private static readonly HashSet<string> ReportedOwnerMismatch = new HashSet<string>();
+
+        public override void Handle(object[] args, Player sender)
+        {
+            try
+            {
+                if (args == null || args.Length < 6) return;
+                int viewId = (int)args[0];
+                string key = args[1] as string;
+                bool active = (bool)args[2];
+                object[] startData = args[3] as object[];
+                object[] extended = args[4] as object[];
+                bool lateJoin = (bool)args[5];
+                if (key == null) return;
+
+                PhotonView view = PhotonView.Find(viewId);
+                if (view == null) return;   // not instantiated here yet, or already gone
+
+                // Reproduce the PunRPC ownership guarantee: only the view's owner may drive it.
+                if (view.Owner == null || sender == null ||
+                    view.Owner.ActorNumber != sender.ActorNumber)
+                {
+                    string tag = viewId + "/" + (sender != null ? sender.ActorNumber : -1);
+                    if (ReportedOwnerMismatch.Add(tag))
+                        Plugin.Log.LogWarning("Ectype: ignored ability-sync for view " + viewId +
+                                              " from a player who does not own it.");
+                    return;
+                }
+
+                UltimateCharacterLocomotion loco =
+                    view.GetComponent<UltimateCharacterLocomotion>();
+                Ability ability = RuntimeAbilities.Find(loco, key);
+                if (ability == null) return;   // this client has no such ability: nothing to do
+
+                if (startData != null && startData.Length > 0)
+                    ability.SetNetworkStartData(startData);
+                IExtendedStartSyncAbility ext = ability as IExtendedStartSyncAbility;
+                if (ext != null && extended != null && extended.Length > 0)
+                    ext.StartData = extended;
+
+                // Same two lines the vanilla receivers execute; the late-join variant uses
+                // the flags the vanilla join-time sync uses.
+                if (!active) loco.TryStopAbility(ability, true);
+                else if (lateJoin) loco.TryStartAbility(ability, true, true);
+                else loco.TryStartAbility(ability);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: handling ability-sync message failed: " + e);
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// Resolves a CustomPunCharacter patch target by name and exact parameter list, logging
+    /// and returning null on a miss rather than throwing - a throw out of TargetMethods
+    /// aborts the whole PatchAll pass and leaves the framework inert.
+    /// </summary>
+    internal static class AbilitySyncTargets
+    {
+        internal static MethodInfo Resolve(string name, Type[] parameters, string consequence)
+        {
+            try
+            {
+                Type t = AccessTools.TypeByName("CustomPunCharacter");
+                MethodInfo m = t != null ? AccessTools.Method(t, name, parameters) : null;
+                if (m == null)
+                    Plugin.Log.LogError("Ectype: CustomPunCharacter." + name + " not found - " +
+                                        consequence + " (game update?).");
+                return m;
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: resolving CustomPunCharacter." + name +
+                                    " failed - " + consequence + ": " + e);
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sender. CustomPunCharacter subscribes OnAbilityActive only on the owning client, so
+    /// this prefix needs no ownership check of its own and a replica acting on our message
+    /// never re-broadcasts. A registered ability is diverted to the framework channel and
+    /// the vanilla RPC skipped; everything else falls through, so vanilla traffic is
+    /// byte-identical.
+    ///
+    /// The Opsive PUN add-on assembly is not in the compile-time reference set, so the type
+    /// is resolved by name and the view reached through MonoBehaviourPun, which is.
+    /// </summary>
+    [HarmonyPatch]
+    internal static class Patch_CustomPunCharacter_OnAbilityActive
+    {
+        // Yield nothing on a miss: an empty list patches nothing, a null target aborts PatchAll.
+        private static IEnumerable<MethodBase> TargetMethods()
+        {
+            MethodInfo m = AbilitySyncTargets.Resolve("OnAbilityActive",
+                new[] { typeof(Ability), typeof(bool) },
+                "runtime abilities will sync by array index and can throw on peers");
+            if (m != null) yield return m;
+        }
+
+        private static bool Prefix(object __instance, Ability ability, bool active)
+        {
+            try
+            {
+                string key = RuntimeAbilities.KeyOf(ability);
+                if (key == null) return true;                 // prefab ability: vanilla path
+                if (!ability.SyncAbilityState) return false;  // vanilla would send nothing
+
+                MonoBehaviourPun pun = __instance as MonoBehaviourPun;
+                PhotonView view = pun != null ? pun.photonView : null;
+                if (view == null) return false;
+
+                RuntimeAbilities.Send(RuntimeAbilities.Recipients(), view.ViewID, key, active,
+                                      null, RuntimeAbilities.ExtendedStartData(ability), false);
+                return false;
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: ability-sync send failed: " + e);
+                return false;   // never fall back to the index RPC for a registered ability
+            }
+        }
+    }
+
+    /// <summary>
+    /// Late-join sync. The vanilla OnPlayerEnteredRoom sends a joiner the owner's currently
+    /// active abilities by index (and, in this game's override, only the ones implementing
+    /// IExtendedStartSyncAbility). Registered abilities are not on that path, so they are
+    /// sent here, to the joiner alone, with the same start data the vanilla path carries.
+    /// </summary>
+    [HarmonyPatch]
+    internal static class Patch_CustomPunCharacter_OnPlayerEnteredRoom
+    {
+        private static readonly FieldInfo LocomotionF = AccessTools.Field(
+            AccessTools.TypeByName(
+                "Opsive.UltimateCharacterController.AddOns.Multiplayer.PhotonPun.Character.PunCharacter"),
+            "m_CharacterLocomotion");
+
+        private static IEnumerable<MethodBase> TargetMethods()
+        {
+            // Parameter types are required: MonoBehaviourPunCallbacks up the chain declares
+            // its own OnPlayerEnteredRoom(Player), so a by-name lookup is ambiguous.
+            MethodInfo m = AbilitySyncTargets.Resolve("OnPlayerEnteredRoom",
+                new[] { typeof(Player), typeof(GameObject) },
+                "late joiners will not learn running runtime abilities");
+            if (m != null) yield return m;
+        }
+
+        private static void Postfix(object __instance, Player player)
+        {
+            try
+            {
+                if (player == null || LocomotionF == null) return;
+                if (!SelectionGate.PeerHasMod(player, EctypePluginInfo.PLUGIN_GUID)) return;
+
+                MonoBehaviourPun pun = __instance as MonoBehaviourPun;
+                PhotonView view = pun != null ? pun.photonView : null;
+                UltimateCharacterLocomotion loco =
+                    LocomotionF.GetValue(__instance) as UltimateCharacterLocomotion;
+                if (view == null || loco == null || loco.ActiveAbilities == null) return;
+
+                Player[] to = { player };
+                for (int i = 0; i < loco.ActiveAbilityCount && i < loco.ActiveAbilities.Length; i++)
+                {
+                    Ability a = loco.ActiveAbilities[i];
+                    string key = RuntimeAbilities.KeyOf(a);
+                    if (key == null || !a.SyncAbilityState) continue;
+                    RuntimeAbilities.Send(to, view.ViewID, key, true,
+                                          a.GetNetworkStartData(),
+                                          RuntimeAbilities.ExtendedStartData(a), true);
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: late-join ability-sync failed: " + e);
+            }
+        }
+    }
+}

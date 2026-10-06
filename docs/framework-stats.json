@@ -1,0 +1,317 @@
+{
+  "$comment": [
+    "Every stat the framework itself owns: what it wraps, where it lives, what it does, what",
+    "the game authored, and who reads it. Ids derive from the framework's reserved owner",
+    "string 'ectype' and the name (MD5 of 'ectype:stat:ectype/<name>', low 28 bits under",
+    "0x20000000); they are also rows in stat-names.csv, which is the perk builder's alias",
+    "list. The declaration is src/FrameworkStats.cs; the wiring is the file named in",
+    "'wiredBy'. Authored values are the prefab's as read at wiring time and logged at spawn",
+    "('grapple stat surface installed' / 'character stat surface installed'); re-check them",
+    "after a game update. 'mechanism' says how the game consumes the number, so a reader",
+    "can predict what a modifier does without opening the decompile.",
+    "'authoredVerified' is false where the value is the Opsive/class default rather than one read back from a spawn log; replace it with the logged number after the first run."
+  ],
+  "owner": "ectype",
+  "stats": [
+    {
+      "name": "GrapplingHookFlightSpeed",
+      "id": 618578050,
+      "displayName": "Grapple Flight Speed",
+      "wraps": "ChannelGrapplingHook.projectileSpeed (private float, reflection)",
+      "collection": "the hook ability's own StatTagCollection (child of the player's)",
+      "wiredBy": "src/GrappleStats.cs, ChannelGrapplingHook.Awake postfix",
+      "authored": 250,
+      "units": "m/s",
+      "lowerIsBetter": false,
+      "mechanism": "Speed the hook head is launched at toward the aim point. Higher reaches the anchor sooner; range is a separate vanilla stat (GrapplingHookRange).",
+      "consumers": [
+        "perk StatMods targeting character (recurse into the ability's collection)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "GrapplingHookPullSpeed",
+      "id": 625628439,
+      "displayName": "Grapple Pull Speed",
+      "wraps": "ChannelGrapplingHook.characterGrappleMaxSpeed (private float, reflection)",
+      "collection": "the hook ability's own StatTagCollection",
+      "wiredBy": "src/GrappleStats.cs",
+      "authored": 25,
+      "units": "m/s",
+      "lowerIsBetter": false,
+      "mechanism": "Cap on the character's speed along the line while being pulled. Read per tick inside the pull update, which is why the field stays the sink.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "GrapplingHookPullAcceleration",
+      "id": 574325611,
+      "displayName": "Grapple Pull Acceleration",
+      "wraps": "ChannelGrapplingHook.characterGrappleAcceleration (private float, reflection)",
+      "collection": "the hook ability's own StatTagCollection",
+      "wiredBy": "src/GrappleStats.cs",
+      "authored": 100,
+      "units": "m/s^2",
+      "lowerIsBetter": false,
+      "mechanism": "Acceleration applied toward the anchor each tick until pull speed is reached. Read per tick.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "GrapplingHookMissCooldown",
+      "id": 558887583,
+      "displayName": "Grapple Miss Cooldown",
+      "wraps": "ChannelGrapplingHook.cooldownWhenHookMiss (private float, reflection)",
+      "collection": "the hook ability's own StatTagCollection",
+      "wiredBy": "src/GrappleStats.cs",
+      "authored": 1,
+      "units": "seconds",
+      "lowerIsBetter": true,
+      "mechanism": "Cooldown applied instead of the full one when the hook attaches to nothing.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "GrapplingHookCooldown",
+      "id": 662977649,
+      "displayName": "Grapple Cooldown",
+      "wraps": "ChannelGrapplingHook.CooldownSeconds - the SAME ModifiableFloat the base class registers as ClassAbilityCooldown, under a second id",
+      "collection": "the hook ability's own StatTagCollection",
+      "wiredBy": "src/GrappleStats.cs",
+      "authored": 5,
+      "units": "seconds",
+      "lowerIsBetter": true,
+      "mechanism": "No write-back, no field: a hook-scoped alias so a cooldown perk can target the grapple alone. A modifier against the vanilla ClassAbilityCooldown alias reaches every ability on the character.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "ExternalForceDamping",
+      "id": 793426109,
+      "displayName": "Inertial Damping",
+      "wraps": "Opsive CharacterLocomotion.ExternalForceDamping (public property over m_ExternalForceDamping)",
+      "collection": "the player's own StatTagCollection (Player.Stats)",
+      "wiredBy": "src/CharacterStats.cs, Player.Awake postfix",
+      "authored": 0.1,
+      "units": "per-tick decay coefficient",
+      "lowerIsBetter": false,
+      "mechanism": "Every tick the locomotion divides its external-force velocity by (1 + ExternalForceDamping * timeScale * ExternalForceDampingMultiplier). The jetpack moves the character exclusively through AddForce into that channel, so this is how long EVA momentum persists. 0 is fully Newtonian and plays as uncontrollable; the Skirmisher's Thruster Suit cuts it to x0.1 for its channel.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "ectype-skirmisher ThrusterSuitAbility: ExponentialMultiplier (multiplier - 1) applied on channel start, removed by source on stop",
+        "gameplay/anthem-eva FlightState: ExponentialMultiplier (DampingScale - 1) applied while the Anthem flight model is engaged and the knob is off its sentinel, removed by source otherwise"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "ExternalForceDampingTime",
+      "id": 713983662,
+      "displayName": "Launch Momentum Time",
+      "wraps": "CustomCharacterLocomotion.ExternalForceDampingTime (public property over externalForceDampingTime)",
+      "collection": "the player's own StatTagCollection",
+      "wiredBy": "src/CharacterStats.cs",
+      "authored": 1,
+      "units": "seconds",
+      "lowerIsBetter": false,
+      "mechanism": "On leaving a moving platform's inertia zone into open space the game ramps ExternalForceDampingMultiplier from a curve over this many seconds, so the ship's velocity is kept rather than damped away at once. The ramp is scaled by the platform's exit speed: full length at >= 20 m/s, none at <= 5 m/s, linear between. Longer keeps launch momentum longer.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "MotorDamping",
+      "id": 693842163,
+      "displayName": "Footing",
+      "wraps": "Opsive CharacterLocomotion.MotorDamping (public property over m_MotorDamping)",
+      "collection": "the player's own StatTagCollection",
+      "wiredBy": "src/CharacterStats.cs",
+      "authored": 5.4,
+      "units": "per-tick decay coefficient",
+      "lowerIsBetter": false,
+      "mechanism": "Every tick the walking motor throttle is divided by (1 + MotorDamping * timeScale). With MotorAcceleration it sets top walking speed (steady state where acceleration equals damping) and how fast you stop on release. Applies on foot inside gravity zones; the jetpack does not use the motor.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "MotorAcceleration",
+      "id": 558597805,
+      "displayName": "Sprint",
+      "wraps": "Opsive CharacterLocomotion.MotorAcceleration (public Vector3 property over m_MotorAcceleration; the stat is its horizontal magnitude)",
+      "collection": "the player's own StatTagCollection",
+      "wiredBy": "src/CharacterStats.cs",
+      "authored": 4.525,
+      "authoredVector": [
+        3.2,
+        0,
+        3.2
+      ],
+      "units": "throttle per tick (magnitude of the x/z pair)",
+      "lowerIsBetter": false,
+      "mechanism": "Per-axis force the walking motor adds each tick, scaled by input and slope factor. The write-back multiplies the authored vector by (value / authored magnitude), so x and z keep their ratio and y stays 0. Raising it raises both responsiveness and top walking speed.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "GravityAmount",
+      "id": 798720955,
+      "displayName": "Gravity",
+      "wraps": "Opsive CharacterLocomotion.GravityAmount (public property over m_GravityAmount)",
+      "collection": "the player's own StatTagCollection",
+      "wiredBy": "src/CharacterStats.cs",
+      "authored": 0.2,
+      "units": "velocity added per fixed tick, along GravityDirection",
+      "lowerIsBetter": false,
+      "mechanism": "Accumulated into the character's downward velocity every fixed update while UseGravity is on (inside a gravity zone). Only the strength; whether gravity applies at all is the zone's decision and is untouched. UltimateCharacterLocomotion.ResetCharacter zeroes the field, but nothing calls it.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "IncomingProjectileSpeed",
+      "id": 573323413,
+      "displayName": "Incoming Projectile Speed",
+      "wraps": "no field: a factor read by a consumer that puts an ExponentialMultiplier of (factor - 1) on each hostile SyncedProjectile's own Speed stat",
+      "collection": "the player ship's own StatTagCollection (PlayerControlledShip.Stats)",
+      "wiredBy": "src/ShipStats.cs, PlayerControlledShip.RegisterStats postfix; consumer is a SyncedProjectilesSynchronizer.RegisterNpcProjectile postfix plus a re-apply over in-flight shots on every change",
+      "authored": 1,
+      "units": "factor on projectile speed (floored at 0.05)",
+      "lowerIsBetter": true,
+      "mechanism": "NPC shots move Speed.Value * fixedDeltaTime each tick and expire at Range / Speed, both read live, so a factor below 1 slows shots in flight and still lets them reach full range. The consumer also rescales the shot's Velocity snapshot, which sizes the collision sweep. Only shots whose Faction the ship counts as enemy are touched, so the ship's own missiles are not. Hitscan RayProjectiles ignore speed; LegacyWeaponProjectile and composite WeaponProjectile are not covered.",
+      "consumers": [
+        "perk StatMods targeting seatShip (applied on every client for every seated player, which keeps each client's simulation of the shot in step)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "HandAttractorMaxRange",
+      "id": 786075466,
+      "displayName": "Hand Attractor Range",
+      "wraps": "no field: the ModifiableFloat a hand-attractor ability reads as its capture range",
+      "collection": "the owning class ability's own StatTagCollection (child of the player's)",
+      "wiredBy": "src/HandAttractorStats.cs, called from the ability's Awake",
+      "authored": 20,
+      "units": "m",
+      "lowerIsBetter": false,
+      "mechanism": "Radius of the capture cone and leash on the held target. Each float is registered twice in the owning ability's collection: under this id and under the vanilla ship-attractor id it mirrors, so a character-side modifier on either lands on the one float (StatTagCollection.ApplyModifier matches Type against every Stats key). A source names one of the two ids, never both, or the two modifiers compound. Ship-collection sources (seatShip perks, ship-installed items) do not reach it. Mirrors AttractorMaxRange.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "any character-side AttractorMaxRange modifier (mirror)"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "HandAttractorPullVelocity",
+      "id": 618829903,
+      "displayName": "Hand Attractor Pull Velocity",
+      "wraps": "no field: the ModifiableFloat a hand-attractor ability writes into the target's CarryableObject.Velocity each frame",
+      "collection": "the owning class ability's own StatTagCollection (child of the player's)",
+      "wiredBy": "src/HandAttractorStats.cs, called from the ability's Awake",
+      "authored": 6,
+      "units": "m/s",
+      "lowerIsBetter": false,
+      "mechanism": "Pull speed toward the emit point, braked linearly inside 3 m. Each float is registered twice in the owning ability's collection: under this id and under the vanilla ship-attractor id it mirrors, so a character-side modifier on either lands on the one float (StatTagCollection.ApplyModifier matches Type against every Stats key). A source names one of the two ids, never both, or the two modifiers compound. Ship-collection sources (seatShip perks, ship-installed items) do not reach it. Mirrors AttractorPullVelocity.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "any character-side AttractorPullVelocity modifier (mirror)"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "HandAttractorDuration",
+      "id": 599926723,
+      "displayName": "Hand Attractor Duration",
+      "wraps": "FiniteDurationClassAbility.FiniteTimeDuration of the owning hand-attractor ability (already registered by the game as ClassAbilityDuration)",
+      "collection": "the owning class ability's own StatTagCollection (child of the player's)",
+      "wiredBy": "src/HandAttractorStats.cs RegisterTiming, called from the ability's Awake",
+      "authored": 16,
+      "units": "s",
+      "lowerIsBetter": false,
+      "mechanism": "A second id onto the same ModifiableFloat the game registers as ClassAbilityDuration; AbilityStarted copies FiniteTimeDuration.Value into CurrentActiveDuration, so a modifier here sets the next channel's length with no code on that path. Scoped to the hand, where ClassAbilityDuration reaches every class ability on the character. A source names one of the two ids, never both, or they compound. Registered by HandAttractorStats.RegisterTiming into the owning ability's collection. Ship-collection sources (seatShip perks, ship-installed items) do not reach it. Authored value is the ability's DurationSeconds config.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "any character-side ClassAbilityDuration modifier (same object)"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "HandAttractorCooldown",
+      "id": 670551379,
+      "displayName": "Hand Attractor Cooldown",
+      "wraps": "ClassAbility.CooldownSeconds of the owning hand-attractor ability (already registered by the game as ClassAbilityCooldown)",
+      "collection": "the owning class ability's own StatTagCollection (child of the player's)",
+      "wiredBy": "src/HandAttractorStats.cs RegisterTiming, called from the ability's Awake",
+      "authored": 12,
+      "units": "s",
+      "lowerIsBetter": true,
+      "mechanism": "A second id onto the same ModifiableFloat the game registers as ClassAbilityCooldown; ClassAbility.GoOnCooldown sets CurrentCooldown = CooldownSeconds.Value, so a modifier here sets the next cooldown with no code on that path. Scoped to the hand, where ClassAbilityCooldown reaches every class ability on the character. A source names one of the two ids, never both, or they compound. Registered by HandAttractorStats.RegisterTiming into the owning ability's collection. Ship-collection sources (seatShip perks, ship-installed items) do not reach it. Authored value is the ability's CooldownSeconds config.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "any character-side ClassAbilityCooldown modifier (same object)"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "HandAttractorBeams",
+      "id": 701901862,
+      "displayName": "Hand Attractor Beams",
+      "wraps": "no field: the ModifiableFloat a hand-attractor ability reads as how many items one channel holds",
+      "collection": "the owning class ability's own StatTagCollection (child of the player's)",
+      "wiredBy": "src/HandAttractorStats.cs RegisterTiming, called from the ability's Awake",
+      "authored": 1,
+      "units": "count (rounded, floored at 1)",
+      "lowerIsBetter": false,
+      "mechanism": "Read once at each channel start. No vanilla mirror. Use flat modifiers: +1 is one more beam. Registered by HandAttractorStats.RegisterTiming into the owning ability's collection. Ship-collection sources (seatShip perks, ship-installed items) do not reach it. Authored value is the ability's Beams config.",
+      "consumers": [
+        "perk StatMods targeting character"
+      ],
+      "authoredVerified": false
+    },
+    {
+      "name": "ModuleInstallSpeed",
+      "id": 592760197,
+      "displayName": "Installation Speed",
+      "wraps": "no field: a factor on the progress clock (BuildProcess.StateTimer) of an install, uninstall or upgrade the player started",
+      "collection": "the player's own StatTagCollection (Player.Stats)",
+      "wiredBy": "src/BuildStats.cs; registered by the Player.Awake postfix, consumed by a BuildProcess.Run prefix",
+      "authored": 1,
+      "units": "factor on install/uninstall/upgrade rate (floored at 0.1)",
+      "lowerIsBetter": false,
+      "mechanism": "The master runs every BuildProcess; each Run adds deltaTime to StateTimer, which SetState zeroes on every state change. Working completes when it reaches GameConfiguration.BuildBoxConstructDuration (install) or DeconstructDuration (uninstall and upgrade) - 10 s and 5 s as code defaults; the shipped asset's values are not read back - and Completing (the fold, the module already built or removed) at a literal 3.25 s. Those are one shared value for the room, so the consumer adds deltaTime * (factor - 1) to the clock of each ConstructionProcess, DeconstructionProcess or UpgradeProcess in Working or Completing instead, reading the factor from the player named by the process's RequesterActorId: the one who socketed the build box, pressed uninstall or used the upgrader. +40% percent is 1.4x the rate, so the job takes 1/1.4 of its time. The 1 s placement check (Waiting) is untouched. Two client-side visuals keep stock speed: the build box's progress diodes (started with the stock duration, short of full when the module appears) and its fold animation, which an install cuts short when the master destroys the box at 3.25 s / factor.",
+      "consumers": [
+        "perk StatMods targeting character (the master carries every player's)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "ShipDrag",
+      "id": 554310235,
+      "displayName": "Ship Drag",
+      "wraps": "MovingSpacePlatform.PhysicalData.Friction (public float in the public SpacePlatformData struct field on the player ship root)",
+      "collection": "the player ship's own StatTagCollection (PlayerControlledShip.Stats)",
+      "wiredBy": "src/ShipPlatformStats.cs, called from the PlayerControlledShip.RegisterStats postfix in src/ShipStats.cs; the platform is read with GetComponent because Platform is assigned after RegisterStats runs",
+      "authored": 0.7,
+      "units": "quadratic drag coefficient (floored at 1% of authored)",
+      "lowerIsBetter": true,
+      "mechanism": "MovingSpacePlatform.ApplyFriction runs every FixedUpdate on every machine, with no ownership gate, and moves the velocity toward zero by speed^2 * Friction * dt / Mass, with speed floored at MinVelocityFriction (20 m/s authored) on any tick nobody thrusts. Full-thrust top speed is sqrt(EngineThrustPower * EnginePower * ForwardPower / Friction), so a factor f on the stat scales top speed by 1/sqrt(f) on every axis and weakens coasting drag and braking by f. No IL stores to PhysicalData, and the only store to Friction is the struct's constructor, so seeding once is sound. Other readers: ShipPilotHelper.MaxVelocity, read live by CruiseControlModule.EnableCruiseControl when cruise engages (engaged under a cut, it can lock a speed the engine cannot hold once the cut ends, and the locked speed then decays to the normal cap) and latched at Start by ShipAutoTilt for its pitch and roll scaling; SignatureComponent latches sqrt(EngineThrustPower / Friction) at Start as the speed of full movement signature, so speed above it evaluates the signature curve past 1. PilotAid does not read it: its auto-brake is a thrust input scaled by ForwardPower, so a cut leaves the aid's braking authority unchanged while drag's own braking weakens. Stat changes are not replicated; the helm owner (the master while the helm is empty) is authoritative for the platform and every other machine extrapolates with its own drag between snapshots, so a contribution belongs on every machine. Authored value decoded from the four player ship prefabs (Frigate, Frigate Awakening, Destroyer, Striker), not yet read back from a spawn log.",
+      "consumers": [
+        "perk StatMods targeting seatShip or characterShip (applied on every client)",
+        "ShipSpeedSurge (src/ShipSpeedSurge.cs): ExponentialMultiplier of (1/s^2 - 1), s = 1 + magnitude * (1 - progress), through TimedStatContributions on every machine"
+      ],
+      "authoredVerified": false
+    }
+  ]
+}

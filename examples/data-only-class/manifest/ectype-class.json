@@ -1,0 +1,49 @@
+{
+  "contractVersion": 1,
+  "classId": "REPLACE_ME",
+  "className": "Example",
+  "classDesc": "A minimal class declared entirely in a JSON manifest.",
+  "color": "#3FA7A0",
+
+  "hero": {
+    "key": "hero",
+    "name": "Example Hero",
+    "desc": "<color=#FFD700>Class Ability</color>. Placeholder: no ability is wired, so this perk grants nothing.",
+    "levels": 1,
+    "emptyOk": true
+  },
+
+  "perks": [
+    {
+      "key": "steady-hand",
+      "name": "Steady Hand",
+      "desc": "While manning a <color=#FFD700>System Module</color>, its <color=#FFD700>Accuracy</color> is increased.",
+      "row": 1, "col": 0, "target": "seat", "icon": "steady-hand",
+      "mods": [
+        [ { "stat": "Accuracy", "type": "percent", "value": 0.10 } ],
+        [ { "stat": "Accuracy", "type": "percent", "value": 0.20 } ],
+        [ { "stat": "Accuracy", "type": "percent", "value": 0.30 } ]
+      ]
+    },
+    {
+      "key": "tough-hull",
+      "name": "Tough Hull",
+      "desc": "While manning any <color=#FFD700>System Module</color>, the ship's <color=#FFD700>Shield Absorption</color> is increased.",
+      "row": 1, "col": 1, "target": "seatShip",
+      "mods": [
+        [ { "stat": "ShieldAbsorption", "type": "percent", "value": 0.10 } ],
+        [ { "stat": "ShieldAbsorption", "type": "percent", "value": 0.20 } ]
+      ]
+    },
+    {
+      "key": "extra-lock",
+      "name": "Extra Lock",
+      "desc": "The ship can hold one more <color=#FFD700>Target Lock</color> while you man a system.",
+      "row": 1, "col": 2, "target": "seat",
+      "levels": 1,
+      "mods": [
+        [ { "stat": "TargetLockCount", "type": "flat", "kind": "int", "value": 1 } ]
+      ]
+    }
+  ]
+}

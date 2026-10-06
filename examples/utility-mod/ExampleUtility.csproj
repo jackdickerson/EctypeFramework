@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ExampleUtility</AssemblyName>
+    <RootNamespace>ExampleUtility</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="EctypeFramework" HintPath="$(PluginsDir)\EctypeFramework.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\*.cs" />
+  </ItemGroup>
+
+</Project>

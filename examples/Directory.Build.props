@@ -1,0 +1,49 @@
+<Project>
+  <!--
+    Shared build settings for every example. This file also keeps the framework's own
+    Directory.Build.props, one folder up, from applying here: MSBuild stops at the nearest
+    one. The examples reference the installed EctypeFramework.dll, never the framework
+    project. Copy an example folder together with this file anywhere
+    and it builds the same way.
+  -->
+
+  <!-- Local override, gitignored. Copy Local.props.example to Local.props and set the
+       one property. -->
+  <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
+
+  <!-- The game install. Effective precedence, highest first:
+         1. -p:VoidCrewDir=... on the command line (global properties beat any file),
+         2. VoidCrewDir in Local.props,
+         3. the VOID_CREW_DIR environment variable,
+         4. the default Steam path below. -->
+  <PropertyGroup>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">$(VOID_CREW_DIR)</VoidCrewDir>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Void Crew</VoidCrewDir>
+    <ManagedDir>$(VoidCrewDir)\Void Crew_Data\Managed</ManagedDir>
+    <PluginsDir>$(VoidCrewDir)\BepInEx\plugins</PluginsDir>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Version>0.1.0</Version>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DebugType>portable</DebugType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Supplies the net472 reference assemblies, so no Visual Studio or Windows
+         targeting pack is needed. Not a game binary. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- References every example needs. An example adds its own in its csproj. -->
+  <ItemGroup>
+    <Reference Include="BepInEx" HintPath="$(VoidCrewDir)\BepInEx\core\BepInEx.dll" Private="false" />
+    <Reference Include="VoidManager" HintPath="$(PluginsDir)\VoidManager.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+  </ItemGroup>
+</Project>

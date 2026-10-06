@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+
+# Per-machine game folder (see Local.props.example), here and in examples/.
+Local.props
+
+# No DLL belongs in this repository: game assemblies are licensed content, and built
+# plugins are release artifacts.
+*.dll
+
+# IDE and user-local
+.vs/
+*.user
