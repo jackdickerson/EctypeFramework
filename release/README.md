@@ -14,7 +14,7 @@ Requires: [Dependencies]
 ### 💡 Function(s)
 
 - A dependency library. On its own it adds no gameplay: install it when another mod lists it as required.
-- Lets other mods add **playable classes** (a perk tree plus an optional class ability) to the Fabricator's gene-tree screens, which the base game limits to four trees.
+- Lets other mods add **playable roles** (a perk tree plus an optional role ability) to the Fabricator's gene-tree screens, which the base game limits to four trees.
 - Provides shared services to dependent mods: loot-table registration for modded weapons, timed enemy and crew statuses, field-backed stats that perks can modify, a HUD ability bar and ship arrivals from the void.
 - Keeps your client from crashing when a run uses a session mutator whose mod you do not have installed.
 
@@ -31,7 +31,7 @@ Requires: [Dependencies]
 
 ### 🛠️ For modders
 
-- A class mod is a JSON manifest, icons and optional code callbacks; the framework does the registration.
+- A role mod is a JSON manifest, icons and optional code callbacks; the framework does the registration.
 - The package includes `EctypeFramework.xml`, the API documentation your editor reads when you reference the DLL.
 
 ---------------------

@@ -12,7 +12,7 @@ Rules:
 - A character status exists only on the client that applied it. That is correct for stats: character damage resolves on the victim's client, so a modifier there is the one that is read.
 - `OnApplied`, `OnTick` and `OnRemoved` also run only where `Apply` was called. A status whose payload the crew must see needs replication, which the framework does not implement. `Replicated = true` only logs a warning.
 - A stat entry bites only a stat the character registers. `AddAllVulnerabilities` covers every damage type plus the aggregate.
-- Statuses are keyed on the character instance. A respawned character is a different target and a status on a destroyed one ends on the next poll. Use `RemoveAll(player)` on a class switch.
+- Statuses are keyed on the character instance. A respawned character is a different target and a status on a destroyed one ends on the next poll. Use `RemoveAll(player)` on a role switch.
 - Timing is `Time.time`, local to the client.
 - The framework provides no way to find a target. This sample uses `LocalPlayer.I`, the local `Player`. Every player is in `ClientGame.Current.Players`.
 

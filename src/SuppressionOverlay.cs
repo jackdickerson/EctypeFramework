@@ -14,7 +14,7 @@ namespace Ectype
     /// <summary>
     /// The profile half of suppression. A suppressed perk stays in the saved loadout, and the
     /// places the game asks the profile what a player holds are told it is absent: the
-    /// spent-point count, class-ability selection, and PlayerPerk fabricator unlocks. Stats
+    /// spent-point count, role-ability selection, and PlayerPerk fabricator unlocks. Stats
     /// read the published PBL copy instead, which the ReApplyPerks prefix already filters.
     ///
     /// The tree UI's own per-perk reads (PerkBuffExtensions.GetBuffLevel and friends) are left
@@ -31,7 +31,7 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Bring each local class ability's selection in line with the profile after a
+        /// Bring each local role ability's selection in line with the profile after a
         /// suppression change, flipping only the abilities whose answer changed.
         ///
         /// A select runs OnClassAbilitySelected, which restarts the cooldown
@@ -65,7 +65,7 @@ namespace Ectype
                 {
                     if (_reportedSyncFailure) continue;
                     _reportedSyncFailure = true;
-                    Plugin.Log.LogError("Ectype: syncing class-ability selection after a " +
+                    Plugin.Log.LogError("Ectype: syncing role-ability selection after a " +
                                         "suppression change failed (reported once): " + e);
                 }
             }
@@ -127,7 +127,7 @@ namespace Ectype
             {
                 if (_reportedFailure) return;
                 _reportedFailure = true;
-                Plugin.Log.LogError("Ectype: suppressed class-ability select gate failed " +
+                Plugin.Log.LogError("Ectype: suppressed role-ability select gate failed " +
                                     "(reported once): " + e);
             }
         }

@@ -14,7 +14,7 @@ namespace Ectype
     /// vanilla perks use, and it tracks game updates for free. A raw int id is accepted as
     /// the escape hatch. Custom stats declared in a manifest register a StatStructure into
     /// StatTable's lookup so tooltips render them by name; their ids derive deterministically
-    /// from (classId, statName). A custom stat is inert until code reads it - logged so a
+    /// from (roleId, statName). A custom stat is inert until code reads it - logged so a
     /// declared-but-unconsumed stat is visible.
     /// </summary>
     internal static class StatRegistry
@@ -38,14 +38,14 @@ namespace Ectype
 
         private static Dictionary<string, int> _vanilla;          // alias -> id
         private static readonly Dictionary<int, string> _customOwners =
-            new Dictionary<int, string>();                        // id -> "classId/name"
+            new Dictionary<int, string>();                        // id -> "roleId/name"
 
         public static int VanillaCount
         {
             get { EnsureVanilla(); return _vanilla.Count; }
         }
 
-        /// <summary>Reverse lookup for dumps: vanilla name, custom "classId/name", or null.</summary>
+        /// <summary>Reverse lookup for dumps: vanilla name, custom "roleId/name", or null.</summary>
         public static string NameOf(int id)
         {
             EnsureVanilla();
@@ -74,10 +74,10 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Resolve a manifest "stat" string against, in order: the class's own custom stats,
+        /// Resolve a manifest "stat" string against, in order: the role's own custom stats,
         /// the framework-owned stats, the vanilla StatType names, a raw int literal. Throws
         /// with the failing name - the caller turns that into one named error and an empty
-        /// level, never a broken perk. That order is what keeps a class from being broken by
+        /// level, never a broken perk. That order is what keeps a role from being broken by
         /// a name the framework or the game adds later.
         /// </summary>
         public static int Resolve(string stat, Dictionary<string, int> customStats)
@@ -90,7 +90,7 @@ namespace Ectype
             if (_vanilla.TryGetValue(stat, out id)) return id;
             if (int.TryParse(stat, out id)) return id;
             throw new Exception("unknown stat '" + stat + "' (not a StatType name, not a " +
-                                "framework-owned stat, not a custom stat of this class, not " +
+                                "framework-owned stat, not a custom stat of this role, not " +
                                 "an int id)");
         }
 
@@ -114,13 +114,13 @@ namespace Ectype
         /// lookup rebuild keeps it). Re-runnable; collision with a different owner is a named
         /// error. Returns the derived id.
         /// </summary>
-        public static int RegisterCustomStat(string classId, CustomStatSpec spec, Sprite icon)
+        public static int RegisterCustomStat(string roleId, CustomStatSpec spec, Sprite icon)
         {
             StatTable table = DataTable<StatTable>.Instance;
             if (table == null) throw new Exception("StatTable not loaded yet");
 
-            int id = Guids.StatId(classId, spec.name);
-            string owner = classId + "/" + spec.name;
+            int id = Guids.StatId(roleId, spec.name);
+            string owner = roleId + "/" + spec.name;
 
             string existingOwner;
             if (_customOwners.TryGetValue(id, out existingOwner))

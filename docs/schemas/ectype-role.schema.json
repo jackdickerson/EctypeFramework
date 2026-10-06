@@ -1,39 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Ectype class manifest (contract version 1)",
-  "description": "The JSON document a class mod embeds in its assembly under a resource name ending in \"ectype-class.json\". Property names are matched case-insensitively by the framework; this schema uses the canonical spelling. Unknown properties are ignored by the framework and allowed here. String values for \"type\", \"target\", \"kind\", \"displayType\" and the tag criteria are matched case-insensitively and trimmed by the framework; the enums here list the canonical lower-case or documented spelling.",
+  "title": "Ectype role manifest (contract version 2)",
+  "description": "The JSON document a role mod embeds in its assembly under a resource name ending in \"ectype-role.json\". Property names are matched case-insensitively by the framework; this schema uses the canonical spelling. Unknown properties are ignored by the framework and allowed here. String values for \"type\", \"target\", \"kind\", \"displayType\" and the tag criteria are matched case-insensitively and trimmed by the framework; the enums here list the canonical lower-case or documented spelling.",
   "type": "object",
-  "required": ["contractVersion", "classId", "className", "hero"],
+  "required": ["contractVersion", "roleId", "roleName", "hero"],
   "properties": {
     "contractVersion": {
-      "description": "Must equal the contract version the installed framework implements. Any other value rejects the class.",
-      "const": 1
+      "description": "Must equal the contract version the installed framework implements. Any other value rejects the role.",
+      "const": 2
     },
     "minFrameworkVersion": {
-      "description": "Oldest framework version the class works with, \"major.minor.patch\". A framework older than this rejects the class. Absent means no minimum.",
+      "description": "Oldest framework version the role works with, \"major.minor.patch\". A framework older than this rejects the role. Absent means no minimum.",
       "type": ["string", "null"],
       "pattern": "^\\s*\\d+(\\.\\d+){1,3}\\s*$"
     },
-    "classId": {
-      "description": "Namespaced stable id, conventionally the plugin GUID. Seeds every derived GUID and the ordinal sort key across installed class mods. Never rename after shipping.",
+    "roleId": {
+      "description": "Namespaced stable id, conventionally the plugin GUID. Seeds every derived GUID and the ordinal sort key across installed role mods. Never rename after shipping.",
       "type": "string",
       "minLength": 1
     },
-    "className": {
+    "roleName": {
       "description": "Display name. Shown upper-cased as the tree title.",
       "type": "string",
       "minLength": 1
     },
-    "classDesc": {
-      "description": "Class tooltip body. Rich text allowed.",
+    "roleDesc": {
+      "description": "Role tooltip body. Rich text allowed.",
       "type": ["string", "null"]
     },
     "roleIcon": {
-      "description": "Icon key (embedded PNG resource name without extension) for the role icon the crew HUD, lobby and gene tree draw for the class.",
+      "description": "Icon key (embedded PNG resource name without extension) for the role icon the crew HUD, lobby and gene tree draw for the role.",
       "type": ["string", "null"]
     },
     "roleIconDonor": {
-      "description": "PerkBuffContainer GUID whose icon the class borrows when roleIcon names nothing loadable. 32 hex characters, dashes allowed.",
+      "description": "PerkBuffContainer GUID whose icon the role borrows when roleIcon names nothing loadable. 32 hex characters, dashes allowed.",
       "type": ["string", "null"],
       "pattern": "^[0-9a-fA-F-]*$"
     },
@@ -43,7 +43,7 @@
       "pattern": "^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
     },
     "hero": {
-      "description": "The row-0 banner perk. Its key defaults to \"hero\"; row, col and wide are forced to 0, 0 and true. Its name is not validated. An unrecognised target rejects the class.",
+      "description": "The row-0 banner perk. Its key defaults to \"hero\"; row, col and wide are forced to 0, 0 and true. Its name is not validated. An unrecognised target rejects the role.",
       "$ref": "#/$defs/heroPerk"
     },
     "perks": {
@@ -52,20 +52,24 @@
       "items": { "$ref": "#/$defs/perk" }
     },
     "customStats": {
-      "description": "Stats declared by this class. Inert until code reads them.",
+      "description": "Stats declared by this role. Inert until code reads them.",
       "type": ["array", "null"],
       "items": { "$ref": "#/$defs/customStat" }
     },
     "suppress": {
-      "description": "Vanilla perk-tree GUIDs (32 hex, dashes allowed) whose trees do not exist while this class is installed.",
+      "description": "Vanilla perk-tree GUIDs (32 hex, dashes allowed) whose trees do not exist while this role is installed.",
       "type": ["array", "null"],
       "items": { "$ref": "#/$defs/guid" }
     },
-    "suppressClasses": {
-      "description": "classIds of other framework classes whose trees do not exist while this class is installed.",
+    "suppressRoles": {
+      "description": "roleIds of other framework roles whose trees do not exist while this role is installed.",
       "type": ["array", "null"],
       "items": { "type": ["string", "null"] }
-    }
+    },
+    "classId": { "description": "Contract version 1 name, renamed roleId in version 2.", "not": {} },
+    "className": { "description": "Contract version 1 name, renamed roleName in version 2.", "not": {} },
+    "classDesc": { "description": "Contract version 1 name, renamed roleDesc in version 2.", "not": {} },
+    "suppressClasses": { "description": "Contract version 1 name, renamed suppressRoles in version 2.", "not": {} }
   },
   "$defs": {
     "guid": {
@@ -74,7 +78,7 @@
       "pattern": "^(?:[0-9A-Fa-f]-?){32}$"
     },
     "target": {
-      "description": "Where a perk's effects land. character: the player, always on (default). seat: the manned module, applied on sit and removed on stand. seatShip: the ship's stat collection while seated in any chair. characterShip: the ship's stat collection for every holder, seated or not (added in framework 0.18.1). An unrecognised value skips the perk, or rejects the class when it is on the hero.",
+      "description": "Where a perk's effects land. character: the player, always on (default). seat: the manned module, applied on sit and removed on stand. seatShip: the ship's stat collection while seated in any chair. characterShip: the ship's stat collection for every holder, seated or not (added in framework 0.18.1). An unrecognised value skips the perk, or rejects the role when it is on the hero.",
       "type": ["string", "null"],
       "enum": ["", "character", "seat", "seatShip", "characterShip", null]
     },
@@ -123,7 +127,7 @@
       "required": ["key", "name", "row"],
       "properties": {
         "key": {
-          "description": "Stable id within the class, unique case-insensitively across hero and perks. The perk GUID derives from (classId, key) unless guid pins one.",
+          "description": "Stable id within the role, unique case-insensitively across hero and perks. The perk GUID derives from (roleId, key) unless guid pins one.",
           "type": "string",
           "minLength": 1
         },
@@ -222,7 +226,7 @@
       "type": "object",
       "required": ["name"],
       "properties": {
-        "name": { "description": "Stat name referenced from effect lines. The id derives from (classId, name).", "type": "string", "minLength": 1 },
+        "name": { "description": "Stat name referenced from effect lines. The id derives from (roleId, name).", "type": "string", "minLength": 1 },
         "displayName": { "description": "Tooltip header. Defaults to name.", "type": ["string", "null"] },
         "desc": { "type": ["string", "null"] },
         "icon": { "type": ["string", "null"] },

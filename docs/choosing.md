@@ -3,31 +3,31 @@
 A mod that depends on EctypeFramework takes one of three shapes. The shape sets what the mod
 can do, what the author maintains and what every player in a room has to install.
 
-| | Data-only class | Class with code | Utility-only mod |
+| | Data-only role | Role with code | Utility-only mod |
 | --- | --- | --- | --- |
-| What it adds | A class: gene tree, hero perk, perks with stat effects | The same, plus a class ability and any behaviour the perks need | Behaviour with no class: statuses, loot, HUD buttons, stats, ship events |
+| What it adds | A role: gene tree, hero perk, perks with stat effects | The same, plus a role ability and any behaviour the perks need | Behaviour with no role: statuses, loot, HUD buttons, stats, ship events |
 | Author writes | A JSON manifest, PNG icons, a short plugin | The same, plus C# against the framework | C# against the framework |
 | References the framework assembly | No | Yes | Yes |
 | Declared multiplayer type | `All` | `All` | The one that matches what the mod changes |
-| Example | [data-only-class](../examples/data-only-class/) | [ability-class](../examples/ability-class/) | [utility-mod](../examples/utility-mod/) |
+| Example | [data-only-role](../examples/data-only-role/) | [ability-role](../examples/ability-role/) | [utility-mod](../examples/utility-mod/) |
 
-## Data-only class
+## Data-only role
 
-The whole class is a manifest embedded in the plugin's DLL. The framework discovers the
-manifest, registers the tree and perks with the game, and draws the class in the gene-tree
+The whole role is a manifest embedded in the plugin's DLL. The framework discovers the
+manifest, registers the tree and perks with the game, and draws the role in the gene-tree
 terminal.
 
 It can:
 
-- Declare a class with a name, tooltip, accent colour and role icon.
+- Declare a role with a name, tooltip, accent colour and role icon.
 - Place perks on the tree, each with levels, a target (the character, the manned module, the
   ship while seated, or the ship for every holder) and a list of stat modifiers per level.
 - Filter an effect by game tags, grant fabricator unlocks, and suppress stock trees or other
-  framework classes.
+  framework roles.
 - Declare custom stats, which stay inert until code reads them.
 
 It cannot run code. The hero perk grants nothing without a registered ability, so a
-data-only class marks its hero `emptyOk`. Every effect is a stat modifier the game already
+data-only role marks its hero `emptyOk`. Every effect is a stat modifier the game already
 knows how to apply. [manifest.md](manifest.md) lists every field and
 [stat-names.md](stat-names.md) lists the stats a modifier can name.
 
@@ -36,16 +36,16 @@ project does not reference the framework assembly, so a framework update does no
 DLL's bytes. The manifest's `contractVersion` and optional `minFrameworkVersion` say which
 framework it needs; [versioning.md](versioning.md) covers both.
 
-## Class with code
+## Role with code
 
-A class with code is a data-only class plus a plugin that calls the framework. The usual
-reason is a class ability. The plugin registers a factory that returns an
-`EctypeClassAbility` subclass, and the framework installs it, binds the key and runs the
+A role with code is a data-only role plus a plugin that calls the framework. The usual
+reason is a role ability. The plugin registers a factory that returns an
+`EctypeRoleAbility` subclass, and the framework installs it, binds the key and runs the
 cooldown and duration. The hero perk selects the ability. Other reasons to add code are a
-perk whose effect is a timed status, a HUD button, or loot that only drops while the class is
+perk whose effect is a timed status, a HUD button, or loot that only drops while the role is
 available in the room.
 
-It can do everything a data-only class can, and anything the framework's utility APIs and the
+It can do everything a data-only role can, and anything the framework's utility APIs and the
 game's own types allow. The API areas are indexed in [api.md](api.md).
 
 It asks the author for C# written against the framework and the game's assemblies, with the
@@ -57,12 +57,12 @@ in `[BepInDependency]` also refuses to load under an older one.
 
 ## Utility-only mod
 
-A utility-only mod has no manifest and no class. It calls the framework's utilities: enemy and
+A utility-only mod has no manifest and no role. It calls the framework's utilities: enemy and
 character statuses, loot tables, ship arrivals, timed stat contributions, the HUD ability bar,
 framework-owned stats, runtime ability replication and the selection gate. [api.md](api.md)
 indexes them.
 
-It asks the author for C# against the framework, with the same rebuild rule as a class with
+It asks the author for C# against the framework, with the same rebuild rule as a role with
 code.
 
 Its multiplayer type follows from what it changes:
@@ -76,7 +76,7 @@ Its multiplayer type follows from what it changes:
 
 ## What each shape costs players
 
-| | Data-only class | Class with code | Utility-only mod, `Client` | Utility-only mod, `Session` or `All` |
+| | Data-only role | Role with code | Utility-only mod, `Client` | Utility-only mod, `Session` or `All` |
 | --- | --- | --- | --- | --- |
 | Who installs the framework | Everyone in the room | Everyone in the room | Everyone in the room | Everyone in the room |
 | Who installs the mod | Everyone in the room | Everyone in the room | Players who want it | Everyone in the room |
@@ -93,9 +93,9 @@ Its multiplayer type follows from what it changes:
   framework is marked modded, and the mark cannot be withdrawn until the game restarts. A
   modded session does not count toward progression. A mod that must leave the session
   unflagged cannot depend on the framework.
-- **Class content is mandatory for the whole room.** A class's tree and perks register in the
+- **Role content is mandatory for the whole room.** A role's tree and perks register in the
   game's required-asset set, and the game refuses a join when the host's required assets and
-  the joiner's differ, whatever the mods declare. A class cannot be optional for some players.
+  the joiner's differ, whatever the mods declare. A role cannot be optional for some players.
 
 The listing for a mod that declares `All` says all of this in plain words;
 [publishing.md](publishing.md) lists the points.
@@ -103,8 +103,8 @@ The listing for a mod that declares `All` says all of this in plain words;
 ## Picking one
 
 1. Does the idea need code? If every effect is a stat modifier on the character, the manned
-   module or the ship, write a data-only class and start from [quickstart.md](quickstart.md).
-2. Does it need a class ability or other behaviour, and does it belong to a class? Write a
-   class with code. Start from the data-only class and add the factory.
-3. Is it behaviour with no class? Write a utility-only mod, and choose its multiplayer type by
+   module or the ship, write a data-only role and start from [quickstart.md](quickstart.md).
+2. Does it need a role ability or other behaviour, and does it belong to a role? Write a
+   role with code. Start from the data-only role and add the factory.
+3. Is it behaviour with no role? Write a utility-only mod, and choose its multiplayer type by
    who has to see the effect.

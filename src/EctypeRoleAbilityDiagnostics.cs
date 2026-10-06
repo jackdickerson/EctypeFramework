@@ -8,7 +8,7 @@ namespace Ectype
 {
     /// <summary>
     /// Evidence for "an ability went dead after it was cut short, until the loadout
-    /// changed". A class switch deselects and reselects, which re-runs every piece of state
+    /// changed". A role switch deselects and reselects, which re-runs every piece of state
     /// the lifecycle owns: the input binding, the Opsive Enabled flag, the active slot, the
     /// cooldown. The log has to say which one was wrong, so each line below is one of those
     /// facts at the moment it matters, on the owning client only.
@@ -23,7 +23,7 @@ namespace Ectype
     /// rate-limited. Every override calls its base first or last as the game's own order
     /// requires, and swallows only its own logging failure.
     /// </summary>
-    public abstract partial class EctypeClassAbility
+    public abstract partial class EctypeRoleAbility
     {
         private const float EARLY_STOP_SECONDS = 0.1f;
         private const float REFUSAL_LOG_INTERVAL = 2f;

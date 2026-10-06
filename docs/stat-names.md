@@ -19,14 +19,14 @@ declares. Framework rows carry the category of the collection they live on.
 
 Names are matched case-insensitively. A raw int id is accepted as an escape hatch. Custom
 stats declared in the same manifest's `customStats` are also valid and shadow these names for
-that class's own effect lines, so do not reuse a vanilla name. Stat names from other mods can
+that role's own effect lines, so do not reuse a vanilla name. Stat names from other mods can
 be used too, provided those mods are marked required.
 
 ## Resolution order
 
-An effect's `"stat"` field resolves in this order: the class's own `customStats`, then the
-framework-owned names, then `StatType`, then a raw int. A class's own declarations win so that
-a name the framework adds later can never break an already-shipped class. The framework's
+An effect's `"stat"` field resolves in this order: the role's own `customStats`, then the
+framework-owned names, then `StatType`, then a raw int. A role's own declarations win so that
+a name the framework adds later can never break an already-shipped role. The framework's
 names come before `StatType` for the same reason in reverse. A framework-owned name that
 shadows a vanilla one is a framework bug, caught at registration by the `StatTable` collision
 check.
@@ -57,7 +57,7 @@ modifier surface:
 [framework-stats.json](framework-stats.json) describes each one: what it wraps, the game's
 authored value, and how the game consumes it. [reference/framework-stats.md](reference/framework-stats.md)
 explains the mechanisms. Any manifest may name one without declaring anything. Unlike a
-class's own `customStats` they are not class-scoped, and unlike them they already have a
+role's own `customStats` they are not role-scoped, and unlike them they already have a
 consumer.
 
 The ids are hashes of the framework's reserved owner string and the name. The framework logs
@@ -72,7 +72,7 @@ want `seat` or `seatShip`, and `EVA suit` and `character` stats want `character`
 exist on more than one collection: vanilla ships `*Vulnerability` and `BatteryRechargeAmount`
 on `character`-target perks (personal damage resistance, carried-cell charging) despite their
 ship-side category bits. The vanilla dump the framework writes to
-`BepInEx\EctypeDump\vanilla-classes.json` (rewritten every launch) is the authority: when it
+`BepInEx\EctypeDump\vanilla-roles.json` (rewritten every launch) is the authority: when it
 shows a stat on a target, that pairing works. A stat routed to a collection that never reads
 it registers cleanly, renders a tooltip, and does nothing.
 

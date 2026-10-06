@@ -9,7 +9,7 @@ namespace Ectype
     /// <summary>
     /// The crew HUD and the lobby room list draw a player's role icon purely from USS: the
     /// element gets the class "coop-buddy-role-state__&lt;role&gt;" and a stylesheet rule
-    /// supplies the image. A framework class's rule lives in the per-class sheet UssPalette
+    /// supplies the image. A framework role's rule lives in the per-role sheet UssPalette
     /// builds, and a sheet only applies to the panel it is attached to - so these two seams,
     /// the only places a role icon is assigned, attach it to their own panel first.
     /// </summary>
@@ -47,7 +47,7 @@ namespace Ectype
         private static IEnumerable<MethodBase> TargetMethods()
         {
             MethodInfo m = RoleIconTargets.Resolve("BasePlayerHUD", "ChangeRole",
-                "framework classes show no role icon on the crew HUD");
+                "framework roles show no role icon on the crew HUD");
             if (m != null) yield return m;
         }
 
@@ -73,7 +73,7 @@ namespace Ectype
         private static IEnumerable<MethodBase> TargetMethods()
         {
             MethodInfo m = RoleIconTargets.Resolve("MatchmakingRoom", "AddPlayerRoleIcons",
-                "framework classes show no role icon in the lobby room list");
+                "framework roles show no role icon in the lobby room list");
             if (m != null) yield return m;
         }
 

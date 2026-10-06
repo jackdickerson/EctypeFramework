@@ -6,17 +6,17 @@ using ResourceAssets;
 namespace Ectype
 {
     /// <summary>
-    /// Two installed classes can suppress the same vanilla tree. Suppression records one
-    /// adopter per suppressed perk - the first requester in classId order - which is right
+    /// Two installed roles can suppress the same vanilla tree. Suppression records one
+    /// adopter per suppressed perk - the first requester in roleId order - which is right
     /// for the payloads that can have only one home, but it also left every other
     /// co-suppressor unable to take over a fabricator unlock of that tree, even one the
     /// first adopter never asked for. The unlock was then skipped as "someone else's".
     ///
-    /// The safety property adoption rests on is unchanged: a class takes over only a
-    /// payload that its OWN suppression orphaned. This answers that question per class
-    /// rather than per first requester. Two classes asking for the same unlock still
+    /// The safety property adoption rests on is unchanged: a role takes over only a
+    /// payload that its OWN suppression orphaned. This answers that question per role
+    /// rather than per first requester. Two roles asking for the same unlock still
     /// resolve first come, first served: once one has repointed it, the unlock's perk is
-    /// that class's own and no longer a suppressed one.
+    /// that role's own and no longer a suppressed one.
     /// </summary>
     internal static class CoSuppression
     {
@@ -25,10 +25,10 @@ namespace Ectype
         /// that is currently suppressed, and that tree holds <paramref name="perkGuid"/>.
         /// False until suppression has resolved.
         /// </summary>
-        internal static bool Suppresses(ClassRecord rec, GUIDUnion perkGuid)
+        internal static bool Suppresses(RoleRecord rec, GUIDUnion perkGuid)
         {
             if (rec == null || perkGuid.IsNull || !Suppression.Resolved) return false;
-            if (Suppression.IsClassSuppressed(rec.Manifest.classId)) return false;
+            if (Suppression.IsRoleSuppressed(rec.Manifest.roleId)) return false;
             if (!Suppression.IsScrubbedPerk(perkGuid)) return false;
 
             PerkTreeContainer tc = PerkTreeContainer.Instance;
@@ -47,7 +47,7 @@ namespace Ectype
                 catch (Exception e)
                 {
                     Plugin.Log.LogWarning("Ectype: reading suppressed tree " + hex + " for '" +
-                                          rec.Manifest.classId + "' failed: " + e.Message);
+                                          rec.Manifest.roleId + "' failed: " + e.Message);
                 }
             }
             return false;

@@ -4,21 +4,21 @@ Every type here is public in `EctypeFramework.dll`, namespace `Ectype`. Anything
 the assembly is implementation and can change without notice. `EctypeFramework.xml`, shipped
 beside the DLL, carries the member documentation that IDEs show.
 
-A class mod can be written with no code and no reference to this assembly: see the manifest
-reference. The types below are for class mods that add behaviour and for mods that use the
-utilities without defining a class.
+A role mod can be written with no code and no reference to this assembly: see the manifest
+reference. The types below are for role mods that add behaviour and for mods that use the
+utilities without defining a role.
 
 Statuses, loot registrations, HUD buttons and ability keys cross the network as strings.
 Register them from literals that are identical on every client.
 
-## Class mods
+## Role mods
 
 | Type | Purpose |
 | --- | --- |
-| `ClassRegistry` | Links a manifest class to code and answers questions about it. `RegisterAbilityFactory(classId, factory)` attaches the class ability. `PerkGuid(classId, perkKey)` returns the asset GUID a perk registers under. `IsAvailableInRoom(classId)` is true while the class is registered and not suppressed in the room, and gives the same answer on every client. |
-| `EctypeClassAbility` | Base class for a class ability. Implement `OnApplyEffect` and `OnRemoveEffect`; the constructor takes cooldown and duration in seconds. Exceptions in the hooks are caught and logged. The stop path always runs, the start path may not have finished, so write `OnRemoveEffect` to tolerate a half-applied effect. |
-| `ClassStats` | Class-scoped stats. `Id(classId, statName)` returns the id of a custom stat declared in a class manifest, or 0. `RegisterAbilityTiming` registers an ability's duration and cooldown under class-declared stats so a perk can modify one class's ability without touching the others. |
-| `FrameworkStats` | Stats the framework registers for every player whether or not a class is installed: grapple hook speeds and cooldowns, external-force and motor damping, motor acceleration, gravity, incoming projectile speed, hand attractor values, module install speed, ship drag. Each name is a `const string`. `Id(name)` returns the stat id (0 before registration) to build a `StatMod` against; manifests can name the same stats. `EnsureRegistered()` runs registration early. |
+| `RoleRegistry` | Links a manifest role to code and answers questions about it. `RegisterAbilityFactory(roleId, factory)` attaches the role ability. `PerkGuid(roleId, perkKey)` returns the asset GUID a perk registers under. `IsAvailableInRoom(roleId)` is true while the role is registered and not suppressed in the room, and gives the same answer on every client. |
+| `EctypeRoleAbility` | Base class for a role ability. Implement `OnApplyEffect` and `OnRemoveEffect`; the constructor takes cooldown and duration in seconds. Exceptions in the hooks are caught and logged. The stop path always runs, the start path may not have finished, so write `OnRemoveEffect` to tolerate a half-applied effect. |
+| `RoleStats` | Role-scoped stats. `Id(roleId, statName)` returns the id of a custom stat declared in a role manifest, or 0. `RegisterAbilityTiming` registers an ability's duration and cooldown under role-declared stats so a perk can modify one role's ability without touching the others. |
+| `FrameworkStats` | Stats the framework registers for every player whether or not a role is installed: grapple hook speeds and cooldowns, external-force and motor damping, motor acceleration, gravity, incoming projectile speed, hand attractor values, module install speed, ship drag. Each name is a `const string`. `Id(name)` returns the stat id (0 before registration) to build a `StatMod` against; manifests can name the same stats. `EnsureRegistered()` runs registration early. |
 
 ## Runtime ability replication
 
@@ -75,6 +75,6 @@ Register them from literals that are identical on every client.
 
 | Type | Purpose |
 | --- | --- |
-| `HudAbilityBar` | A row of up to `MaxButtons` (4) square ability buttons beside the class-ability widget. `Register(HudButtonSpec)` returns a `Handle`, or null when the bar is full, the id is taken or the id is empty. Safe before the HUD exists. The bar draws and fills the button; the mod owns the input and the cooldown. |
+| `HudAbilityBar` | A row of up to `MaxButtons` (4) square ability buttons beside the role-ability widget. `Register(HudButtonSpec)` returns a `Handle`, or null when the bar is full, the id is taken or the id is empty. Safe before the HUD exists. The bar draws and fills the button; the mod owns the input and the cooldown. |
 | `HudAbilityBar.Handle` | Returned by `Register`. `Id`, and `Dispose()` removes the button. |
 | `HudButtonSpec` | `Id`, `Glyph`, `ReadyColor`, `IdleColor`, `Order`, and per-frame callbacks `Key`, `Fill` (0 ready, 1 just used) and `Visible`. A callback that throws hides its button for the session. |

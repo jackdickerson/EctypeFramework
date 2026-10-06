@@ -13,7 +13,7 @@ Paths are relative to the framework project folder, except where marked.
 
 | Area | Where |
 | --- | --- |
-| Class-framework design and work plan | `plans/07-class-framework.md` in the VoidCrewModding repository |
+| Role-framework design and work plan | `plans/07-class-framework.md` in the VoidCrewModding repository |
 | Helpers shared with the VoidCrewModding mods (flag policy, reflection, F5 menu, kitbash, dev keys) | `src/shared/`, copies of that repository's `shared/` files |
 | Engine facts the framework is built on (Harmony, UI Toolkit, Opsive, Photon, stats and perks) | `docs/engine-notes.md`, a map into the `vcm` plugin's reference set |
 | Manifest model and validation | `src/Manifest.cs` |
@@ -48,9 +48,9 @@ column.
 | `ClientGame.OnPlayerShipSet` (subscribed) | raised from `PlayerControlledShip.Start` after `Awake` has set `PlayerShip`; rebuilds every holder's `characterShip` contribution onto the new ship |
 | `ModelEventBus.OnPlayerRemoved` (subscribed) | raised by `ClientGame.RemovePlayerInternal` on every client; removes the leaving player's `characterShip` contribution |
 | `StatTagCollection.RegisterChildCollection` postfix | a detached module root carrying a `characterShip` contribution has just had its new parent's modifiers replayed into it; every holder is rebuilt so the contribution is not counted twice |
-| `PlayerPerkLoader.ReApplyPerks` postfix | catch-up for ability adoption: the spawn-time sweep skips a class whose registration has not settled, and this path runs on every perk change |
+| `PlayerPerkLoader.ReApplyPerks` postfix | catch-up for ability adoption: the spawn-time sweep skips a role whose registration has not settled, and this path runs on every perk change |
 | `CG.Profile.PerkLoadout(Dictionary<GUIDUnion,int>)` ctor prefix | profile-load vs. registration race, the load half of the vanilla-tree suppression scrub (vanilla degrade semantics), and the lost-level refund: a saved level above the perk's `Levels.Count` is lowered to it, so the points come back as unspent and the owner's `PBL` publishes the lowered level |
-| `PlayerProfile.UsedPerkPoints` getter postfix | suppressed class perks stay in the save but do not count as spent |
+| `PlayerProfile.UsedPerkPoints` getter postfix | suppressed role perks stay in the save but do not count as spent |
 | `ClassAbility.SetAsSelectedAbility` prefix | a request to select an ability whose perk is suppressed becomes a deselect, so nothing ever selects-then-deselects it; each such pair restarts the cooldown and republishes the HUD selection event |
 | `UnlockContainer.IsUnlocked(GUIDUnion)` postfix | a `PlayerPerk` unlock gated on a suppressed perk reads as locked |
 | `PlayerPerkLoader.ReApplyPerks` (called) | on a host-suppression change, every player's stats re-apply from their published `PBL` with `OnPerkBuffLevelsUpdated` held, then one pass flips only the local abilities whose selection changed, carrying the running cooldown across a select |
@@ -58,9 +58,9 @@ column.
 | `UI.Token.PerkTreeController` ctor prefix | tree elements must exist before the ctor's unchecked `Q`; failed injections and suppressed vanilla trees filter the def collection, and suppressed elements are removed from the document |
 | `UI.Token.PerkTreeVE.CreateClassTooltip` postfix | the game re-localizes the ClassName label ~1s after attach; restore the manifest title for our trees |
 | `UI.NavigatorVE.TryFocusElement` postfix | pad bridge: when controller focus lands inside the tree scroller, scroll the owning tree column into view |
-| `UI.Token.TokenTerminal.UpdateLoadoutButtons` postfix | toggles `loadout-role__<role>` classes for framework roles, mirroring the game's own idiom; the rules those classes match come from `UssPalette` - per-class clones of the game's own stylesheet with the role selectors renamed and only the role-hue color entries rewritten, attached via `styleSheets.Add` |
-| `BasePlayerHUD.ChangeRole` prefix, `MatchmakingRoom.AddPlayerRoleIcons` prefix | the crew HUD and the lobby room list draw a role icon only through the USS class `coop-buddy-role-state__<role>`; for a framework role each attaches the `UssPalette` clones to its own panel first, since a sheet only styles the panel it is attached to. In those clones every image named for the gunner is repointed at the class's `roleIcon` |
-| `ClassAbility.Start` postfix | installs each registered class's factory-built ability into the local character's Opsive ability list, then repoints any vanilla ability whose perk tree is suppressed onto the class that suppressed it (both idempotent per spawn; `OnDestroy` postfix forgets the instance so a respawn reinstalls) |
+| `UI.Token.TokenTerminal.UpdateLoadoutButtons` postfix | toggles `loadout-role__<role>` classes for framework roles, mirroring the game's own idiom; the rules those classes match come from `UssPalette` - per-role clones of the game's own stylesheet with the role selectors renamed and only the role-hue color entries rewritten, attached via `styleSheets.Add` |
+| `BasePlayerHUD.ChangeRole` prefix, `MatchmakingRoom.AddPlayerRoleIcons` prefix | the crew HUD and the lobby room list draw a role icon only through the USS class `coop-buddy-role-state__<role>`; for a framework role each attaches the `UssPalette` clones to its own panel first, since a sheet only styles the panel it is attached to. In those clones every image named for the gunner is repointed at the role's `roleIcon` |
+| `ClassAbility.Start` postfix | installs each registered role's factory-built ability into the local character's Opsive ability list, then repoints any vanilla ability whose perk tree is suppressed onto the role that suppressed it (both idempotent per spawn; `OnDestroy` postfix forgets the instance so a respawn reinstalls) |
 | `ClassAbility.VerifyIfIsSelectedAbility` (called, not patched) | the game's own selection check, re-run after a repoint so selection, input binding and the HUD event all run through unmodified game code |
 | `UnlockContainer.GetItemsLockedBy(PlayerPerk)` (read) | the same enumeration the fabricator re-reads on every perk change, so an adopted unlock is by construction one the fabricator will see |
 | `ClassAbilityDisplay.OnLocalPlayerEnabledClassAbility` postfix | the HUD slot for framework abilities (vanilla resolves by hard type-check on the four stock ability classes), plus status-subscription normalization |
@@ -82,18 +82,18 @@ column.
 | `BaseToggleableAbility.LastUsageTimestamp`, `ActTimer.idleStartTime`, `BehShieldGenerateAOE.AbilityStartTime`, `ActReinforce.reinforceStartTimestamp`, `NpcReinforcementCaller._callStartTimeInMilliseconds` (written) | the server-timestamp clocks suspension moves forward |
 | `NpcAbilityMarkerProvider.Markers`, `MarkerVE.abilitySchedule` / `abilityTime` / `AbilityProgress` (read, written) | the game's cast and call countdown, paused and resumed with the enemy |
 | `RuntimeAssetsRegister` / `PerkBuffContainer` / `PerkTreeContainer` / `StatTable` | runtime asset + stat surface |
-| `LootTable.ApplyLimiters` postfix, patched by name after the attribute pass | not class-related - appends registered items to each per-roll table copy; see [reference/loot-tables.md](reference/loot-tables.md). A miss costs loot alone |
+| `LootTable.ApplyLimiters` postfix, patched by name after the attribute pass | not role-related - appends registered items to each per-roll table copy; see [reference/loot-tables.md](reference/loot-tables.md). A miss costs loot alone |
 | `LootTable.Loot`, `LootTableEntry` (read, appended on the copy) | the anchor baseline (smallest `Amount`, union of `PossibleSpawnLocationTypes`, authored entries only), the rarities the table offers, and the added entry |
 | `Resources.LoadAll<LootTable>("Loot")`, `Resources.FindObjectsOfTypeAll<LootTable>()` | the loot warm-up's table list: every shipped table sits in `Resources/Loot`, and nothing else does |
 | `ClientGame.OnPlayerShipSet` (subscribed), `ClientGame.PlayerShip` (read) | starts the loot warm-up; a game whose ship is already set counts as raised |
 | `CarryableDef.Ref`, `ResourcePaths.TryGetPath`, `Resources.LoadAsync<Object>` | the loot warm-up's prefab preload: the same call as the game's own `ResourceAssetRef.PreloadAssetAsync`, on the path the def's synchronous `Resources.Load` uses |
 | `OrbitObject.CsTags` (read on the prefab), `CsTagTable` | `AnyCarryableTagged`: the prefab's authored tags, matched by reference against the named stock tags |
-| `GameSession.InitStartingMutators` prefix | not class-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
-| `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not class-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
+| `GameSession.InitStartingMutators` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
+| `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 
 ## Ability diagnostics (temporary)
 
-Every framework class ability logs its own lifecycle on the owning client, whatever
+Every framework role ability logs its own lifecycle on the owning client, whatever
 `VerboseLogging` says: input bound and unbound with a running count, the ability disabled
 while still selected, a channel stopped with time left (with a short stack), and a key press
 refused for a reason other than cooldown or already running. It exists to catch an
@@ -117,7 +117,7 @@ construction", which the code does not do: the verdict constant is 20 s.
 ## Standing rules for framework code
 
 - **A raw game field is a stat registration candidate before it is a private write.** Any raw
-  field framework or class-mod code is about to read or write gets a framework-registered stat
+  field framework or role-mod code is about to read or write gets a framework-registered stat
   with the field as its sink, so perks and abilities contribute through the game's own
   modifier composition. A private write needs a concrete reason.
 - **Adding a framework-owned stat is four edits:** a name constant and its spec in
@@ -142,13 +142,13 @@ construction", which the code does not do: the verdict constant is 20 s.
 ## Manifest notes
 
 - `ModFlagPolicy` is VoidCrewModding infrastructure: its mods link `shared\*.cs` from that
-  repository, and the framework compiles its own copy in `src/shared/`. Class mods there declare
+  repository, and the framework compiles its own copy in `src/shared/`. Role mods there declare
   `MPType => MultiplayerType.All` hardcoded instead of using `ModFlagPolicy.MPType` (which is
-  Session or Client for the repository's non-class mods and never All), and return
+  Session or Client for the repository's non-role mods and never All), and return
   `SetMod_Session = ModFlagPolicy.FlagsSession` from `OnSessionChange`. The three
   `AssemblyMetadata` attributes (`ModCategories` under the `NO_SESSION_FLAG` conditional,
   `MPType`, `ProgressionFlag`) are read by that repository's packaging scripts.
-- Class mods may copy their boilerplate from `examples/data-only-class/`.
+- Role mods may copy their boilerplate from `examples/data-only-role/`.
 
 ## Posture
 
@@ -156,7 +156,7 @@ construction", which the code does not do: the verdict constant is 20 s.
 modded player's perks on the peer's client; only a process with this DLL carries that guard.
 The mutator-safety prefix needs the same posture for the same reason. The room is version- and
 hash-locked, updates are all-hands re-sends, and `PLUGIN_VERSION` is bumped on every deploy.
-Registered class content sits in the Required mask, so hosting with any class mod installed
+Registered role content sits in the Required mask, so hosting with any role mod installed
 flags the session (one-way). The framework alone also flags at load, from its declared
 `MPType`. The mechanism is in `vcm/references/modded-session-flag.md`; the public statement is
 [multiplayer.md](multiplayer.md).

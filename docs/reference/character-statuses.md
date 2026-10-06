@@ -14,7 +14,7 @@ CharacterStatuses.Register(new CharacterStatusDef("mymod.dash-guard")
 
 CharacterStatuses.Apply(player, "mymod.dash-guard", seconds: 1f);
 CharacterStatuses.Remove(player, "mymod.dash-guard");   // early removal
-CharacterStatuses.RemoveAll(player);                    // e.g. on a class switch
+CharacterStatuses.RemoveAll(player);                    // e.g. on a role switch
 CharacterStatuses.IsActive(player, "mymod.dash-guard"); // + RemainingSeconds, Stacks
 ```
 

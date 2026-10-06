@@ -45,7 +45,7 @@ namespace Ectype
     }
 
     /// <summary>
-    /// A row of square ability buttons to the right of the class-ability widget. A mod
+    /// A row of square ability buttons to the right of the role-ability widget. A mod
     /// registers a <see cref="HudButtonSpec"/>; the bar builds the button, lays out the row,
     /// draws the key chip, feeds the cooldown fill and tears it all down. Input, cooldown and
     /// the ability itself stay with the mod. Presentation only: nothing here is networked or
@@ -54,7 +54,7 @@ namespace Ectype
     /// Each button is a copy of the HUD document's authored hero element, so the game's own
     /// <c>PerkBuffItemVE</c> does the fill reveal, the <c>perk-ready</c> class and the ready
     /// glow once the bar writes <c>PerkFill</c>. The bar owns the square chrome, the glyph,
-    /// the colours and the placement. The class-ability widget's own key chip is moved to
+    /// the colours and the placement. The role-ability widget's own key chip is moved to
     /// the same bottom-right corner convention.
     /// </summary>
     public static class HudAbilityBar
@@ -165,7 +165,7 @@ namespace Ectype
 
         internal static readonly List<HudButton> Buttons = new List<HudButton>();
 
-        /// <summary>A framework-built class slot's accent, which goes on its fill only while
+        /// <summary>A framework-built role slot's accent, which goes on its fill only while
         /// the slot is ready. Written when the slot is built.</summary>
         internal static readonly ConditionalWeakTable<VisualElement, StrongBox<Color>> SlotAccents =
             new ConditionalWeakTable<VisualElement, StrongBox<Color>>();
@@ -190,7 +190,7 @@ namespace Ectype
                 if (!EnsureDisplay()) return;
 
                 foreach (HudButton b in Buttons) b.Update(_container, _display);
-                SyncClassSlotAccent();
+                SyncRoleSlotAccent();
 
                 if (Time.unscaledTime >= _nextPlace)
                 {
@@ -209,7 +209,7 @@ namespace Ectype
             }
         }
 
-        /// <summary>The class-ability display and its container, re-found whenever the HUD
+        /// <summary>The role-ability display and its container, re-found whenever the HUD
         /// is rebuilt. A rebuilt HUD drops every built button so it is rebuilt with it.</summary>
         private static bool EnsureDisplay()
         {
@@ -240,9 +240,9 @@ namespace Ectype
         // ------------------------------------------------------------------ placement
 
         /// <summary>
-        /// Moves the class-ability chip to its plate's corner, then lays the visible buttons
+        /// Moves the role-ability chip to its plate's corner, then lays the visible buttons
         /// out to the right of that plate. Re-run a few times a second so a resolution change,
-        /// a class change or a HUD rebuild is followed. Every write is absolute, computed from
+        /// a role change or a HUD rebuild is followed. Every write is absolute, computed from
         /// the current layout, so nothing compounds.
         /// </summary>
         private static void Place()
@@ -270,7 +270,7 @@ namespace Ectype
             }
             else
             {
-                x = -Gap;   // no class ability showing: the bar starts at the container's edge
+                x = -Gap;   // no role ability showing: the bar starts at the container's edge
             }
 
             foreach (HudButton b in Buttons)
@@ -300,12 +300,12 @@ namespace Ectype
             chip.BringToFront();
         }
 
-        // The class-ability chip's in-flow width, measured once while it still sat in the row.
+        // The role-ability chip's in-flow width, measured once while it still sat in the row.
         private static readonly ConditionalWeakTable<KeyBindVE, StrongBox<float>> ChipRowWidth =
             new ConditionalWeakTable<KeyBindVE, StrongBox<float>>();
 
         /// <summary>
-        /// Moves the class-ability chip onto its plate's bottom-right corner. The widget lays
+        /// Moves the role-ability chip onto its plate's bottom-right corner. The widget lays
         /// the chip out in a flex row to the left of the plate and never writes its position,
         /// so taking it out of flow holds. Out of flow, the chip no longer pushes the plate
         /// right, so the widget gets a left padding of the chip's measured row width, once,
@@ -364,14 +364,14 @@ namespace Ectype
             return !float.IsNaN(f) && !float.IsInfinity(f);
         }
 
-        // --------------------------------------------------------- class-slot accent
+        // --------------------------------------------------------- role-slot accent
 
         /// <summary>
-        /// A framework-built class slot carries its class accent on the glow, and on the fill
+        /// A framework-built role slot carries its role accent on the glow, and on the fill
         /// only while the game has marked it ready: the stock fill is white while recovering
         /// and orange under <c>perk-ready</c>, and an inline tint would beat that rule.
         /// </summary>
-        private static void SyncClassSlotAccent()
+        private static void SyncRoleSlotAccent()
         {
             VisualElement main = ClassAbilityVEF != null
                 ? ClassAbilityVEF.GetValue(_display) as VisualElement : null;

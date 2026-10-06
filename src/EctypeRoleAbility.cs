@@ -5,9 +5,9 @@ using Opsive.UltimateCharacterController.Character;
 namespace Ectype
 {
     /// <summary>
-    /// Base class for a framework class's ability. Subclass it, implement the two effect
+    /// Base class for a framework role's ability. Subclass it, implement the two effect
     /// hooks, and return an instance from the factory passed to
-    /// ClassRegistry.RegisterAbilityFactory; the framework installs it and the game's own
+    /// RoleRegistry.RegisterAbilityFactory; the framework installs it and the game's own
     /// selection lifecycle then drives it (perk investment selects, the shared
     /// UseClassAbility key starts, cooldown and duration tick natively).
     ///
@@ -18,19 +18,19 @@ namespace Ectype
     /// CooldownSeconds and FiniteTimeDuration are ModifiableFloats: assign whole floats,
     /// never SetBaseValue.
     /// </summary>
-    public abstract partial class EctypeClassAbility : FiniteDurationClassAbility
+    public abstract partial class EctypeRoleAbility : FiniteDurationClassAbility
     {
         private bool _applyFailed;
         private bool _removeFailed;
 
         /// <summary>Sets the ability's base cooldown and active duration in seconds, and makes it start and stop only when told to.</summary>
-        protected EctypeClassAbility(float cooldownSeconds, float durationSeconds)
+        protected EctypeRoleAbility(float cooldownSeconds, float durationSeconds)
         {
             CooldownSeconds = cooldownSeconds;
             FiniteTimeDuration = durationSeconds;
 
             // A code-constructed Opsive ability defaults to StartType Automatic, which
-            // self-starts the instant every cooldown ends; vanilla class abilities are
+            // self-starts the instant every cooldown ends; vanilla role abilities are
             // prefab-serialized to Manual, so match that.
             StartType = AbilityStartType.Manual;
             StopType = AbilityStopType.Manual;

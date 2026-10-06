@@ -155,7 +155,7 @@ namespace Ectype
 
         /// <summary>
         /// Catch-up for ability adoption: the install-time sweep runs at character spawn and
-        /// skips any class whose registration has not settled, whereas this runs on every
+        /// skips any role whose registration has not settled, whereas this runs on every
         /// perk change - the moment the answer would change anyway.
         /// </summary>
         [HarmonyPostfix]
@@ -176,7 +176,7 @@ namespace Ectype
     /// Also the load half of suppression's scrub: saved selections in a suppressed vanilla tree
     /// are removed from the incoming dictionary, which is exactly vanilla's degrade path for an
     /// unknown GUID - the points come back as unspent and the next profile write prunes. A
-    /// suppressed framework class is never scrubbed (SuppressionOverlay).
+    /// suppressed framework role is never scrubbed (SuppressionOverlay).
     /// (If suppression is not yet resolved on the first loadouts, the ReApplyPerks drop
     /// still keeps the effects from applying, and a later load completes the scrub.)
     ///

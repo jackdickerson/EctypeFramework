@@ -1,6 +1,6 @@
 # Publishing a dependent mod on Thunderstore
 
-How to package a class mod, or any mod that calls the framework, as a Thunderstore package
+How to package a role mod, or any mod that calls the framework, as a Thunderstore package
 for the Void Crew community, and what the listing has to tell players.
 
 ## The dependency string
@@ -56,10 +56,10 @@ A minimal `manifest.json`:
 
 ```json
 {
-  "name": "My_Class",
+  "name": "My_Role",
   "version_number": "0.1.0",
   "website_url": "",
-  "description": "One sentence that says what the class is.",
+  "description": "One sentence that says what the role is.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2305",
     "NihilityShift-VoidManager-1.2.11",
@@ -78,7 +78,7 @@ A mod manager (Gale, r2modman, Thunderstore Mod Manager) unpacks the package int
 `BepInEx\plugins\` tree and installs the dependencies listed in `manifest.json` beside it.
 A player installing by hand drops the DLL into `Void Crew\BepInEx\plugins\`.
 
-A class mod's icons and manifest are embedded in the DLL, so the DLL is the only file the
+A role mod's icons and manifest are embedded in the DLL, so the DLL is the only file the
 package carries besides the listing files. Nothing needs to be unpacked anywhere else.
 
 The framework DLL is installed from its own package. Do not put a copy in yours: two copies
@@ -89,7 +89,7 @@ register the same plugin GUID.
 Players decide from the listing whether they can join a room, so it states these points in
 plain words.
 
-1. **Everyone in the room needs it.** A class mod and the framework are multiplayer type
+1. **Everyone in the room needs it.** A role mod and the framework are multiplayer type
    `All`. A player without them cannot join a room that has them, and a host without them
    bounces a joiner who has them.
 2. **Everyone needs the same build.** Versions must match, and the host also compares a hash
@@ -99,12 +99,12 @@ plain words.
    the server browser, which is how it separates modded rooms in matchmaking. VoidManager
    also blocks cloud profile writes and Steam stats and achievements for a tagged session.
    The tag is set when the mod loads and cannot be switched off from the mod's settings.
-4. **What the framework dependency means.** One line: the class needs the Ectype Framework
+4. **What the framework dependency means.** One line: the role needs the Ectype Framework
    package, which the mod manager installs automatically and which a hand installer has
    to add.
 
 The Void Crew community's categories include `All Required` and `Disables Progression`,
-which describe a class mod's requirements. The list changes over time: read the live list
+which describe a role mod's requirements. The list changes over time: read the live list
 (`https://thunderstore.io/api/experimental/community/void-crew/category/`) before you set
 categories.
 

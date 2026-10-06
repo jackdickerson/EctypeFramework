@@ -42,7 +42,7 @@ namespace Ectype
             // the workbench switch only decides whether the F5 menu can reload it mid-session.
             DevLayout.Reload();
 
-            // Not class machinery: dependents call the gate whether or not classes are enabled.
+            // Not role machinery: dependents call the gate whether or not roles are enabled.
             try { SelectionGate.EnsureBound(); }
             catch (Exception e) { Log.LogError("Ectype: binding the selection gate failed: " + e); }
 
@@ -61,7 +61,7 @@ namespace Ectype
             catch (Exception e)
             {
                 Log.LogError("Ectype: FATAL - patching failed, framework is inert this " +
-                             "session and no classes register: " + e);
+                             "session and no roles register: " + e);
                 return;
             }
             PatchesApplied = true;
@@ -87,7 +87,7 @@ namespace Ectype
     /// <summary>
     /// MultiplayerType.All, not Session: an unmodded peer throws on a framework perk GUID and
     /// wipes that player's perk set on its own client, so everyone in the room needs this DLL -
-    /// framework and every class mod alike.
+    /// framework and every role mod alike.
     /// </summary>
     public class EctypeVoidPlugin : VoidPlugin
     {
@@ -115,22 +115,22 @@ namespace Ectype
             GUILayout.Label("Host suppress: " + HostSuppression.Status);
             GUILayout.Space(8f);
 
-            if (ClassRegistry.Classes.Count == 0)
+            if (RoleRegistry.Roles.Count == 0)
             {
-                GUILayout.Label("No class manifests discovered" +
-                                (ClassRegistry.Discovered ? "." : " yet."));
+                GUILayout.Label("No role manifests discovered" +
+                                (RoleRegistry.Discovered ? "." : " yet."));
             }
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            foreach (RoleRecord rec in RoleRegistry.Roles)
             {
                 GUILayout.BeginHorizontal();
                 DrawSuppressToggle(rec);
-                GUILayout.Label(rec.Manifest.className + "  (tree " + rec.Ordinal + ", " +
+                GUILayout.Label(rec.Manifest.roleName + "  (tree " + rec.Ordinal + ", " +
                                 rec.SourceAssembly.GetName().Name + ")");
                 GUILayout.EndHorizontal();
                 GUILayout.Label("   " + rec.Status);
             }
             GUILayout.Label("Host suppress checkboxes above: yours only, applied while " +
-                            "everyone is in the hub. See the [ClassSuppression] section " +
+                            "everyone is in the hub. See the [RoleSuppression] section " +
                             "of this mod's .cfg for the full explanation.");
             GUILayout.Space(8f);
 
@@ -163,7 +163,7 @@ namespace Ectype
             GUILayout.Space(8f);
 
             // Read at registration, so typing here changes nothing until the next launch.
-            GUILayout.Label("characterShip test perk - \"classId/perkKey\", empty = off. " +
+            GUILayout.Label("characterShip test perk - \"roleId/perkKey\", empty = off. " +
                             "Restart to apply; every client in the room needs the same value.");
             EctypeConfig.CharacterShipTestPerk.Value =
                 GUILayout.TextField(EctypeConfig.CharacterShipTestPerk.Value ?? string.Empty);
@@ -189,13 +189,13 @@ namespace Ectype
             }
         }
 
-        /// <summary>The toggle isn't bound until EnsureClassToggles has run at least once
-        /// after this class was discovered (usually the same frame) - draw nothing rather
+        /// <summary>The toggle isn't bound until EnsureRoleToggles has run at least once
+        /// after this role was discovered (usually the same frame) - draw nothing rather
         /// than throw on that first frame.</summary>
-        private static void DrawSuppressToggle(ClassRecord rec)
+        private static void DrawSuppressToggle(RoleRecord rec)
         {
             BepInEx.Configuration.ConfigEntry<bool> entry;
-            if (!EctypeConfig.ClassSuppressToggles.TryGetValue(rec.Manifest.classId, out entry) ||
+            if (!EctypeConfig.RoleSuppressToggles.TryGetValue(rec.Manifest.roleId, out entry) ||
                 entry == null)
             {
                 GUILayout.Label("[ ]", GUILayout.Width(24f));
@@ -225,7 +225,7 @@ namespace Ectype
             }
             Step("layout key", PollLayoutReloadKey);
             Step("layout poll", DevLayout.Poll);
-            Step("class toggles", EctypeConfig.EnsureClassToggles);
+            Step("role toggles", EctypeConfig.EnsureRoleToggles);
             Step("room sync", RoomSync.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.

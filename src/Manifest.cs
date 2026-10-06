@@ -7,69 +7,69 @@ using Newtonsoft.Json;
 namespace Ectype
 {
     /// <summary>
-    /// The v1 class manifest: a JSON document embedded in a class mod's assembly under a
-    /// resource name ending in "ectype-class.json". Everything a data-only class needs; code
+    /// The v2 role manifest: a JSON document embedded in a role mod's assembly under a
+    /// resource name ending in "ectype-role.json". Everything a data-only role needs; code
     /// callbacks (ability factories, unlock predicates) register separately through
-    /// ClassRegistry.
+    /// RoleRegistry.
     /// </summary>
-    public class ClassManifest
+    public class RoleManifest
     {
         public int contractVersion;
 
-        /// <summary>The oldest framework version this class works with ("0.18.0"), stamped by
-        /// the packer from the features the class uses. A newer requirement than this build
-        /// rejects the class by name. Absent = no minimum.</summary>
+        /// <summary>The oldest framework version this role works with ("0.18.0"), stamped by
+        /// the packer from the features the role uses. A newer requirement than this build
+        /// rejects the role by name. Absent = no minimum.</summary>
         public string minFrameworkVersion;
 
         /// <summary>Namespaced stable id, conventionally the same string as the plugin GUID
-        /// (e.g. "jack.voidcrew.ectype.testclass"). Seed for every derived GUID and the
-        /// ordinal sort key across all class mods - never rename after shipping.</summary>
-        public string classId;
+        /// (e.g. "jack.voidcrew.ectype.testrole"). Seed for every derived GUID and the
+        /// ordinal sort key across all role mods - never rename after shipping.</summary>
+        public string roleId;
 
-        public string className;
-        public string classDesc;
+        public string roleName;
+        public string roleDesc;
 
-        /// <summary>Icon key for the role icon the crew HUD and lobby draw for this class, and
+        /// <summary>Icon key for the role icon the crew HUD and lobby draw for this role, and
         /// the tree's own icon: an embedded PNG resource name (without extension) in the same
         /// assembly. Optional; the HUD falls back to the placeholder, the tree to the donor.</summary>
         public string roleIcon;
 
-        /// <summary>PerkBuffContainer GUID whose ContextInfo icon the CLASS borrows when
+        /// <summary>PerkBuffContainer GUID whose ContextInfo icon the ROLE borrows when
         /// "roleIcon" names nothing loadable. Same borrow-by-reference mechanism as a perk's
-        /// iconDonor; for a class cloned from a stock one, the stock hero perk's GUID is the
-        /// icon the original class shows.</summary>
+        /// iconDonor; for a role cloned from a stock one, the stock hero perk's GUID is the
+        /// icon the original role shows.</summary>
         public string roleIconDonor;
 
-        /// <summary>The class accent color as an HTML hex string ("#3FA7A0"), applied inline
+        /// <summary>The role accent color as an HTML hex string ("#3FA7A0"), applied inline
         /// because a stock tree's tint comes from name-keyed USS selectors that no longer
         /// match. Omitted or unparseable → the tree renders untinted (white) with a warning;
         /// a color whose R+G+B sum is 700+ (of 765) is warned as too close to white.</summary>
         public string color;
 
         /// <summary>The row-0 hero perk. Its DisplayType.Hero at row 0 is what makes the
-        /// tree a class.</summary>
+        /// tree a role.</summary>
         public PerkSpec hero;
 
         public List<PerkSpec> perks = new List<PerkSpec>();
 
         public List<CustomStatSpec> customStats = new List<CustomStatSpec>();
 
-        /// <summary>Vanilla perk-tree GUIDs whose trees should not exist while this class is
-        /// installed - the "this class replaces Gunner" mechanism. Validation normalizes the
+        /// <summary>Vanilla perk-tree GUIDs whose trees should not exist while this role is
+        /// installed - the "this role replaces Gunner" mechanism. Validation normalizes the
         /// entries to 32-hex; resolution and enforcement live in Suppression.</summary>
         public List<string> suppress = new List<string>();
 
-        /// <summary>classIds of other framework classes whose trees should not exist while
-        /// this class is installed and not itself suppressed. Keyed on classId, the unique
-        /// and stable identity; className is display text. Resolution lives in
+        /// <summary>roleIds of other framework roles whose trees should not exist while
+        /// this role is installed and not itself suppressed. Keyed on roleId, the unique
+        /// and stable identity; roleName is display text. Resolution lives in
         /// Suppression.</summary>
-        public List<string> suppressClasses = new List<string>();
+        public List<string> suppressRoles = new List<string>();
     }
 
     public class PerkSpec
     {
-        /// <summary>Stable key within the class; the perk GUID derives from
-        /// (classId, key) unless "guid" pins one explicitly.</summary>
+        /// <summary>Stable key within the role; the perk GUID derives from
+        /// (roleId, key) unless "guid" pins one explicitly.</summary>
         public string key;
         public string guid;
 
@@ -172,11 +172,11 @@ namespace Ectype
     {
         /// <summary>
         /// All manifests embedded in one assembly. Parse errors are logged by resource name
-        /// and skipped - one bad manifest never takes down another class.
+        /// and skipped - one bad manifest never takes down another role.
         /// </summary>
-        public static List<ClassManifest> LoadFrom(Assembly asm)
+        public static List<RoleManifest> LoadFrom(Assembly asm)
         {
-            List<ClassManifest> found = new List<ClassManifest>();
+            List<RoleManifest> found = new List<RoleManifest>();
             string[] names;
             try { names = asm.GetManifestResourceNames(); }
             catch { return found; }
@@ -192,7 +192,7 @@ namespace Ectype
                     using (StreamReader rd = new StreamReader(st))
                         json = rd.ReadToEnd();
 
-                    ClassManifest m = JsonConvert.DeserializeObject<ClassManifest>(json);
+                    RoleManifest m = JsonConvert.DeserializeObject<RoleManifest>(json);
                     string problem = Validate(m);
                     if (problem != null)
                     {
@@ -211,7 +211,7 @@ namespace Ectype
             return found;
         }
 
-        private static string Validate(ClassManifest m)
+        private static string Validate(RoleManifest m)
         {
             if (m == null) return "empty document";
             string versionProblem = CheckFrameworkVersion(m.minFrameworkVersion);
@@ -219,8 +219,8 @@ namespace Ectype
             if (m.contractVersion != EctypePluginInfo.CONTRACT_VERSION)
                 return "contractVersion " + m.contractVersion + " (this framework speaks " +
                        EctypePluginInfo.CONTRACT_VERSION + ")";
-            if (string.IsNullOrEmpty(m.classId)) return "no classId";
-            if (string.IsNullOrEmpty(m.className)) return "no className";
+            if (string.IsNullOrEmpty(m.roleId)) return "no roleId";
+            if (string.IsNullOrEmpty(m.roleName)) return "no roleName";
             if (m.hero == null) return "no hero perk";
             if (m.perks == null) m.perks = new List<PerkSpec>();
             if (m.customStats == null) m.customStats = new List<CustomStatSpec>();
@@ -258,7 +258,7 @@ namespace Ectype
             {
                 Gameplay.Perks.PerkBuffTarget t;
                 if (EctypeAssets.TryParseTarget(p.target, out t)) return false;
-                Plugin.Log.LogError("Ectype: class '" + m.className + "' perk '" + p.key +
+                Plugin.Log.LogError("Ectype: role '" + m.roleName + "' perk '" + p.key +
                                     "' skipped: unrecognised target '" + p.target + "' (this " +
                                     "framework knows " + EctypeAssets.KnownTargets + ").");
                 return true;
@@ -272,18 +272,18 @@ namespace Ectype
             if (m.suppress == null) m.suppress = new List<string>();
             string suppressProblem = NormalizeGuidList(m.suppress);
             if (suppressProblem != null) return "suppress entry " + suppressProblem;
-            List<string> classes = new List<string>();
-            foreach (string id in m.suppressClasses ?? new List<string>())
+            List<string> roles = new List<string>();
+            foreach (string id in m.suppressRoles ?? new List<string>())
             {
                 string t = (id ?? "").Trim();
-                if (t.Length > 0) classes.Add(t);
+                if (t.Length > 0) roles.Add(t);
             }
-            m.suppressClasses = classes;
+            m.suppressRoles = roles;
             WarnOnPaleColor(m);
             return null;
         }
 
-        /// <summary>A class packed against a newer framework can name a target or field this
+        /// <summary>A role packed against a newer framework can name a target or field this
         /// build does not know; it is refused by name rather than half-registered.</summary>
         private static string CheckFrameworkVersion(string min)
         {
@@ -322,26 +322,26 @@ namespace Ectype
         }
 
         /// <summary>Non-fatal color lint: missing/unparseable renders white; near-white is
-        /// indistinguishable from the broken state and from other pale classes.</summary>
-        private static void WarnOnPaleColor(ClassManifest m)
+        /// indistinguishable from the broken state and from other pale roles.</summary>
+        private static void WarnOnPaleColor(RoleManifest m)
         {
             if (string.IsNullOrEmpty(m.color))
             {
-                Plugin.Log.LogWarning("Ectype: class '" + m.className + "' declares no " +
+                Plugin.Log.LogWarning("Ectype: role '" + m.roleName + "' declares no " +
                                       "color - its tree will render untinted (white).");
                 return;
             }
             UnityEngine.Color c;
             if (!UnityEngine.ColorUtility.TryParseHtmlString(m.color, out c))
             {
-                Plugin.Log.LogWarning("Ectype: class '" + m.className + "' color '" +
+                Plugin.Log.LogWarning("Ectype: role '" + m.roleName + "' color '" +
                                       m.color + "' is not parseable (expected \"#RRGGBB\") - " +
                                       "the tree will render untinted (white).");
                 return;
             }
             int sum = (int)(c.r * 255f) + (int)(c.g * 255f) + (int)(c.b * 255f);
             if (sum >= 700)
-                Plugin.Log.LogWarning("Ectype: class '" + m.className + "' color " + m.color +
+                Plugin.Log.LogWarning("Ectype: role '" + m.roleName + "' color " + m.color +
                                       " is too close to white (R+G+B = " + sum +
                                       " >= 700) - it will be hard to tell from an " +
                                       "untinted tree.");

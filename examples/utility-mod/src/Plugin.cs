@@ -9,7 +9,7 @@ using VoidManager.MPModChecks;
 namespace ExampleUtility
 {
     /// <summary>
-    /// A mod that is not a class and makes one framework call: it subscribes to
+    /// A mod that is not a role and makes one framework call: it subscribes to
     /// Ectype.ShipArrivals.Arrived, which fires on this machine each time the player ship
     /// leaves the void, and logs how it left.
     /// </summary>

@@ -21,11 +21,11 @@ namespace Ectype
         public static ConfigEntry<bool> StatusVfx;
         public static ConfigEntry<int> StatusVfxCap;
 
-        /// <summary>One HOST ONLY checkbox per discovered class in the [ClassSuppression]
-        /// section, keyed by classId so a checkbox binds to the same player-facing class
+        /// <summary>One HOST ONLY checkbox per discovered role in the [RoleSuppression]
+        /// section, keyed by roleId so a checkbox binds to the same player-facing role
         /// across a plugin-load-order reshuffle. Read only by RoomSync; HostSuppression takes
-        /// a plain classId list and knows nothing of a config UI.</summary>
-        public static readonly Dictionary<string, ConfigEntry<bool>> ClassSuppressToggles =
+        /// a plain roleId list and knows nothing of a config UI.</summary>
+        public static readonly Dictionary<string, ConfigEntry<bool>> RoleSuppressToggles =
             new Dictionary<string, ConfigEntry<bool>>(
                 System.StringComparer.OrdinalIgnoreCase);
 
@@ -47,7 +47,7 @@ namespace Ectype
                 "Master switch. Off: no patches, no discovery, no registration - inert.");
 
             RegisterStage = cfg.Bind("General", "RegisterStage", 9,
-                "Bisection aid: stop each class's registration after this step " +
+                "Bisection aid: stop each role's registration after this step " +
                 "(1 custom stats + perk assets built, 2 runtime assets registered, " +
                 "3 context infos, 4 perk defs published, 5 tree asset registered, " +
                 "6 tree def published). 9 = run everything.");
@@ -56,7 +56,7 @@ namespace Ectype
                 "Emergency brake on stage 6. A published PerkTreeDef whose PerkTreeVE " +
                 "element failed to inject is filtered out of the terminal build so the " +
                 "terminal survives; set this false to keep all tree defs unpublished " +
-                "(classes register but no tree renders).");
+                "(roles register but no tree renders).");
 
             VerboseLogging = cfg.Bind("Debug", "VerboseLogging", false,
                 "Log per-character, per-switch and per-open events: ability installs and " +
@@ -85,7 +85,7 @@ namespace Ectype
 
             EnableScroll = cfg.Bind("Presentation", "EnableScroll", true,
                 "Wrap the gene-tree row in a horizontal scroller when more than four " +
-                "trees survive (registered classes minus suppressed vanilla trees). " +
+                "trees survive (registered roles minus suppressed vanilla trees). " +
                 "With four or fewer, the layout is never touched. Off: extra trees " +
                 "overflow off-layout as before.");
 
@@ -126,29 +126,29 @@ namespace Ectype
 
             CharacterShipTestPerk = cfg.Bind("Dev", "CharacterShipTestPerk", "",
                 "Test the characterShip perk target: name one framework perk as " +
-                "\"classId/perkKey\" and it registers as characterShip with a single " +
+                "\"roleId/perkKey\" and it registers as characterShip with a single " +
                 "JumpChargeSpeed +50% effect at every level, replacing its authored effects. " +
                 "Read at registration, so a change needs a restart; every player in the room " +
                 "needs the same value. Empty = off.");
         }
 
         /// <summary>
-        /// Bind one [ClassSuppression] checkbox per registered class, once - classIds are only
+        /// Bind one [RoleSuppression] checkbox per registered role, once - roleIds are only
         /// known after discovery runs, well after Bind() above. Cheap to call every frame: a
-        /// count comparison short-circuits once every discovered class has an entry.
+        /// count comparison short-circuits once every discovered role has an entry.
         /// </summary>
-        public static void EnsureClassToggles()
+        public static void EnsureRoleToggles()
         {
             if (_cfg == null) return;
-            if (ClassSuppressToggles.Count == ClassRegistry.Classes.Count) return;
+            if (RoleSuppressToggles.Count == RoleRegistry.Roles.Count) return;
 
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            foreach (RoleRecord rec in RoleRegistry.Roles)
             {
-                string classId = rec.Manifest.classId;
-                if (ClassSuppressToggles.ContainsKey(classId)) continue;
-                ClassSuppressToggles[classId] = _cfg.Bind("ClassSuppression",
-                    "Suppress_" + classId, false,
-                    "Host only, applied while in the hub: make '" + rec.Manifest.className +
+                string roleId = rec.Manifest.roleId;
+                if (RoleSuppressToggles.ContainsKey(roleId)) continue;
+                RoleSuppressToggles[roleId] = _cfg.Bind("RoleSuppression",
+                    "Suppress_" + roleId, false,
+                    "Host only, applied while in the hub: make '" + rec.Manifest.roleName +
                     "' unavailable to every player in the room. Spent points refund; each " +
                     "player sees it on their next terminal open.");
             }

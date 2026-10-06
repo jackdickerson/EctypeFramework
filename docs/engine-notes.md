@@ -22,8 +22,8 @@ wrong.
 | Modifier classes, reading one back, instance sharing | `vcm/references/stats-and-modifiers.md` §8 |
 | Wrapping a raw field as a stat, and the two-owner failure | `vcm/references/stats-and-modifiers.md` §6, `vcm/references/pitfalls.md` #86 |
 | Tags: reference matching, case sensitivity, the empty filter | `vcm/references/runtime-assets-and-custom-items.md` §8a |
-| Perks and gene trees: the grid, display types, perk targets, hiding a tree | `vcm/workflows/classes-and-perks.md` |
-| Opsive abilities: start types, the replication index problem, replicating by key | `vcm/references/pitfalls.md` #85, `vcm/workflows/classes-and-perks.md` |
+| Perks and gene trees: the grid, display types, perk targets, hiding a tree | `vcm/workflows/roles-and-perks.md` |
+| Opsive abilities: start types, the replication index problem, replicating by key | `vcm/references/pitfalls.md` #85, `vcm/workflows/roles-and-perks.md` |
 | UI Toolkit: no parser, no debugger, what a dump must carry | `vcm/references/ui-toolkit.md` §5, §6 |
 | UI Toolkit: transforms, layout resolution, geometry watching | `vcm/references/ui-toolkit.md` §6c, §6c-i, §6e |
 | UI Toolkit: sprites in backgrounds and the nine-slice trap | `vcm/references/ui-toolkit.md` §6c-ii |

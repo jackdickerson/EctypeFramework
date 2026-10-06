@@ -11,7 +11,7 @@ peer without the ability simply ignores the message.
 - Call `Register` after the ability is in its locomotion's array. `Unregister` and `KeyOf`
   are the other two members.
 - Register with a literal key. A key derived from runtime state can differ between clients.
-- The framework registers its own class abilities as `ectype:<classId>`.
+- The framework registers its own role abilities as `ectype:<roleId>`.
 - A running registered ability is also synchronised to a late joiner. The message is sent to
   the joiner alone, and only when VoidManager reports that peer as running the framework
   (see `PeerHasMod` in [selection-gate.md](selection-gate.md)).

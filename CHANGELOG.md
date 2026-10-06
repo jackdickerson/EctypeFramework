@@ -4,6 +4,39 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.11
+
+- Breaking: "class" is renamed "role" throughout, matching the game's own code (EPlayerRole). Manifest
+  contract version 2. A contract 1 manifest does not load: under its old resource name it is
+  not discovered, and renamed alone it is rejected for its `contractVersion`. Rename its
+  fields, its resource and its `contractVersion`, then rebuild.
+- Public API renames. Behaviour is unchanged.
+  - `ClassRegistry` is `RoleRegistry`. `RegisterAbilityFactory(roleId, factory)`,
+    `RegisterUnlockPredicate(roleId, predicate)`, `PerkGuid(roleId, perkKey)` and
+    `IsAvailableInRoom(roleId)` keep their signatures; the first parameter is `roleId`.
+  - `EctypeClassAbility` is `EctypeRoleAbility`.
+  - `ClassStats` is `RoleStats`: `Id(roleId, statName)`,
+    `RegisterAbilityTiming(ability, roleId, durationStat, cooldownStat)`.
+  - `ClassManifest` is `RoleManifest`.
+  - `LayoutSpec` (the layout workbench file): `showClassName`, `classNameFontSize`,
+    `classNameColorHex`, `classNameTopPx` and `classNameHeightPx` are `showRoleName`,
+    `roleNameFontSize`, `roleNameColorHex`, `roleNameTopPx` and `roleNameHeightPx`.
+- Manifest fields: `classId` is `roleId`, `className` is `roleName`, `classDesc` is
+  `roleDesc`, `suppressClasses` is `suppressRoles`. GUIDs, tree ordinals and stat ids derive
+  from the id's value, not the field's name, so a role whose id string is unchanged keeps its
+  saved perk selections.
+- The manifest resource suffix is `ectype-role.json` (was `ectype-class.json`); a resource
+  with the old suffix is not discovered. The schema is `docs/schemas/ectype-role.schema.json`
+  and rejects the four contract 1 field names.
+- Config: the `[ClassSuppression]` section is `[RoleSuppression]`, with keys
+  `Suppress_<roleId>`. Values under the old section are not migrated: a host that had a role
+  switched off sets the toggle again.
+- The vanilla tree dump is written to `BepInEx\EctypeDump\vanilla-roles.json` (was
+  `vanilla-classes.json`).
+- Log lines say role where they said class, for example `Ectype: role '<name>' registered.`
+  and `Ectype: discovered <n> role(s)`. Log filters keyed on the old wording need updating.
+- The starter examples are `examples/data-only-role` and `examples/ability-role`.
+
 ## 0.19.10
 
 - The framework stat `ModuleInstallSpeed` is renamed `SystemModuleConstructionSpeed`. Its id

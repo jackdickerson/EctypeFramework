@@ -15,23 +15,23 @@ per-open event appear only with `[Debug] VerboseLogging = true` in
 | --- | --- | --- |
 | `Pipeline:` | `waiting for asset containers` | The game's perk, tree, stat, tag and unlock tables are not loaded yet. Registration retries every 2 seconds. Stays here only if the game never reaches the point that loads them. |
 | | `inert: patching did not complete` | Harmony patching failed. See the `FATAL` entry under Load. |
-| | `no class manifests found` | No installed mod carries a manifest. See "No class appears". |
-| | `<n>/<m> classes registered` | `n` of `m` discovered classes finished registering. `(<k> failed)` is appended when `k` gave up. |
+| | `no role manifests found` | No installed mod carries a manifest. See "No role appears". |
+| | `<n>/<m> roles registered` | `n` of `m` discovered roles finished registering. `(<k> failed)` is appended when `k` gave up. |
 | `Stats:` | `<n> vanilla aliases, framework-owned <status>` | The stat names a manifest can use. `not registered` means the stat table has not loaded; `<n> registered` is the normal state. |
-| `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, or `<n> tree(s) suppressed: <names>` | Which stock gene trees class mods have removed. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
-| `Host suppress:` | `nothing host-suppressed` or `<n> class(es) host-suppressed: <classIds>` | Classes the host has switched off for the room. |
-| One line per class | `registered (stage limit 9); tree def published as EPerkTree <n>` | The class is registered and its tree is published. |
-| | `waiting for asset containers` | Same as the pipeline line, for this class. |
+| `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, or `<n> tree(s) suppressed: <names>` | Which stock gene trees role mods have removed. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
+| `Host suppress:` | `nothing host-suppressed` or `<n> role(s) host-suppressed: <roleIds>` | Roles the host has switched off for the room. |
+| One line per role | `registered (stage limit 9); tree def published as EPerkTree <n>` | The role is registered and its tree is published. |
+| | `waiting for asset containers` | Same as the pipeline line, for this role. |
 | | `attempt <n> failed at [<stage>]: <message>` | Registration threw. See "Registration attempt failed". |
 
-The class line also shows the tree number and the assembly that supplied the manifest.
+The role line also shows the tree number and the assembly that supplied the manifest.
 
 ## Load
 
 ### `Ectype Framework v<version> loaded (contract v<n>).`
 
 The framework started and applied every patch. `n` is the manifest contract version this build
-accepts. No class is registered yet; look for `Ectype: discovered` next.
+accepts. No role is registered yet; look for `Ectype: discovered` next.
 
 ### `Ectype: disabled via config ([General] Enabled = false).`
 
@@ -39,7 +39,7 @@ The framework did nothing: no patches, no registration, no driver. Set `[General
 `true` in `jack.voidcrew.ectype.cfg` and restart. Mods that depend on the framework still load
 and still declare their multiplayer type, but nothing they registered with the framework runs.
 
-### `Ectype: FATAL - patching failed, framework is inert this session and no classes register: <exception>`
+### `Ectype: FATAL - patching failed, framework is inert this session and no roles register: <exception>`
 
 A Harmony patch could not be applied. Harmony does not undo patches applied before the failure,
 so the framework treats a partial set as unusable: it starts no driver and every registration
@@ -58,39 +58,39 @@ Install the VoidManager version the framework was built against.
 ### `Ectype: enemy ability gates failed: <exception>` and `Ectype: loot table patch failed: <exception>`
 
 The enemy-ability suspension patches or the loot-table patch could not be resolved. Each system
-is patched on its own, so a renamed game member disables only that system. Class registration
+is patched on its own, so a renamed game member disables only that system. Role registration
 and the other utilities are unaffected. Cause and fix are the same as for `FATAL`.
 
 ### A dependent calls the framework and gets a `NullReferenceException`
 
 The framework assigns its logger in its own `Awake`. A dependent that calls a framework API
-(`ClassRegistry.RegisterAbilityFactory`, for one) before that `Awake` has run fails inside the
+(`RoleRegistry.RegisterAbilityFactory`, for one) before that `Awake` has run fails inside the
 call. Declare `[BepInDependency("jack.voidcrew.ectype")]` on the dependent's plugin class.
 BepInEx then runs the framework's `Awake` first. Without the attribute, load order is not
 defined.
 
 ## Manifest validation
 
-A manifest is an embedded resource whose name ends in `ectype-class.json`. The framework scans
+A manifest is an embedded resource whose name ends in `ectype-role.json`. The framework scans
 every loaded plugin assembly once, at the first registration pass, and logs
-`Ectype: discovered <n> class(es): <summary>.` when the scan ends.
+`Ectype: discovered <n> role(s): <summary>.` when the scan ends.
 
 ### `Ectype: manifest '<resource>' in <assembly> rejected: <problem>`
 
-The manifest parsed as JSON and failed a check. The class is skipped and nothing else is
+The manifest parsed as JSON and failed a check. The role is skipped and nothing else is
 affected. `<problem>` is one of:
 
 | Problem | Cause and fix |
 | --- | --- |
 | `empty document` | The resource is empty or `null`. |
-| `needs Ectype Framework <x> or newer (this is <y>)` | `minFrameworkVersion` is newer than the installed framework. Update the framework, or lower the field if the class uses nothing newer. |
+| `needs Ectype Framework <x> or newer (this is <y>)` | `minFrameworkVersion` is newer than the installed framework. Update the framework, or lower the field if the role uses nothing newer. |
 | `minFrameworkVersion '<x>' is not a version (expected "major.minor.patch")` | Write the field as three dot-separated numbers. |
-| `contractVersion <n> (this framework speaks 1)` | The manifest declares a contract this framework does not read. Set `contractVersion` to the value the framework prints in its load line. |
-| `no classId`, `no className` | A required field is missing or empty. |
-| `no hero perk` | `hero` is missing. Every class needs a row-0 hero perk. |
+| `contractVersion <n> (this framework speaks 2)` | The manifest declares a contract this framework does not read. Set `contractVersion` to the value the framework prints in its load line. |
+| `no roleId`, `no roleName` | A required field is missing or empty. |
+| `no hero perk` | `hero` is missing. Every role needs a row-0 hero perk. |
 | `null perk entry` | The `perks` array holds a `null`. |
 | `a perk has no key` | Every perk needs a `key`. |
-| `duplicate perk key '<k>'` | Keys are compared without regard to case and must be unique within a class. The hero's key counts (it defaults to `hero`). |
+| `duplicate perk key '<k>'` | Keys are compared without regard to case and must be unique within a role. The hero's key counts (it defaults to `hero`). |
 | `perk '<k>' has no name` | Every perk needs a `name`. |
 | `perk '<k>' has row <n> (row 0 is the hero banner)` | Perk rows start at 1. |
 | `perk '<k>' on row <n> is a wide cell and must declare wide: true` | The perk sits on a full-width cell (row 2, 5 or 7) without `"wide": true`. Add the flag. |
@@ -105,74 +105,76 @@ The resource is not valid JSON for the manifest model. The message comes from th
 and usually names the line or the field whose value has the wrong type (a string where a number
 belongs, for instance). Fix the file. Check for a byte-order mark or a trailing comma.
 
-### `Ectype: class '<name>' perk '<key>' skipped: unrecognised target '<x>' (this framework knows character, seat, seatShip, characterShip).`
+### `Ectype: role '<name>' perk '<key>' skipped: unrecognised target '<x>' (this framework knows character, seat, seatShip, characterShip).`
 
 A non-hero perk names a `target` the framework does not know. Only that perk is dropped. Fix the
 spelling; the comparison ignores case.
 
-### No class appears and the log says `Ectype: discovered 0 class(es).`
+### No role appears and the log says `Ectype: discovered 0 role(s).`
 
 The framework found no manifest. The discovery rule is that an embedded resource name ends with
-`ectype-class.json`, compared without regard to case. Check that the file is marked as an
+`ectype-role.json`, compared without regard to case. Check that the file is marked as an
 embedded resource in the project and that its resource name (the assembly's root namespace and
 folder path, joined with dots, unless the project sets a logical name) ends with that suffix.
+A manifest named `ectype-class.json` was written for contract 1 and is not discovered: rename
+the resource, its fields and its `contractVersion` as [manifest.md](manifest.md) gives them.
 Check also that the plugin loaded: a plugin that failed to load never has its assembly scanned.
 The framework scans assemblies of loaded BepInEx plugins only.
 
-### `Ectype: duplicate classId '<id>' in <assembly> (already provided by <assembly>) - the duplicate is skipped.`
+### `Ectype: duplicate roleId '<id>' in <assembly> (already provided by <assembly>) - the duplicate is skipped.`
 
-Two installed mods declare the same `classId`. The first one the scan met wins. Rename the
-`classId` in one of them. The id seeds every GUID of the class, so renaming it after release
+Two installed mods declare the same `roleId`. The first one the scan met wins. Rename the
+`roleId` in one of them. The id seeds every GUID of the role, so renaming it after release
 orphans saved selections; pick a unique id before releasing.
 
 ### `Ectype: discovery requested after registration closed (first terminal build) - refused.`
 
-The first gene-tree terminal was built before discovery ran. The ordinal each class receives
-depends on the full set of classes, so a class that appeared later would get a different
+The first gene-tree terminal was built before discovery ran. The ordinal each role receives
+depends on the full set of roles, so a role that appeared later would get a different
 ordinal on different clients. Discovery is refused instead. Restart the game. If it recurs on
 every launch, the framework's registration is not reaching the point where it runs; check the
 log for an earlier `FATAL` or `Pipeline` line.
 
-### Class colour warnings
+### Role colour warnings
 
 | Line | Meaning |
 | --- | --- |
-| `Ectype: class '<name>' declares no color - its tree will render untinted (white).` | `color` is missing. |
-| `Ectype: class '<name>' color '<c>' is not parseable (expected "#RRGGBB") - the tree will render untinted (white).` | Use a six-digit hex string with a leading `#`. |
-| `Ectype: class '<name>' color <c> is too close to white (R+G+B = <n> >= 700) - it will be hard to tell from an untinted tree.` | The red, green and blue values sum to 700 or more of 765. Pick a darker colour. |
-| `Ectype: classes '<a>' (<c>) and '<b>' (<c>) have nearly identical accent colors (distance <n> < 90) - the trees will be hard to tell apart.` | The red, green and blue differences between two installed classes sum to less than 90 of 765. Change one. The stock classes use red, blue, green and purple. |
+| `Ectype: role '<name>' declares no color - its tree will render untinted (white).` | `color` is missing. |
+| `Ectype: role '<name>' color '<c>' is not parseable (expected "#RRGGBB") - the tree will render untinted (white).` | Use a six-digit hex string with a leading `#`. |
+| `Ectype: role '<name>' color <c> is too close to white (R+G+B = <n> >= 700) - it will be hard to tell from an untinted tree.` | The red, green and blue values sum to 700 or more of 765. Pick a darker colour. |
+| `Ectype: roles '<a>' (<c>) and '<b>' (<c>) have nearly identical accent colors (distance <n> < 90) - the trees will be hard to tell apart.` | The red, green and blue differences between two installed roles sum to less than 90 of 765. Change one. The stock roles use red, blue, green and purple. |
 
 ### Suppression warnings
 
-All are logged when the framework resolves what a class mod suppresses. None fails a class.
+All are logged when the framework resolves what a role mod suppresses. None fails a role.
 
 | Line | Cause |
 | --- | --- |
-| `Ectype: suppress entry <guid> (from '<classId>') names a framework-registered class asset - name its classId in suppressClasses instead. Entry ignored.` | `suppress` takes stock tree GUIDs. Move the class to `suppressClasses`. |
-| `Ectype: suppress entry <guid> (from '<classId>') is a tree whose def or asset did not resolve - entry ignored.` | The GUID names a tree whose data did not load. Check the GUID. |
-| `Ectype: suppress entry <guid> (from '<classId>') names a single perk; only whole trees can be suppressed. Entry ignored.` | A perk GUID is not a tree GUID. |
-| `Ectype: suppress entry <guid> (from '<classId>') resolves to nothing in this game version - entry ignored, nothing suppressed.` | The GUID does not exist in the installed game. |
-| `Ectype: class '<id>' lists itself in suppressClasses - entry ignored.` | Remove the entry. |
-| `Ectype: class '<id>' suppresses class '<other>', which is not installed - entry ignored.` | Harmless when the other class is optional. |
-| `Ectype: suppressClasses cycle through '<id>' - treated as active.` | Class A lists B and B lists A. The cycle is broken in `classId` order. |
+| `Ectype: suppress entry <guid> (from '<roleId>') names a framework-registered role asset - name its roleId in suppressRoles instead. Entry ignored.` | `suppress` takes stock tree GUIDs. Move the role to `suppressRoles`. |
+| `Ectype: suppress entry <guid> (from '<roleId>') is a tree whose def or asset did not resolve - entry ignored.` | The GUID names a tree whose data did not load. Check the GUID. |
+| `Ectype: suppress entry <guid> (from '<roleId>') names a single perk; only whole trees can be suppressed. Entry ignored.` | A perk GUID is not a tree GUID. |
+| `Ectype: suppress entry <guid> (from '<roleId>') resolves to nothing in this game version - entry ignored, nothing suppressed.` | The GUID does not exist in the installed game. |
+| `Ectype: role '<id>' lists itself in suppressRoles - entry ignored.` | Remove the entry. |
+| `Ectype: role '<id>' suppresses role '<other>', which is not installed - entry ignored.` | Harmless when the other role is optional. |
+| `Ectype: suppressRoles cycle through '<id>' - treated as active.` | Role A lists B and B lists A. The cycle is broken in `roleId` order. |
 
 ## Registration
 
-Registration runs in stages for each class: `guids`, `custom stats`, `perk assets`, `runtime
+Registration runs in stages for each role: `guids`, `custom stats`, `perk assets`, `runtime
 assets`, `perk defs`, `tree asset`, `tree def`. It retries every 2 seconds until every stage
 passes, because the game's tables load some time after the plugin's `Awake`.
 
-### `Ectype: class '<name>' registered. Tree <guid> as EPerkTree <n>, <m> perk(s). <status>`
+### `Ectype: role '<name>' registered. Tree <guid> as EPerkTree <n>, <m> perk(s). <status>`
 
-Success. `n` is the tree's ordinal, assigned by sorting `classId` values, so every client with
-the same set of class mods gets the same ordinal.
+Success. `n` is the tree's ordinal, assigned by sorting `roleId` values, so every client with
+the same set of role mods gets the same ordinal.
 
 ### `Ectype VERIFY '<name>': ok. <n> perk(s) resolve; tree asset built; tree def published.`
 
 The follow-up check after registration. Two failure forms exist:
 
 - `Ectype VERIFY '<name>': perk '<key>' does not resolve by GUID.` The perk's asset did not
-  enter the game's registry. Look for an earlier `registration` warning for the class.
+  enter the game's registry. Look for an earlier `registration` warning for the role.
 - `Ectype VERIFY '<name>': perk '<key>' def.Asset is null - ref not IsRuntime, or the asset was collected.` The registered asset was released. Report it with the log.
 
 `tree def not published` in the success line means the tree def stage was skipped: either
@@ -184,7 +186,7 @@ controller patch is missing (next entry). Reset those keys to their defaults, wh
 
 A stage threw. The framework logs the first failure and every tenth after it, and tries again
 after 2 seconds. After 200 attempts it gives up with
-`Ectype: giving up on '<name>'. Last error: <exception>` and the class is absent for the
+`Ectype: giving up on '<name>'. Last error: <exception>` and the role is absent for the
 session. The message to read is the one after the colon. Common ones:
 
 | Message | Cause and fix |
@@ -201,7 +203,7 @@ The message says why:
 
 | Message | Fix |
 | --- | --- |
-| `unknown stat '<s>' (not a StatType name, not a framework-owned stat, not a custom stat of this class, not an int id)` | The stat name is misspelled or does not exist. Names are compared without regard to case. The list is in `docs/stat-names.md`. A stat declared by another mod cannot be named. |
+| `unknown stat '<s>' (not a StatType name, not a framework-owned stat, not a custom stat of this role, not an int id)` | The stat name is misspelled or does not exist. Names are compared without regard to case. The list is in `docs/stat-names.md`. A stat declared by another mod cannot be named. |
 | `unknown modifier type '<t>' (percent, scalar, flat, flat2, or a ModifierType name)` | Fix `type`. |
 | `effect names no stat` | The effect has no `stat` field. |
 
@@ -254,19 +256,19 @@ limits a target, so the effect registers and does nothing. The framework checks 
 reapply, and counts a miss only when a reapply at least 10 seconds later still misses, because
 modules and abilities join the stat tree after spawn. Change the `target`, or change the stat.
 
-### `Ectype: the PerkTreeController ctor prefix is not applied - tree defs are not published this session. Classes register but no tree renders.`
+### `Ectype: the PerkTreeController ctor prefix is not applied - tree defs are not published this session. Roles register but no tree renders.`
 
-The patch that injects class trees into the terminal did not apply. The framework withholds
+The patch that injects role trees into the terminal did not apply. The framework withholds
 every tree def rather than let the terminal throw. Cause is the same as for `FATAL`.
 
 ### `Ectype: dropped perk GUID <guid> before ReApplyPerks (suppressed)` or `(unresolvable - would have thrown and wiped this player's perks)`
 
 A player's saved or replicated perk list holds a GUID that no longer resolves. This happens
-when a class mod is uninstalled, when a class's `classId` or a perk's `key` changed, or when
-another player has a class this client lacks. The game's perk reapply would have thrown and
+when a role mod is uninstalled, when a role's `roleId` or a perk's `key` changed, or when
+another player has a role this client lacks. The game's perk reapply would have thrown and
 left the player with no perks, so the framework removes the entry first. The save keeps the
 entry; reinstalling the mod restores the perk. `(suppressed)` is the same drop for a perk of a
-suppressed class.
+suppressed role.
 
 ### `Ectype: perk GUID <guid> held at level <n> but has <m> level(s) - applying level <m> (would have thrown and wiped this player's perks).` and `Ectype: saved perk <name> (<guid>) held at level <n> but has <m> - lowered to <m>, <n-m> point(s) return as unspent.`
 
@@ -276,12 +278,12 @@ being corrected: the extra points return as unspent.
 
 ### `Ectype: scrubbed saved perk <guid> from a loadout (its tree is suppressed; the point returns as unspent).`
 
-A saved loadout held a perk from a stock tree that a class mod now suppresses. The point is
+A saved loadout held a perk from a stock tree that a role mod now suppresses. The point is
 refunded.
 
 ### Things that look like they should work
 
-- **Renaming a `classId` or a perk `key` after release.** Both seed GUIDs. A rename orphans
+- **Renaming a `roleId` or a perk `key` after release.** Both seed GUIDs. A rename orphans
   every saved selection exactly as deleting the perk would. Pin an explicit `guid` on a perk to
   survive a key rename.
 - **A perk row above 7, or a `col` above 2 on a three-cell row.** Validation only rejects
@@ -289,9 +291,9 @@ refunded.
   terminal breaks. Rows 2, 5 and 7 are single cells and need `"wide": true`.
 - **A level list written as increments.** Each level's list is the full effect at that level.
   A ladder of +10%, +20%, +30% is written 0.10, 0.20, 0.30.
-- **An effect on a vanilla class-ability stat.** `ClassAbilityDuration` and
-  `ClassAbilityCooldown` reach every class ability on the character. Register the ability's own
-  timing under class-declared stats with `ClassStats.RegisterAbilityTiming` and name those.
+- **An effect on a vanilla role-ability stat.** `ClassAbilityDuration` and
+  `ClassAbilityCooldown` reach every role ability on the character. Register the ability's own
+  timing under role-declared stats with `RoleStats.RegisterAbilityTiming` and name those.
 - **Naming both ids of a pair on one level.** The hand-attractor stats and their vanilla mirror
   ids compound on one float when a single source names both. Name one.
 - **A custom stat with no code reading it.** It registers and shows in tooltips and changes
@@ -301,20 +303,20 @@ refunded.
 
 ### `Ectype: tree VE injection for '<name>' failed: <exception>` and `Ectype: tree element for '<name>' missing - its PerkTreeDef was filtered out of this build so the terminal survives without it.`
 
-The framework could not build that class's tree element in a terminal. It removes the class's
-tree definition from that terminal's build so the terminal opens without it. Other classes are
+The framework could not build that role's tree element in a terminal. It removes the role's
+tree definition from that terminal's build so the terminal opens without it. Other roles are
 unaffected. The exception names the cause; if the next two entries appear before it, they are
 the cause.
 
 ### `Ectype: no 'Scavenger' PerkTreeVE in this document - cannot place tree '<t>'.`, `Ectype: could not resolve the owning UIDocument (or its visualTreeAsset) for this root - cannot instantiate a pristine tree.`, `Ectype: no 'Scavenger' PerkTreeVE in a fresh instantiation of <asset>.`
 
-The framework builds each class tree from the game's authored Scavenger tree element. The
+The framework builds each role tree from the game's authored Scavenger tree element. The
 terminal document no longer has one, or its asset could not be resolved. A game update changed
 the terminal layout.
 
 ### `Ectype: palette install failed: <exception>`
 
-The per-class colour stylesheets could not be attached to a terminal. Trees render untinted.
+The per-role colour stylesheets could not be attached to a terminal. Trees render untinted.
 
 ### `Ectype geometry [<document>]: document is attached, shown and in a sized panel, but its tree row still has no width after 20s - layout failed.`
 
@@ -337,27 +339,27 @@ reporting it.
 
 ### `Ectype: HUD document has no ClassAbilityContainer/Scavenger element - HUD slot skipped (game update?).`
 
-The HUD layout no longer has the element the class-ability slot is built from. Classes work
+The HUD layout no longer has the element the role-ability slot is built from. Roles work
 without a HUD slot. The same line with `HUD bar buttons are skipped this session` applies to
 the ability bar.
 
-### `Ectype: HUD ability-slot wiring failed (reported once; modded classes run without a HUD slot): <exception>`
+### `Ectype: HUD ability-slot wiring failed (reported once; modded roles run without a HUD slot): <exception>`
 
-The slot for a framework class's ability could not be built. The ability still works through
+The slot for a framework role's ability could not be built. The ability still works through
 its key.
 
 ### `Ectype: HUD ability element has no '<name>' child - that layer keeps the donor's glyph (game update renamed it?).`
 
-A layer of the slot element is missing. The class's icon does not show on that layer.
+A layer of the slot element is missing. The role's icon does not show on that layer.
 
-### `Ectype: HUD slot '<name>' for '<classId>': glyph MISSING (donor or placeholder shows), siblings [...]`
+### `Ectype: HUD slot '<name>' for '<roleId>': glyph MISSING (donor or placeholder shows), siblings [...]`
 
-Logged once per class under `VerboseLogging`. `glyph MISSING` means the hero perk's `icon` key
+Logged once per role under `VerboseLogging`. `glyph MISSING` means the hero perk's `icon` key
 matched no embedded PNG. The slot shows the donor's art or the placeholder.
 
 ### `Ectype: HUD role icon install failed: <exception>` and `Ectype: lobby role icon install failed: <exception>`
 
-The class's role icon could not be drawn in the crew HUD or the lobby list. The class works.
+The role's icon could not be drawn in the crew HUD or the lobby list. The role works.
 
 ### `Ectype: no loaded sprite named '<name>' - that pip layer is left blank.`
 
@@ -377,36 +379,36 @@ without that layer.
 ## Abilities
 
 An ability is a `ClassAbility` subclass returned by a factory registered with
-`ClassRegistry.RegisterAbilityFactory(classId, factory)` at the plugin's `Awake`. The framework
+`RoleRegistry.RegisterAbilityFactory(roleId, factory)` at the plugin's `Awake`. The framework
 builds one per character spawn, installs it into the character's Opsive locomotion, and points
-it at the class's hero, row-5 and row-7 banner perks.
+it at the role's hero, row-5 and row-7 banner perks.
 
-### `Ectype: ability factory registered for '<classId>'.`
+### `Ectype: ability factory registered for '<roleId>'.`
 
 The factory call arrived. If the line is absent, the call never ran: check plugin load order
-and the `[BepInDependency]` attribute. A factory registered for a `classId` with no manifest
+and the `[BepInDependency]` attribute. A factory registered for a `roleId` with no manifest
 does nothing.
 
-### `Ectype: ability factory for '<classId>' threw - the class stays data-only this session: <exception>`
+### `Ectype: ability factory for '<roleId>' threw - the role stays data-only this session: <exception>`
 
-The factory threw on a character spawn. The class has no ability this session and its perks
+The factory threw on a character spawn. The role has no ability this session and its perks
 still apply. Fix the exception.
 
-### `Ectype: ability factory for '<classId>' returned null or a non-ClassAbility - the class stays data-only this session.`
+### `Ectype: ability factory for '<roleId>' returned null or a non-ClassAbility - the role stays data-only this session.`
 
 The factory must return a `ClassAbility` subclass. The simplest base is
-`EctypeClassAbility`, which wraps the effect hooks.
+`EctypeRoleAbility`, which wraps the effect hooks.
 
-### `Ectype: ability field wiring failed for '<classId>' (member rename? see warnings above) - ability not installed.`
+### `Ectype: ability field wiring failed for '<roleId>' (member rename? see warnings above) - ability not installed.`
 
 One of the identity fields on the ability (`AbilityPerk`, `CapstonePerk`,
 `SuperiorAbilityPerk`, `abilityUsable`, `tags`) could not be set. The warning above the error
 reads `field '<name>' not found on <Type> (game update?)` and names the missing field. A game
 update renamed it.
 
-### `Ectype: installing '<classId>' ability into the locomotion failed: <exception>`, `Ectype: ability install sweep failed: <exception>`
+### `Ectype: installing '<roleId>' ability into the locomotion failed: <exception>`, `Ectype: ability install sweep failed: <exception>`
 
-Installing the ability into the character failed. That character has no ability from the class
+Installing the ability into the character failed. That character has no ability from the role
 until it respawns. Other characters are unaffected.
 
 ### `Ectype: could not read m_CharacterLocomotion off a ClassAbility - game/Opsive update? Modded abilities will not install.`
@@ -415,34 +417,34 @@ The field the framework reads the locomotion from is gone. No framework ability 
 
 ### `Ectype: <AbilityType>.OnApplyEffect threw (reported once): <exception>` and `... OnRemoveEffect threw ...`
 
-An override on an `EctypeClassAbility` subclass threw. The base class catches the exception so
+An override on an `EctypeRoleAbility` subclass threw. The base class catches the exception so
 Opsive's update loop keeps running, and logs it once per ability type. Fix the override.
 
-### `Ectype: could not repoint <VanillaAbilityType> onto '<classId>' (field rename? see warnings above) - that class has no active ability.`
+### `Ectype: could not repoint <VanillaAbilityType> onto '<roleId>' (field rename? see warnings above) - that role has no active ability.`
 
-A class suppresses a stock tree and takes over the stock ability that tree owned. The repoint
-failed because a field was renamed. The class has no ability.
+A role suppresses a stock tree and takes over the stock ability that tree owned. The repoint
+failed because a field was renamed. The role has no ability.
 
 ### `Ectype: ClassAbility.VerifyIfIsSelectedAbility not found - game update? Adopted abilities will not select until the next loadout change.`
 
 An adopted stock ability selects only after the next loadout change.
 
-### `Ectype: deciding the capstone payload for <AbilityType> failed - the vanilla payload stays, and it may stack with the class's authored effects: <exception>`
+### `Ectype: deciding the capstone payload for <AbilityType> failed - the vanilla payload stays, and it may stack with the role's authored effects: <exception>`
 
-A class that adopted a stock ability and authored its own capstone effects may receive both.
+A role that adopted a stock ability and authored its own capstone effects may receive both.
 
 ### Things that look like they should work
 
 - **The ability key does nothing for the first seconds after selecting the perk.** Selecting
-  the hero perk, and every respawn, starts the full cooldown, as for any class ability.
+  the hero perk, and every respawn, starts the full cooldown, as for any role ability.
 - **An ability added at runtime works in solo and breaks other players.** Opsive replicates
   ability start and stop by position in the character's ability array. A client whose array
   differs resolves the number against the wrong ability or past the end of the array, and the
   exception lands inside the engine's own tick on every other client, once per start and once
   per stop. Register the ability with `RuntimeAbilities.Register(ability, key)` after it is in
   the array, with a literal key namespaced by your mod. The framework then replicates it by key
-  on its own channel. A framework class ability is registered automatically as
-  `ectype:<classId>`.
+  on its own channel. A framework role ability is registered automatically as
+  `ectype:<roleId>`.
 - **A `RuntimeAbilities` key computed from runtime state.** The key must be the same on every
   client for the same ability. A key built from an index, an instance id or anything that
   differs between clients never matches.
@@ -458,7 +460,7 @@ Which screen says what the problem is:
 | `Disconnected: Incompatable mod list` (VoidManager's spelling) | VoidManager, on the joiner's client | The two mod lists differ in a mod declared `All`: a different version, or a mod only one side has. |
 | `Host is missing the required mod` | VoidManager | The joiner has an `All` mod the host lacks. |
 | `Client is missing the required mod` | VoidManager | The host has an `All` mod the joiner lacks. |
-| A screen that lists individual assets | The game's asset check | One side registered required content (a class's tree or perks, for example) that the other did not. |
+| A screen that lists individual assets | The game's asset check | One side registered required content (a role's tree or perks, for example) that the other did not. |
 | Removed from the room after arriving, with no message from the framework | VoidManager, on the host | Same version, different DLL bytes. Only the host compares hashes. |
 
 Fix every case the same way: give everyone the same files. Raise the version of any mod whose
@@ -471,7 +473,7 @@ because each records the framework assembly version it was compiled against, so 
 rebuilt dependent differs from a downloaded one at the same version number. Reship from one
 set of files.
 
-### A player lacks a class mod and the room runs
+### A player lacks a role mod and the room runs
 
 It does not. The asset check refuses the join in both directions. See `multiplayer.md`.
 
@@ -524,7 +526,7 @@ other callbacks still run. Fix the callback.
 
 | Line | Meaning |
 | --- | --- |
-| `Ectype: published host suppression to the room: '<classIds>'.` / `(cleared).` | The host wrote its per-class toggles to the room. This happens only while the host is in the hub. |
+| `Ectype: published host suppression to the room: '<roleIds>'.` / `(cleared).` | The host wrote its per-role toggles to the room. This happens only while the host is in the hub. |
 | `Ectype: host suppression changed +[<ids>] -[<ids>].` | This client applied a new suppressed set. It then reapplies every player's perks and rebuilds the gene-tree screens. |
 | `Ectype: rebuilt <n> gene-tree screen(s) for the suppression change.` | The open terminals were rebuilt. |
 | `Ectype: gene-tree screen on '<name>' has no trees or no authored template - left as built, so it shows the old suppression until a respawn.` | One terminal could not be rebuilt. It updates after a respawn. |
@@ -535,7 +537,7 @@ other callbacks still run. Fix the callback.
 
 Things that look like they should work and do not:
 
-- **A suppressed class still has to be installed by everyone.** Suppression hides a class and
+- **A suppressed role still has to be installed by everyone.** Suppression hides a role and
   leaves its assets registered, so the asset check still compares them.
 - **A toggle changed during a run does nothing until the host is in the hub.** The host
   publishes its toggles only from the hub.
@@ -566,7 +568,7 @@ sees no message it cannot act on and ignores keys it has no ability for.
 
 ## Utility APIs
 
-These lines come from the APIs a non-class mod calls.
+These lines come from the APIs a non-role mod calls.
 
 ### Enemy and character statuses
 

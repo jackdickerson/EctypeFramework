@@ -1,6 +1,6 @@
-# HUD ability bar: extra ability buttons beside the class ability
+# HUD ability bar: extra ability buttons beside the role ability
 
-`HudAbilityBar` draws a row of square buttons to the right of the class-ability widget, at
+`HudAbilityBar` draws a row of square buttons to the right of the role-ability widget, at
 most `HudAbilityBar.MaxButtons` (4, a constant in the framework). A mod registers a button
 and keeps the ability, its input and its cooldown. The framework builds the button, lays out
 the row, draws the key chip and feeds the fill.
@@ -59,17 +59,17 @@ nothing is networked or registered, so it cannot flag a session.
 
 ## Placement
 
-Placement follows the height-matched HUD scale: a button's side is the class-ability plate's
+Placement follows the height-matched HUD scale: a button's side is the role-ability plate's
 height, read live. Each button is preceded by one gap plus how far the previous element's key
 chip reaches past its plate, halved: the chips overhang their own corner, so the full
 clearance reads as too much air.
 
-The class-ability widget's chip is moved to the same convention, centred on its plate's
+The role-ability widget's chip is moved to the same convention, centred on its plate's
 bottom-right corner and in front, for stock and framework-built slots alike. The game lays
 that chip out in a flex row and never writes its position, so taking it out of flow holds. Out
 of flow it no longer pushes the plate right, so the widget gets a left padding of the chip's
 row width, measured once while the chip was still in the row, and the plate stays where the
-game put it. A framework-built class slot follows the same colour rule: its accent goes on the
+game put it. A framework-built role slot follows the same colour rule: its accent goes on the
 glow, and on the fill while ready.
 
 No placement reads back a size that the placement itself changes. A chip's measured width

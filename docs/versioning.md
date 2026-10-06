@@ -1,6 +1,6 @@
 # Versioning
 
-How the framework is numbered, what two numbers in a class manifest gate, and what a
+How the framework is numbered, what two numbers in a role manifest gate, and what a
 framework update costs a dependent mod.
 
 ## The version number
@@ -33,33 +33,33 @@ missing from it carried no such change.
   names the types and members it calls. A framework without one of them fails at the first
   call that touches it, with a `TypeLoadException` (or the matching missing-member
   exception) raised inside the mod's own code. List the version you built against in the Thunderstore
-  dependency string, and in the manifest as `minFrameworkVersion` if the class needs a
+  dependency string, and in the manifest as `minFrameworkVersion` if the role needs a
   feature added after the first release.
 - **The manifest format is versioned separately.** `contractVersion` changes only when the
   manifest's meaning changes in a way an older reader would misread. Version numbers of the
   framework and of the contract are independent.
 - **A manifest field the framework does not know is ignored.** A manifest never fails
   because it names a field from a newer contract. What it asks for is lost silently, which
-  is the reason to stamp `minFrameworkVersion` when the class uses a newer feature.
-- **A rejected class is absent, never half-registered.** Every rejection below skips that
-  class only. The terminal, the other classes and the rest of the game load normally.
+  is the reason to stamp `minFrameworkVersion` when the role uses a newer feature.
+- **A rejected role is absent, never half-registered.** Every rejection below skips that
+  role only. The terminal, the other roles and the rest of the game load normally.
 
 ## What `contractVersion` and `minFrameworkVersion` gate
 
-The framework checks both when it reads a class mod's embedded manifest, before it
+The framework checks both when it reads a role mod's embedded manifest, before it
 registers anything from it.
 
 **`contractVersion`** is required. The framework compares it for equality with the contract
-version it implements, which is currently `1`. Any other value rejects the class, whether
+version it implements, which is currently `2`. Any other value rejects the role, whether
 higher or lower. The log line is
 
 ```
-Ectype: manifest '<resource name>' in <assembly> rejected: contractVersion <n> (this framework speaks 1)
+Ectype: manifest '<resource name>' in <assembly> rejected: contractVersion <n> (this framework speaks 2)
 ```
 
 **`minFrameworkVersion`** is optional, a string `"major.minor.patch"`. Absent means no
 minimum. The framework parses it and compares it with its own version. A framework older
-than the value rejects the class:
+than the value rejects the role:
 
 ```
 Ectype: manifest '<resource name>' in <assembly> rejected: needs Ectype Framework <min> or newer (this is <installed>)
@@ -75,11 +75,11 @@ Ectype: manifest '<resource name>' in <assembly> rejected: minFrameworkVersion '
 requirement.
 
 Set `minFrameworkVersion` to the oldest framework that has every feature the manifest and
-the class code use. A class that needs nothing newer than the first release leaves it out.
+the role code use. A role that needs nothing newer than the first release leaves it out.
 
 ## Every player needs the same build
 
-The framework declares multiplayer type `All`, and so does every class mod. Two checks apply
+The framework declares multiplayer type `All`, and so does every role mod. Two checks apply
 to a mod of that type when a player joins a room.
 
 1. The joining client compares its mod list with the host's list. Mod name, GUID, version and

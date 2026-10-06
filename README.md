@@ -2,10 +2,10 @@
 
 A framework for Void Crew mods, in two halves that ship as one assembly.
 
-- **The class framework.** A class in Void Crew is a perk tree whose row-0 perk has display
+- **The role framework.** A role in Void Crew is a perk tree whose row-0 perk has display
   type `Hero`. The game's screens assume exactly four trees. The framework patches those
-  surfaces once per process, so a class mod carries only content: a JSON manifest, icons and
-  optionally a class ability.
+  surfaces once per process, so a role mod carries only content: a JSON manifest, icons and
+  optionally a role ability.
 - **General utilities** for any mod: mutator safety, timed enemy and character statuses,
   field-backed stats, runtime ability replication, ship arrivals from the void, curve-driven
   stat contributions, loot-table registration, a HUD ability bar and a room build check.
@@ -19,11 +19,11 @@ it; a mismatched version bounces the joiner.
 
 ## For modders
 
-- [Quickstart](docs/quickstart.md): from install to a class visible in game.
+- [Quickstart](docs/quickstart.md): from install to a role visible in game.
 - [Setup](docs/setup.md): building a dependent mod on a machine that has only the game.
-- [Choosing a mod shape](docs/choosing.md): a data-only class, a class with code, or a
+- [Choosing a mod shape](docs/choosing.md): a data-only role, a role with code, or a
   utility-only mod.
-- [Class manifest reference](docs/manifest.md) and [stat names](docs/stat-names.md).
+- [Role manifest reference](docs/manifest.md) and [stat names](docs/stat-names.md).
 - [Multiplayer](docs/multiplayer.md): what every player in a room needs.
 - [Troubleshooting](docs/troubleshooting.md): each message the framework logs.
 - [Versioning](docs/versioning.md) and [publishing](docs/publishing.md).
@@ -32,7 +32,7 @@ it; a mismatched version bounces the joiner.
 
 ### Reference
 
-- [Class mods](docs/reference/classes.md)
+- [Role mods](docs/reference/roles.md)
 - [Configuration](docs/reference/config.md)
 - [Mutator safety](docs/reference/mutator-safety.md)
 - [Selection gate](docs/reference/selection-gate.md)

@@ -12,12 +12,12 @@ using ResourceAssets;
 namespace Ectype
 {
     /// <summary>
-    /// Writes every VANILLA class tree - perk names, tooltip text, grid positions, display
+    /// Writes every VANILLA role tree - perk names, tooltip text, grid positions, display
     /// types, targets, and each level's actual StatMods (stat id + name, modifier type,
     /// amount, dynamic condition/value type names, tag configuration) - to
-    /// BepInEx\EctypeDump\vanilla-classes.json, once per launch, as soon as the containers
+    /// BepInEx\EctypeDump\vanilla-roles.json, once per launch, as soon as the containers
     /// are up. This is the ground truth for authoring a manifest that recreates a vanilla
-    /// class verbatim, and a regression probe for what a game update changed.
+    /// role verbatim, and a regression probe for what a game update changed.
     /// </summary>
     internal static class VanillaDump
     {
@@ -36,7 +36,7 @@ namespace Ectype
                 JArray trees = new JArray();
                 foreach (PerkTreeRef tref in tc.GetPerkRefs())
                 {
-                    if (tref == null || ClassRegistry.IsOurGuid(tref.AssetGuid)) continue;
+                    if (tref == null || RoleRegistry.IsOurGuid(tref.AssetGuid)) continue;
                     PerkTreeDef def = tc.GetAssetDefById(tref.AssetGuid, true);
                     if (def == null || def.Asset == null || def.Asset.Perks == null) continue;
                     trees.Add(DumpTree(tref, def, pc));
@@ -45,14 +45,14 @@ namespace Ectype
 
                 string dir = Path.Combine(BepInEx.Paths.BepInExRootPath, "EctypeDump");
                 Directory.CreateDirectory(dir);
-                string path = Path.Combine(dir, "vanilla-classes.json");
+                string path = Path.Combine(dir, "vanilla-roles.json");
                 File.WriteAllText(path, new JObject
                 {
                     ["game"] = UnityEngine.Application.version,
                     ["trees"] = trees
                 }.ToString());
                 _done = true;
-                Plugin.Log.LogInfo("Ectype: vanilla class dump written to " + path + " (" +
+                Plugin.Log.LogInfo("Ectype: vanilla role dump written to " + path + " (" +
                                    trees.Count + " trees).");
             }
             catch (Exception e)

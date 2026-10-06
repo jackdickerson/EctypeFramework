@@ -7,13 +7,13 @@ using Client.Player.Interactions;
 namespace Ectype
 {
     /// <summary>
-    /// Stats the FRAMEWORK owns, as opposed to the ones a class declares in its own manifest.
+    /// Stats the FRAMEWORK owns, as opposed to the ones a role declares in its own manifest.
     ///
     /// A number belonging to something the game gives every player is declared here rather
-    /// than in one class's manifest: registered once per session whether or not any class is
+    /// than in one role's manifest: registered once per session whether or not any role is
     /// installed, nameable from every manifest, and read by a framework consumer.
     ///
-    /// Ids derive from the reserved owner string below in place of a classId. The names and
+    /// Ids derive from the reserved owner string below in place of a roleId. The names and
     /// that string are part of the shipped contract - renaming one derives a different id,
     /// which is a silent no-op on one side of a mixed room.
     ///
@@ -23,14 +23,14 @@ namespace Ectype
     /// number does and what the game authored. A stat with no consumer is inert, and the
     /// log says so.
     ///
-    /// Public, because a class mod's ability code contributes to a framework stat the normal
+    /// Public, because a role mod's ability code contributes to a framework stat the normal
     /// vanilla way - a StatMod against Id(name) applied to the player's collection on start
     /// and removed by source on stop - and needs the id to do it.
     /// </summary>
     public static class FrameworkStats
     {
         /// <summary>
-        /// Stands in for a classId when deriving framework-owned stat ids. Never change it:
+        /// Stands in for a roleId when deriving framework-owned stat ids. Never change it:
         /// every id below is a hash of it.
         /// </summary>
         public const string Owner = "ectype";
@@ -48,13 +48,13 @@ namespace Ectype
         public const string GrapplePullAcceleration = "GrapplingHookPullAcceleration";
         /// <summary>The cooldown left behind when the grappling hook attaches to nothing; lower is better.</summary>
         public const string GrappleMissCooldown = "GrapplingHookMissCooldown";
-        /// <summary>Scopes the grappling hook's own recharge time apart from other class abilities; lower is better.</summary>
+        /// <summary>Scopes the grappling hook's own recharge time apart from other role abilities; lower is better.</summary>
         public const string GrappleCooldown = "GrapplingHookCooldown";
 
         // The EVA suit's inertial damping: Opsive's CharacterLocomotion.ExternalForceDamping,
         // the per-tick decay on the external-force velocity the jetpack steers with. A plain
         // property over a plain field, wired onto the player's own collection by
-        // CharacterStats. Lower means momentum persists longer; "better" depends on the class,
+        // CharacterStats. Lower means momentum persists longer; "better" depends on the role,
         // so the tooltip does not invert it.
         /// <summary>Per-tick decay of the EVA suit's external-force velocity; lower keeps momentum longer.</summary>
         public const string ExternalForceDamping = "ExternalForceDamping";
@@ -83,7 +83,7 @@ namespace Ectype
 
         // The owning ability's channel length and cooldown, as hand-scoped second ids onto the
         // ability's FiniteTimeDuration / CooldownSeconds (the vanilla ClassAbilityDuration /
-        // ClassAbilityCooldown aliases reach every class ability on the character), and the
+        // ClassAbilityCooldown aliases reach every role ability on the character), and the
         // number of items one channel holds at once. Registered through HandAttractorStats.
         /// <summary>How long the hand-held attractor channel stays on, in seconds.</summary>
         public const string HandAttractorDuration = "HandAttractorDuration";
@@ -276,7 +276,7 @@ namespace Ectype
 
         /// <summary>
         /// Register every framework stat into the live StatTable. Re-runnable and cheap after
-        /// the first success; the caller runs it on the same retry cadence as class
+        /// the first success; the caller runs it on the same retry cadence as role
         /// registration, because the StatTable is Resources-backed and absent at plugin Awake.
         /// A failure leaves everything that reads these stats inert but never half a set
         /// behind, because RegisterCustomStat is re-entrant per id.

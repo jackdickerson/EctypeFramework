@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <AssemblyName>ExampleClass</AssemblyName>
-    <RootNamespace>ExampleClass</RootNamespace>
+    <AssemblyName>ExampleRole</AssemblyName>
+    <RootNamespace>ExampleRole</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="src\*.cs" />
-    <!-- A resource whose name ends "ectype-class.json" is how the framework finds this assembly as a class mod. -->
+    <!-- A resource whose name ends "ectype-role.json" is how the framework finds this assembly as a role mod. -->
     <EmbeddedResource Include="manifest\*.json" />
     <EmbeddedResource Include="assets\*.png" />
   </ItemGroup>

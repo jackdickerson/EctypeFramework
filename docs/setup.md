@@ -1,7 +1,7 @@
 # Setting up a dependent mod
 
 How to build a mod that depends on EctypeFramework on a machine that has the game and
-nothing else from this project. The same project file shape serves a data-only class, a class
+nothing else from this project. The same project file shape serves a data-only role, a role
 with code and a utility-only mod; [choosing.md](choosing.md) says which to write.
 
 ## Prerequisites
@@ -9,7 +9,7 @@ with code and a utility-only mod; [choosing.md](choosing.md) says which to write
 - Void Crew with BepInEx 5 and VoidManager installed. The build reads their DLLs from the
   game folder.
 - `EctypeFramework.dll` in `BepInEx\plugins\`. A mod that calls framework code compiles
-  against that file. A data-only class never references it, but it needs the framework
+  against that file. A data-only role never references it, but it needs the framework
   installed to run.
 - A .NET SDK, any recent version, from Microsoft. nuget.org must be reachable on the first
   restore, which downloads the .NET Framework 4.7.2 reference assemblies as the package
@@ -18,8 +18,8 @@ with code and a utility-only mod; [choosing.md](choosing.md) says which to write
 
 ## The project file
 
-The three starter examples ([data-only](../examples/data-only-class/),
-[ability](../examples/ability-class/), [utility](../examples/utility-mod/)) and the per-API
+The three starter examples ([data-only](../examples/data-only-role/),
+[ability](../examples/ability-role/), [utility](../examples/utility-mod/)) and the per-API
 samples share one set of settings and base references in `examples\Directory.Build.props`,
 described under "The examples' shared property file" below, and each project file holds only
 what is its own. The listing here is the same set written out as one standalone project file,
@@ -103,7 +103,7 @@ touches a type from that assembly.
 | `BepInEx` | `BepInEx\core` | every mod: `BaseUnityPlugin`, `[BepInPlugin]`, `[BepInDependency]`, the logger | `CS0246`, type `BepInPlugin` not found |
 | `VoidManager` | `BepInEx\plugins` | every mod: `VoidPlugin`, `MultiplayerType`, the plugin GUID constant | `CS0246`, namespace `VoidManager` or type `VoidPlugin` not found |
 | `UnityEngine`, `UnityEngine.CoreModule` | `Void Crew_Data\Managed` | every mod: `MonoBehaviour` is the base of `BaseUnityPlugin` | `CS0012`, type `MonoBehaviour` is defined in an assembly that is not referenced |
-| `EctypeFramework` | `BepInEx\plugins` | code that calls the `Ectype` namespace. A data-only class carries no reference to it | `CS0246`, namespace `Ectype` not found |
+| `EctypeFramework` | `BepInEx\plugins` | code that calls the `Ectype` namespace. A data-only role carries no reference to it | `CS0246`, namespace `Ectype` not found |
 | `Assembly-CSharp` | `Void Crew_Data\Managed` | any game type: `ClientGame`, `OrbitObject`, `Player`, the ability base class | `CS0246`, for example `OrbitObject` or namespace `CG` not found |
 | `PhotonUnityNetworking` | `Void Crew_Data\Managed` | game types that are Photon behaviours, which includes `ClientGame`, `OrbitObject`, `Player` and the ability's `LocalPlayer`; `PhotonNetwork` | `CS0012`, type `MonoBehaviourPun` is defined in an assembly that is not referenced |
 | `PhotonRealtime` | `Void Crew_Data\Managed` | naming a Photon room or player type, for example `PhotonNetwork.LocalPlayer` | `CS0012`, type `Player` is defined in an assembly that is not referenced |
@@ -111,14 +111,14 @@ touches a type from that assembly.
 | `VoidCrewCommon` | `Void Crew_Data\Managed` | shared game enums and data types, for example `LootRarities` | `CS0012`, type `LootRarities` is defined in an assembly that is not referenced |
 | `Newtonsoft.Json` | `Void Crew_Data\Managed` | game types whose members use `JToken`, which the asset identifier does | `CS0012`, type `JToken` is defined in an assembly that is not referenced |
 | `Unity.InputSystem` | `Void Crew_Data\Managed` | `UnityEngine.InputSystem`, for example `Keyboard.current` | `CS0234`, namespace `InputSystem` does not exist in `UnityEngine` |
-| `Opsive.UltimateCharacterController` | `Void Crew_Data\Managed` | a class ability or any `Ability` subclass | `CS0012`, type `Ability` is defined in an assembly that is not referenced (or `CS0246`) |
+| `Opsive.UltimateCharacterController` | `Void Crew_Data\Managed` | a role ability or any `Ability` subclass | `CS0012`, type `Ability` is defined in an assembly that is not referenced (or `CS0246`) |
 | `Opsive.Shared` | `Void Crew_Data\Managed` | the same: `Ability` derives from a type in this assembly | `CS0012`, type `StateObject` is defined in an assembly that is not referenced |
 
 A mod that touches the common game types (`ClientGame`, `OrbitObject`, `Player`,
 `GUIDUnion`) references the full base set: `BepInEx`, `VoidManager`, `EctypeFramework`,
 `Assembly-CSharp`, `UnityEngine`, `UnityEngine.CoreModule`, plus `PhotonUnityNetworking`,
 `PhotonRealtime`, `VoidCrewCommon`, `ResourceAssets`, `Newtonsoft.Json` and
-`Unity.InputSystem`. A class ability adds `Opsive.UltimateCharacterController` and
+`Unity.InputSystem`. A role ability adds `Opsive.UltimateCharacterController` and
 `Opsive.Shared`. A mod that names none of those types can leave the extra assemblies out.
 
 `CS0012` names the missing assembly in its text: `You must add a reference to assembly
@@ -141,15 +141,15 @@ only if the props file is copied into a folder above it.
 
 ### Embedded resources
 
-A class mod embeds its manifest, and its icons if it has any:
+A role mod embeds its manifest, and its icons if it has any:
 
 ```xml
 <EmbeddedResource Include="manifest\*.json" />
 <EmbeddedResource Include="assets\*.png" />
 ```
 
-The framework finds a class by an embedded resource whose name ends in
-`ectype-class.json`. An icon key in the manifest names an embedded PNG, matched by the
+The framework finds a role by an embedded resource whose name ends in
+`ectype-role.json`. An icon key in the manifest names an embedded PNG, matched by the
 resource name ending in `<key>.png`. A key with no PNG falls back to the framework's own
 placeholder. A utility-only mod embeds nothing.
 
@@ -163,7 +163,7 @@ VoidManager builds a mod's entry in its list from the plugin, not from the proje
 | `MPType` | An override on your `VoidPlugin` subclass. See [multiplayer.md](multiplayer.md) for the values and what each costs. |
 | `Author`, `Description` | Overrides on the same subclass. |
 | `ThunderstoreID` | An optional override on the same subclass, `Author/Package`. |
-| Session flag | The return value of `OnSessionChange`. A class mod returns `SetMod_Session = true`. |
+| Session flag | The return value of `OnSessionChange`. A role mod returns `SetMod_Session = true`. |
 
 ## The dependency attribute
 
@@ -192,9 +192,9 @@ A minimum version is the second argument:
 BepInEx then refuses to load the plugin when the installed framework is older. A mod that
 calls framework code should use this form with the version it was compiled against, because an
 older framework without a member the mod calls fails at the first call that touches it, with
-a `TypeLoadException` or `MissingMethodException` raised inside the mod. A class that only
+a `TypeLoadException` or `MissingMethodException` raised inside the mod. A role that only
 needs a newer manifest feature can instead set `minFrameworkVersion` in the manifest, which
-rejects that one class and logs a line naming the version needed. [versioning.md](versioning.md)
+rejects that one role and logs a line naming the version needed. [versioning.md](versioning.md)
 says what each gate covers.
 
 ## Where the output goes
@@ -202,7 +202,7 @@ says what each gate covers.
 `bin\Release\<AssemblyName>.dll`. Copy it to `<game>\BepInEx\plugins\` with the game closed.
 Rebuild and copy again for every change; BepInEx loads plugins at launch.
 
-The DLL embeds its manifest and icons, so it is the only file a class mod installs.
+The DLL embeds its manifest and icons, so it is the only file a role mod installs.
 
 ## Failure modes
 
@@ -240,7 +240,7 @@ in `[BepInDependency]`.
 **A framework update changes your DLL.** A compiled mod records the assembly version of each
 assembly it references, so rebuilding against a new framework changes the bytes at an
 unchanged version number. Rebuild, raise the version and reship with each framework release.
-A data-only class references no framework assembly, so its bytes change only when BepInEx or
+A data-only role references no framework assembly, so its bytes change only when BepInEx or
 VoidManager change. See [multiplayer.md](multiplayer.md).
 
 **A BOM or trailing comma in the manifest.** The framework logs `failed to parse` with the

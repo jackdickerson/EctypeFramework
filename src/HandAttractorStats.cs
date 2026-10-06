@@ -28,7 +28,7 @@ namespace Ectype
     ///
     /// Timing and count: HandAttractorDuration and HandAttractorCooldown are second ids onto
     /// the ability's own FiniteTimeDuration and CooldownSeconds, scoped to the hand where the
-    /// vanilla ClassAbilityDuration / ClassAbilityCooldown aliases reach every class ability.
+    /// vanilla ClassAbilityDuration / ClassAbilityCooldown aliases reach every role ability.
     /// HandAttractorBeams is a plain float the ability rounds to a whole number of beams.
     ///
     /// Scope: the mirror covers modifiers applied into the character's collection tree. A

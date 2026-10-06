@@ -390,7 +390,7 @@ namespace Ectype
         }
 
         /// <summary>Load a status icon from a PNG embedded in the calling mod's assembly
-        /// (the same loader class icons use; key matches by resource-name substring).</summary>
+        /// (the same loader role icons use; key matches by resource-name substring).</summary>
         public static Sprite IconFromEmbeddedPng(System.Reflection.Assembly asm, string key)
         {
             try { return IconStore.Get(asm, key); }

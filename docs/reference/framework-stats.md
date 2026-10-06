@@ -5,11 +5,11 @@ move them, no tooltip describes them, and two mods touching one fight each other
 framework wraps those fields as stats, so a mod contributes through the game's own modifier
 composition instead of writing the field.
 
-These stats are registered once per session whether or not any class is installed. Any
+These stats are registered once per session whether or not any role is installed. Any
 manifest can name them without declaring them (see [../stat-names.md](../stat-names.md), rows
 with source `framework`), and code builds a `StatMod` against `FrameworkStats.Id(name)` the
 same way it would for a vanilla stat. `FrameworkStats` is public. A stat the framework
-registers is not scoped to a class, and unlike a class's own `customStats` it already has a
+registers is not scoped to a role, and unlike a role's own `customStats` it already has a
 consumer. [../framework-stats.json](../framework-stats.json) describes each stat: what it
 wraps, the value the game authored, and how the game consumes it.
 
@@ -66,7 +66,7 @@ it cannot leak into other abilities.
 ## The ship's stat surface
 
 Both stats live on the player ship's collection, so `seatShip` and `characterShip` perks reach
-them (see [classes.md](classes.md)).
+them (see [roles.md](roles.md)).
 
 - **`IncomingProjectileSpeed`** is a factor (authored 1). The framework puts the factor on each
   enemy-faction shot's own `Speed` as the shot registers, and re-applies it to shots in
@@ -82,7 +82,7 @@ them (see [classes.md](classes.md)).
 ## The hand attractor's stat surface
 
 `HandAttractorMaxRange` and `HandAttractorPullVelocity` are the range and pull speed of a
-class ability's hand-held attractor. `HandAttractorStats.Register` registers them into that
+role ability's hand-held attractor. `HandAttractorStats.Register` registers them into that
 ability's own collection.
 
 **The mirror.** The same call registers each float a second time under the vanilla

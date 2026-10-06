@@ -30,7 +30,7 @@ namespace Ectype
         public float treeScale = 0.958f;
 
         /// <summary>
-        /// Pixels reserved at the top of the frame, inside it, for the class name; applied as
+        /// Pixels reserved at the top of the frame, inside it, for the role name; applied as
         /// a downward translate on the content, spending the space treeScale freed.
         ///
         /// This and treeScale are one setting in two halves. Keep
@@ -42,19 +42,19 @@ namespace Ectype
         public float headerBandPx = 34f;
 
         /// <summary>
-        /// Class-name label overrides. The label is the game's own, so every field here is
+        /// Role-name label overrides. The label is the game's own, so every field here is
         /// null-means-leave-alone: an omitted key keeps the authored behaviour exactly, which
         /// is what makes a bad tuning session recoverable by deleting the file.
         /// </summary>
-        public bool? showClassName = null;
-        public float? classNameFontSize = null;
-        public string classNameColorHex = null;
+        public bool? showRoleName = null;
+        public float? roleNameFontSize = null;
+        public string roleNameColorHex = null;
         /// <summary>Absolute placement of the name's container, measured from the top of the
         /// tree's own box; the authored position is a NEGATIVE top that puts the name outside
         /// the frame, so these are what bring it inside. Set both and keep top + height inside
         /// headerBandPx, or leave both null for the authored position.</summary>
-        public float? classNameTopPx = 4f;
-        public float? classNameHeightPx = 26f;
+        public float? roleNameTopPx = 4f;
+        public float? roleNameHeightPx = 26f;
 
         // ------------------------------------------------------------------ the scroller
 
@@ -79,8 +79,8 @@ namespace Ectype
         // -------------------------------------------------------------------- the pager
 
         /// <summary>
-        /// The position indicator: one pip per class, above the row, lit for the classes
-        /// currently on screen - a small fixed set answers "which classes am I looking at"
+        /// The position indicator: one pip per role, above the row, lit for the roles
+        /// currently on screen - a small fixed set answers "which roles am I looking at"
         /// better than a scrollbar's proportion. Off leaves no indicator; the wheel and the
         /// pad still scroll.
         /// </summary>

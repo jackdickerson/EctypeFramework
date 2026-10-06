@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate every examples/**/ectype-class.json against docs/schemas/ectype-class.schema.json."""
+"""Validate every examples/**/ectype-role.json against docs/schemas/ectype-role.schema.json."""
 import json
 import sys
 from pathlib import Path
@@ -10,12 +10,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def main():
-    schema = json.loads((ROOT / "docs/schemas/ectype-class.schema.json").read_text(encoding="utf-8"))
+    schema = json.loads((ROOT / "docs/schemas/ectype-role.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-    manifests = sorted((ROOT / "examples").rglob("ectype-class.json"))
+    manifests = sorted((ROOT / "examples").rglob("ectype-role.json"))
     if not manifests:
-        print("no ectype-class.json found under examples/")
+        print("no ectype-role.json found under examples/")
         return 1
     bad = 0
     for path in manifests:

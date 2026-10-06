@@ -7,7 +7,7 @@ using Photon.Pun;
 namespace Ectype
 {
     /// <summary>
-    /// Publishes the host's EctypeConfig.HostSuppressedClassIds to a Photon room custom
+    /// Publishes the host's EctypeConfig.HostSuppressedRoleIds to a Photon room custom
     /// property while they're in the hub, and reads it back on every client (including the
     /// host's own) - the one channel this framework uses to sync a host's live choice to the
     /// whole room. Polled from EctypeDriver.Update() rather than an IInRoomCallbacks
@@ -57,13 +57,13 @@ namespace Ectype
             }
         }
 
-        /// <summary>Every checked [ClassSuppression] toggle, joined - the host's own live
+        /// <summary>Every checked [RoleSuppression] toggle, joined - the host's own live
         /// picture of what should be suppressed, independent of what's currently published.</summary>
         private static string CurrentTogglesAsCsv()
         {
             List<string> ids = new List<string>();
             foreach (KeyValuePair<string, BepInEx.Configuration.ConfigEntry<bool>> kv in
-                     EctypeConfig.ClassSuppressToggles)
+                     EctypeConfig.RoleSuppressToggles)
                 if (kv.Value != null && kv.Value.Value) ids.Add(kv.Key);
             return string.Join(",", ids.ToArray());
         }

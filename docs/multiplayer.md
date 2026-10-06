@@ -6,9 +6,9 @@ behaviour described here is that of VoidManager 1.2.11.
 
 ## The short version
 
-- Every player in a room runs the framework, and every class mod any player has. The same
+- Every player in a room runs the framework, and every role mod any player has. The same
   build of each: the same version number and the same DLL bytes.
-- A class mod declares `MultiplayerType.All`. The framework declares it too.
+- A role mod declares `MultiplayerType.All`. The framework declares it too.
 - Two independent checks refuse a join. Passing one says nothing about the other.
 - Hosting a room with the framework installed marks the session as modded. The mark cannot be
   withdrawn from that room, and a modded session does not count toward progression.
@@ -68,22 +68,22 @@ symmetric. A client with required content cannot join a host that lacks it, and 
 The rejection screen names individual assets. VoidManager's screens name mods. That is how
 the two checks are told apart in a bug report.
 
-## Why class content is mandatory for the room
+## Why role content is mandatory for the room
 
-The framework registers each class's gene tree and every perk inside the `Required` mask.
+The framework registers each role's gene tree and every perk inside the `Required` mask.
 Three facts bear on a mixed room:
 
 - The asset check runs at join, before the room's members are known and before any mod could
-  negotiate. It cannot compute "the classes everyone shares".
-- The check reads the asset registry. A screen can hide a class and leave its registry entries
-  in place, and the framework's per-class suppression does exactly that. Only unregistering
+  negotiate. It cannot compute "the roles everyone shares".
+- The check reads the asset registry. A screen can hide a role and leave its registry entries
+  in place, and the framework's per-role suppression does exactly that. Only unregistering
   removes an asset, and nothing unregisters during a process.
-- A client that lacks a class's perk GUIDs cannot apply another player's perks. The game's
+- A client that lacks a role's perk GUIDs cannot apply another player's perks. The game's
   perk reapply throws on an unknown GUID and leaves that player's perk set empty on the
   client that threw. Only a process running the framework's guard avoids it.
 
-A class mod therefore declares `All`, depends on the framework with `[BepInDependency]`, and
-is installed by everyone in the room. A design that relies on players holding different class
+A role mod therefore declares `All`, depends on the framework with `[BepInDependency]`, and
+is installed by everyone in the room. A design that relies on players holding different role
 sets is refused by the game regardless of the `MultiplayerType` a mod declares.
 
 
@@ -118,8 +118,8 @@ reflection call into VoidManager internals. If VoidManager's internals move, the
 logs one error and those members stay unverified on the new host. Members who join after the
 migration send their hashed list in the normal way.
 
-The per-class suppression toggles belong to the host, so on a migration they take the new
-host's configuration. A class the old host had suppressed is available again if the new host
+The per-role suppression toggles belong to the host, so on a migration they take the new
+host's configuration. A role the old host had suppressed is available again if the new host
 has not suppressed it, and the reverse.
 
 ## The selection gate
@@ -187,19 +187,19 @@ excludes every mod in the room.
 presence queries and answer on any client. The framework's runtime-ability replication uses
 them to send only to peers that run the framework.
 
-## The host's per-class toggle
+## The host's per-role toggle
 
-Every class the framework discovers gets a host-only suppress toggle in the framework's
+Every role the framework discovers gets a host-only suppress toggle in the framework's
 config and in the F5 menu. The host's choice is published as a room property that every
 client applies, so every client gives the same answer to
-`ClassRegistry.IsAvailableInRoom(classId)`. That call is true while the class is registered
-and neither the toggle nor another class's `suppressClasses` hides it. Gate class-owned
+`RoleRegistry.IsAvailableInRoom(roleId)`. That call is true while the role is registered
+and neither the toggle nor another role's `suppressRoles` hides it. Gate role-owned
 content (loot, spawns) on it.
 
-On a host migration the toggles take the new host's configuration. A suppressed class stays registered. Every player still needs it installed, the perks stay in
+On a host migration the toggles take the new host's configuration. A suppressed role stays registered. Every player still needs it installed, the perks stay in
 each saved loadout and are read as absent, and spent points count as unspent while the
 suppression lasts. Lifting it restores the build. Leaving the room clears it. Suppressing a
-class changes what every player in the room can do, so it flags the session as modded.
+role changes what every player in the room can do, so it flags the session as modded.
 
 ## The modded-session flag and progression
 
@@ -225,8 +225,8 @@ game restart clears it. A mod's own `Enabled` config key does not un-flag a sess
 Consequences for a dependent of the framework:
 
 - The framework declares `All`, so any room hosted by a process that loaded it is tagged, even
-  with no class mod installed and no class selected. A dependent cannot defer the flag.
-- A class mod's own assets sit in the `Required` mask, so route 1 applies as well.
+  with no role mod installed and no role selected. A dependent cannot defer the flag.
+- A role mod's own assets sit in the `Required` mask, so route 1 applies as well.
 - A mod that must stay silent until its content is used cannot depend on the framework.
 
 ## What your mod's page must tell players

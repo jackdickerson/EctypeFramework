@@ -1,18 +1,18 @@
-# ability-class
+# ability-role
 
-The data-only class plus one coded class ability. The hero perk selects the ability, and the framework installs it, binds the ability key and runs its cooldown and duration.
+The data-only role plus one coded role ability. The hero perk selects the ability, and the framework installs it, binds the ability key and runs its cooldown and duration.
 
 Shows:
 
-- `Ectype.ClassRegistry.RegisterAbilityFactory(classId, factory)` called from the plugin's `Awake`. The factory runs once per character spawn.
-- An `Ectype.EctypeClassAbility` subclass with `OnApplyEffect` (channel starts) and `OnRemoveEffect` (channel ends, ability deselected, or character despawns).
+- `Ectype.RoleRegistry.RegisterAbilityFactory(roleId, factory)` called from the plugin's `Awake`. The factory runs once per character spawn.
+- An `Ectype.EctypeRoleAbility` subclass with `OnApplyEffect` (channel starts) and `OnRemoveEffect` (channel ends, ability deselected, or character despawns).
 - A timed effect expressed as an `Ectype.CharacterStatuses` template, registered once, applied for the channel's duration and removed on exit.
 
 The ability cuts incoming damage by 75% for 5 seconds on a 20 second cooldown.
 
 ## Before you build
 
-This example does not build as committed. `src\Plugin.cs` has a `#error` directive beside the `PLUGIN_GUID` constant. Replace every `REPLACE_ME` with your own unique value: the plugin GUID in `src\Plugin.cs` and `classId` in `manifest\ectype-class.json`, which must be the same string. Then delete the `#error` line.
+This example does not build as committed. `src\Plugin.cs` has a `#error` directive beside the `PLUGIN_GUID` constant. Replace every `REPLACE_ME` with your own unique value: the plugin GUID in `src\Plugin.cs` and `roleId` in `manifest\ectype-role.json`, which must be the same string. Then delete the `#error` line.
 
 ## Build
 
@@ -26,6 +26,6 @@ The first restore downloads the .NET Framework 4.7.2 reference assemblies from n
 
 ## Install
 
-Copy `bin\Release\ExampleAbilityClass.dll` to `<game>\BepInEx\plugins\`.
+Copy `bin\Release\ExampleAbilityRole.dll` to `<game>\BepInEx\plugins\`.
 
-A framework update changes the framework assembly this DLL was compiled against. Rebuild and reship the class mod with each framework release.
+A framework update changes the framework assembly this DLL was compiled against. Rebuild and reship the role mod with each framework release.

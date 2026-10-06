@@ -14,8 +14,8 @@ using UnityEngine.UIElements;
 namespace Ectype
 {
     /// <summary>
-    /// Installs each registered class's ability (built by the factory the class mod passed
-    /// to ClassRegistry.RegisterAbilityFactory) into a character's Opsive locomotion, and
+    /// Installs each registered role's ability (built by the factory the role mod passed
+    /// to RoleRegistry.RegisterAbilityFactory) into a character's Opsive locomotion, and
     /// teaches the single-slot HUD widget about abilities it cannot type-match.
     ///
     /// Runs for every character this client sees, not only the local player's, because
@@ -23,9 +23,9 @@ namespace Ectype
     /// must therefore hold; RebuildArray is what preserves it, and vanilla ClassAbility's
     /// own IsMine self-gating is what makes Start() on a remote replica safe.
     ///
-    /// The perk-identity fields are pointed at the class's registered perks by grid
+    /// The perk-identity fields are pointed at the role's registered perks by grid
     /// position: hero (row 0) = AbilityPerk, the row-5 banner = CapstonePerk, the row-7
-    /// banner = SuperiorAbilityPerk - the vanilla tree shape. Classes without a boost or
+    /// banner = SuperiorAbilityPerk - the vanilla tree shape. Roles without a boost or
     /// superior banner fall back to the hero perk, which keeps the game's unconditional
     /// dereferences (IsSuperiorVersion walks SuperiorAbilityPerk.ContainerGuid) from
     /// NREing; a fallback field means "that tier reads as the hero", so ability code
@@ -45,9 +45,9 @@ namespace Ectype
             try
             {
                 if (!Plugin.PatchesApplied || !EctypeConfig.Enabled.Value) return;
-                if (trigger is EctypeClassAbility) return;   // our own Start re-entering
+                if (trigger is EctypeRoleAbility) return;   // our own Start re-entering
                 if (trigger.LocalPlayer == null) return;     // liveness check, not ownership
-                if (ClassRegistry.Classes.Count == 0) return;
+                if (RoleRegistry.Roles.Count == 0) return;
 
                 UltimateCharacterLocomotion loco =
                     LocomotionF != null
@@ -65,15 +65,15 @@ namespace Ectype
                     return;
                 }
 
-                foreach (ClassRecord rec in ClassRegistry.Classes)
+                foreach (RoleRecord rec in RoleRegistry.Roles)
                     InstallOne(rec, loco);
 
                 // Adoption resolves selection against the LOCAL player's perk profile, so
                 // unlike the install sweep it is meaningless for a character we don't own.
                 if (!trigger.LocalPlayer.IsMine) return;
 
-                // A replacement class inherits the vanilla ability of the tree it suppressed;
-                // after the install sweep, so a class with its own factory is already known.
+                // A replacement role inherits the vanilla ability of the tree it suppressed;
+                // after the install sweep, so a role with its own factory is already known.
                 Adoption.AdoptAbilities(loco);
             }
             catch (Exception e)
@@ -82,7 +82,7 @@ namespace Ectype
             }
         }
 
-        private static void InstallOne(ClassRecord rec, UltimateCharacterLocomotion loco)
+        private static void InstallOne(RoleRecord rec, UltimateCharacterLocomotion loco)
         {
             if (rec.AbilityFactory == null || rec.AbilityInstallFailed || !rec.Registered)
                 return;
@@ -90,7 +90,7 @@ namespace Ectype
             // sweep runs up to four times per spawn).
             if (rec.AbilityInstances.ContainsKey(loco)) return;
 
-            PerkBuff hero = ClassRegistry.BannerPerk(rec, 0);
+            PerkBuff hero = RoleRegistry.BannerPerk(rec, 0);
             if (hero == null) return;   // registration not finished; a later Start retries
 
             ClassAbility ability;
@@ -102,21 +102,21 @@ namespace Ectype
             {
                 rec.AbilityInstallFailed = true;
                 Plugin.Log.LogError("Ectype: ability factory for '" +
-                                    rec.Manifest.classId + "' threw - the class stays " +
+                                    rec.Manifest.roleId + "' threw - the role stays " +
                                     "data-only this session: " + e);
                 return;
             }
             if (ability == null)
             {
                 rec.AbilityInstallFailed = true;
-                Plugin.Log.LogError("Ectype: ability factory for '" + rec.Manifest.classId +
-                                    "' returned null or a non-ClassAbility - the class " +
+                Plugin.Log.LogError("Ectype: ability factory for '" + rec.Manifest.roleId +
+                                    "' returned null or a non-ClassAbility - the role " +
                                     "stays data-only this session.");
                 return;
             }
 
-            PerkBuff capstone = ClassRegistry.BannerPerk(rec, 5) ?? hero;
-            PerkBuff superior = ClassRegistry.BannerPerk(rec, 7) ?? hero;
+            PerkBuff capstone = RoleRegistry.BannerPerk(rec, 5) ?? hero;
+            PerkBuff superior = RoleRegistry.BannerPerk(rec, 7) ?? hero;
             bool ok = Refl.SetFieldLogged(ability, "AbilityPerk", hero)
                     & Refl.SetFieldLogged(ability, "CapstonePerk", capstone)
                     & Refl.SetFieldLogged(ability, "SuperiorAbilityPerk", superior)
@@ -127,10 +127,10 @@ namespace Ectype
             if (!ok)
             {
                 // A perk-identity field that did not take means selection can never work
-                // (or Start NREs) - fail this class, leave the character vanilla.
+                // (or Start NREs) - fail this role, leave the character vanilla.
                 rec.AbilityInstallFailed = true;
                 Plugin.Log.LogError("Ectype: ability field wiring failed for '" +
-                                    rec.Manifest.classId + "' (member rename? see " +
+                                    rec.Manifest.roleId + "' (member rename? see " +
                                     "warnings above) - ability not installed.");
                 return;
             }
@@ -139,11 +139,11 @@ namespace Ectype
             rec.AbilityInstances[loco] = ability;
             // Opt into key-based replication so the ability's array position on other
             // clients is irrelevant to its start/stop sync (see AbilitySync).
-            RuntimeAbilities.Register(ability, "ectype:" + rec.Manifest.classId);
+            RuntimeAbilities.Register(ability, "ectype:" + rec.Manifest.roleId);
 
             try
             {
-                // Rebuild, never append: appending would park a class at whatever index its
+                // Rebuild, never append: appending would park a role at whatever index its
                 // arrival order gave it, which differs per client and breaks index parity.
                 RebuildArray(loco);
                 ability.Start();   // manual - only prefab abilities get it from Unity
@@ -152,26 +152,26 @@ namespace Ectype
             {
                 rec.AbilityInstances.Remove(loco);
                 rec.AbilityInstallFailed = true;
-                Plugin.Log.LogError("Ectype: installing '" + rec.Manifest.classId +
+                Plugin.Log.LogError("Ectype: installing '" + rec.Manifest.roleId +
                                     "' ability into the locomotion failed: " + e);
                 return;
             }
 
             if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: ability " + ability.GetType().Name +
-                               " installed for '" + rec.Manifest.classId + "' (slot " +
+                               " installed for '" + rec.Manifest.roleId + "' (slot " +
                                Array.IndexOf(loco.Abilities, ability) + ").");
         }
 
-        /// <summary>Rebuild loco.Abilities as [non-Ectype abilities] + [every class with an
-        /// instance for this loco, in ClassRegistry.Classes' fixed classId-sorted order], so
-        /// array position never depends on which pass installed which class.</summary>
+        /// <summary>Rebuild loco.Abilities as [non-Ectype abilities] + [every role with an
+        /// instance for this loco, in RoleRegistry.Roles' fixed roleId-sorted order], so
+        /// array position never depends on which pass installed which role.</summary>
         private static void RebuildArray(UltimateCharacterLocomotion loco)
         {
             List<Ability> ordered = new List<Ability>();
             foreach (Ability a in loco.Abilities ?? new Ability[0])
-                if (!(a is EctypeClassAbility)) ordered.Add(a);
+                if (!(a is EctypeRoleAbility)) ordered.Add(a);
 
-            foreach (ClassRecord r in ClassRegistry.Classes)
+            foreach (RoleRecord r in RoleRegistry.Roles)
             {
                 ClassAbility a;
                 if (r.AbilityInstances.TryGetValue(loco, out a) && a != null)
@@ -184,7 +184,7 @@ namespace Ectype
 
         internal static void OnAbilityDestroyed(ClassAbility ability)
         {
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            foreach (RoleRecord rec in RoleRegistry.Roles)
             {
                 object deadLoco = null;
                 foreach (KeyValuePair<object, ClassAbility> kv in rec.AbilityInstances)
@@ -195,10 +195,10 @@ namespace Ectype
             }
         }
 
-        internal static ClassRecord FindByAbility(ClassAbility ability)
+        internal static RoleRecord FindByAbility(ClassAbility ability)
         {
             if (ability == null) return null;
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            foreach (RoleRecord rec in RoleRegistry.Roles)
                 foreach (ClassAbility a in rec.AbilityInstances.Values)
                     if (ReferenceEquals(a, ability)) return rec;
             return null;
@@ -232,7 +232,7 @@ namespace Ectype
     }
 
     /// <summary>
-    /// ClassAbilityDisplay resolves its per-class element by hard type-check on the four
+    /// ClassAbilityDisplay resolves its per-role element by hard type-check on the four
     /// vanilla ability classes, so a framework ability lands in its no-match branch and
     /// selects with no HUD slot; this postfix builds the element, points the display's
     /// private state at it, and re-subscribes the status handlers that branch dropped.
@@ -273,9 +273,9 @@ namespace Ectype
                 if (StartedF == null || !(bool)StartedF.GetValue(__instance)) return;
                 if (!__1) return;   // deselects: vanilla handles ours via the fields we set
 
-                if (__0 is EctypeClassAbility)
+                if (__0 is EctypeRoleAbility)
                 {
-                    ClassRecord rec = AbilityWiring.FindByAbility(__0);
+                    RoleRecord rec = AbilityWiring.FindByAbility(__0);
                     if (rec == null) return;
 
                     VisualElement container = ContainerF.GetValue(__instance) as VisualElement;
@@ -295,7 +295,7 @@ namespace Ectype
 
                     // The display is single-slot: the vanilla body hides the element it is
                     // replacing, but only when it recognises the incoming ability, so a
-                    // switch into a framework ability leaves the previous class's element
+                    // switch into a framework ability leaves the previous role's element
                     // visible and stacked over ours. Hide every sibling instead of trusting
                     // which one was last shown.
                     for (int i = 0; i < container.childCount; i++)
@@ -322,7 +322,7 @@ namespace Ectype
                 {
                     _loggedFailure = true;
                     Plugin.Log.LogError("Ectype: HUD ability-slot wiring failed " +
-                                        "(reported once; modded classes run without a " +
+                                        "(reported once; modded roles run without a " +
                                         "HUD slot): " + e);
                 }
             }
@@ -331,7 +331,7 @@ namespace Ectype
         // ------------------------------------------------------------------ element build
 
         private static VisualElement EnsureElement(ClassAbilityDisplay display,
-                                                   VisualElement container, ClassRecord rec)
+                                                   VisualElement container, RoleRecord rec)
         {
             string name = "Ectype_" + rec.Ordinal;
             VisualElement existing = container.Q(name);
@@ -380,7 +380,7 @@ namespace Ectype
         }
 
         /// <summary>
-        /// The class's glyph and accent onto a slot element. False when the element's
+        /// The role's glyph and accent onto a slot element. False when the element's
         /// children do not exist yet, which is the caller's cue to try again on attach.
         ///
         /// Accent goes on the glow here and on the fill only while the slot is ready
@@ -388,7 +388,7 @@ namespace Ectype
         /// shows the fill over the whole plate, and the stock fill is white while
         /// recovering. Tinting Icon/IconFilled/Frame would recolor the glyph or border.
         /// </summary>
-        private static bool Paint(VisualElement donor, ClassRecord rec)
+        private static bool Paint(VisualElement donor, RoleRecord rec)
         {
             if (donor.Q("Icon") == null) return false;
 
@@ -425,9 +425,9 @@ namespace Ectype
         }
 
         /// <summary>One line naming what the slot ended up holding: which element is
-        /// visible, and whether the class's own glyph reached the icon layers. A HUD icon
+        /// visible, and whether the role's own glyph reached the icon layers. A HUD icon
         /// cannot be read back from here, so this reports what was written.</summary>
-        private static void LogSlot(VisualElement container, VisualElement ve, ClassRecord rec)
+        private static void LogSlot(VisualElement container, VisualElement ve, RoleRecord rec)
         {
             if (rec.SlotLogged) return;
             rec.SlotLogged = true;
@@ -435,7 +435,7 @@ namespace Ectype
             bool haveGlyph = IconStore.Get(rec.SourceAssembly, heroIcon) != null;
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
             sb.Append("Ectype: HUD slot '").Append(ve.name).Append("' for '")
-              .Append(rec.Manifest.classId).Append("': glyph ")
+              .Append(rec.Manifest.roleId).Append("': glyph ")
               .Append(haveGlyph ? "'" + heroIcon + "'" : "MISSING (donor or placeholder shows)")
               .Append(", siblings [");
             for (int i = 0; i < container.childCount; i++)

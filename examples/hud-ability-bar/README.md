@@ -1,6 +1,6 @@
 # hud-ability-bar
 
-Adds one button to the row beside the class-ability widget, with `Ectype.HudAbilityBar`. F9 logs a line and starts a five second cooldown that the button's fill shows.
+Adds one button to the row beside the role-ability widget, with `Ectype.HudAbilityBar`. F9 logs a line and starts a five second cooldown that the button's fill shows.
 
 Shows:
 

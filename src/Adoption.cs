@@ -14,17 +14,17 @@ namespace Ectype
 {
     /// <summary>
     /// Re-homes the two payloads the game keys to a suppressed tree's perks from code - the
-    /// class ability's selection check, and any fabricator unlock with PlayerPerk criteria -
-    /// onto the class that requested the suppression, by repointing the perk identity the
+    /// role ability's selection check, and any fabricator unlock with PlayerPerk criteria -
+    /// onto the role that requested the suppression, by repointing the perk identity the
     /// game already consults. Nothing is reimplemented; only the answer to "which perk
     /// grants this" changes.
     ///
-    /// Never touched: a payload whose perk is not suppressed, and a class that ships its own
+    /// Never touched: a payload whose perk is not suppressed, and a role that ships its own
     /// ability factory (its ability wins, and the vanilla one is left orphaned).
     /// </summary>
     internal static class Adoption
     {
-        // ------------------------------------------------------------------- class ability
+        // ------------------------------------------------------------------- role ability
 
         private static readonly MethodInfo VerifyM =
             AccessTools.Method(typeof(ClassAbility), "VerifyIfIsSelectedAbility");
@@ -46,7 +46,7 @@ namespace Ectype
 
         /// <summary>
         /// Repoint every vanilla ability whose AbilityPerk sits in a suppressed tree at the
-        /// suppressing class's banner perks, then re-run the selection check the ability
+        /// suppressing role's banner perks, then re-run the selection check the ability
         /// already ran (with the old perk) during its own Start.
         ///
         /// Re-running the game's own check rather than force-selecting is what makes this
@@ -65,28 +65,28 @@ namespace Ectype
             foreach (Ability a in abilities)
             {
                 ClassAbility ca = a as ClassAbility;
-                if (ca == null || ca is EctypeClassAbility) continue;
+                if (ca == null || ca is EctypeRoleAbility) continue;
                 if (_abilityDone.Contains(ca)) continue;
 
                 PerkBuff current = Refl.GetField<PerkBuff>(ca, "AbilityPerk", null);
                 if (current == null) continue;
-                ClassRecord rec = Suppression.AdopterOf(current.ContainerGuid);
+                RoleRecord rec = Suppression.AdopterOf(current.ContainerGuid);
                 if (rec == null || !rec.Registered) continue;
 
-                // A class that brought its own ability does not want the vanilla one.
+                // A role that brought its own ability does not want the vanilla one.
                 if (rec.AbilityFactory != null)
                 {
                     _abilityDone.Add(ca);
-                    if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.classId + "' suppresses " +
+                    if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.roleId + "' suppresses " +
                                                            "the tree behind " + ca.GetType().Name + " but ships " +
                                                            "its own ability - the vanilla one is left unselected.");
                     continue;
                 }
 
-                PerkBuff hero = ClassRegistry.BannerPerk(rec, 0);
+                PerkBuff hero = RoleRegistry.BannerPerk(rec, 0);
                 if (hero == null) continue;   // registration not finished; a later Start retries
-                PerkBuff capstone = ClassRegistry.BannerPerk(rec, 5) ?? hero;
-                PerkBuff superior = ClassRegistry.BannerPerk(rec, 7) ?? hero;
+                PerkBuff capstone = RoleRegistry.BannerPerk(rec, 5) ?? hero;
+                PerkBuff superior = RoleRegistry.BannerPerk(rec, 7) ?? hero;
 
                 // All three or none: IsSuperiorVersion and IsCapstonePerkSelected dereference
                 // their field unconditionally, so a half-applied repoint NREs inside game code.
@@ -96,8 +96,8 @@ namespace Ectype
                 {
                     _abilityDone.Add(ca);   // do not retry a rename every spawn
                     Plugin.Log.LogError("Ectype: could not repoint " + ca.GetType().Name +
-                                        " onto '" + rec.Manifest.classId + "' (field rename? " +
-                                        "see warnings above) - that class has no active ability.");
+                                        " onto '" + rec.Manifest.roleId + "' (field rename? " +
+                                        "see warnings above) - that role has no active ability.");
                     continue;
                 }
 
@@ -124,7 +124,7 @@ namespace Ectype
                     }
                 }
 
-                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.classId + "' adopted the " +
+                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.roleId + "' adopted the " +
                                                        "vanilla " + ca.GetType().Name + " (its perk tree is " +
                                                        "suppressed); ability now keyed to perk '" +
                                                        HeroKey(rec) + "'.");
@@ -132,7 +132,7 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Re-run the sweep on the known local character, so a class whose registration was
+        /// Re-run the sweep on the known local character, so a role whose registration was
         /// still unfinished at install time gets its ability on the next loadout change
         /// rather than on a respawn.
         /// </summary>
@@ -153,19 +153,19 @@ namespace Ectype
         /// <summary>
         /// A vanilla ability carries its capstone payload as CapstonePerkMods, deep-copied
         /// from the shared config at Awake and authored for the perk the ability shipped
-        /// with - which adoption has just changed. The rule: a class that authors effects on
+        /// with - which adoption has just changed. The rule: a role that authors effects on
         /// its capstone banner owns the payload and the ability's own is dropped for this
-        /// instance; a class that leaves that banner empty keeps the vanilla payload, which
+        /// instance; a role that leaves that banner empty keeps the vanilla payload, which
         /// is what makes a verbatim recreation faithful.
         ///
         /// The log line is the only record of what that payload contained - it is asset data,
         /// absent from every dump, and this is the moment the game has it resolved.
         /// </summary>
-        private static void TakeOverCapstonePayload(ClassAbility ca, ClassRecord rec)
+        private static void TakeOverCapstonePayload(ClassAbility ca, RoleRecord rec)
         {
             try
             {
-                PerkSpec banner = ClassRegistry.BannerSpec(rec, 5);
+                PerkSpec banner = RoleRegistry.BannerSpec(rec, 5);
                 if (banner == null || !HasEffects(banner)) return;
                 if (ca.CapstonePerkMods == null || ca.CapstonePerkMods.Count == 0) return;
 
@@ -183,7 +183,7 @@ namespace Ectype
                 }
                 ca.CapstonePerkMods.Clear();
 
-                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.classId + "' authors its own capstone " +
+                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.roleId + "' authors its own capstone " +
                                                        "perk '" + banner.key + "'; dropped the adopted " +
                                                        ca.GetType().Name + " capstone payload: " +
                                                        string.Join(", ", dropped.ToArray()) + ".");
@@ -192,7 +192,7 @@ namespace Ectype
             {
                 Plugin.Log.LogError("Ectype: deciding the capstone payload for " +
                                     ca.GetType().Name + " failed - the vanilla payload stays, " +
-                                    "and it may stack with the class's authored effects: " + e);
+                                    "and it may stack with the role's authored effects: " + e);
             }
         }
 
@@ -206,7 +206,7 @@ namespace Ectype
 
 
 
-        private static string HeroKey(ClassRecord rec)
+        private static string HeroKey(RoleRecord rec)
         {
             return rec.Manifest.hero != null ? rec.Manifest.hero.key : "(none)";
         }
@@ -215,12 +215,12 @@ namespace Ectype
 
         /// <summary>
         /// Repoint a vanilla PlayerPerk unlock at one of our perks, when the perk it names
-        /// today belongs to a tree this same class suppressed - the safety property, since a
-        /// class can only take over unlocks its own suppression broke. Returns false for an
+        /// today belongs to a tree this same role suppressed - the safety property, since a
+        /// role can only take over unlocks its own suppression broke. Returns false for an
         /// unlock claimed by anything else, and also while suppression has not resolved,
         /// which is why the caller defers rather than warning on the first false.
         /// </summary>
-        internal static bool TryAdoptUnlock(ClassRecord rec, string perkKey,
+        internal static bool TryAdoptUnlock(RoleRecord rec, string perkKey,
                                             GUIDUnion itemGuid, GUIDUnion ourPerkGuid)
         {
             UnlockItemDef def = FindPlayerPerkUnlock(itemGuid);
@@ -229,8 +229,8 @@ namespace Ectype
             UnlockOptions opts = def.UnlockOptions;
             if (opts.RequiredPerk == null || opts.RequiredPerk.AssetGuid.IsNull) return false;
 
-            ClassRecord adopter = Suppression.AdopterOf(opts.RequiredPerk.AssetGuid);
-            // Any class whose own suppression orphaned the unlock may take it, not only the
+            RoleRecord adopter = Suppression.AdopterOf(opts.RequiredPerk.AssetGuid);
+            // Any role whose own suppression orphaned the unlock may take it, not only the
             // first requester of the tree (CoSuppression).
             if (!ReferenceEquals(adopter, rec) &&
                 !CoSuppression.Suppresses(rec, opts.RequiredPerk.AssetGuid)) return false;
@@ -241,7 +241,7 @@ namespace Ectype
             opts.RequiredPerk = new PerkBuffRef(ourPerkGuid, "") { IsRuntime = true };
             def.UnlockOptions = opts;
 
-            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.className + "' perk '" + perkKey +
+            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.roleName + "' perk '" + perkKey +
                                                    "' adopted the vanilla unlock of item " + itemGuid.AsHex() +
                                                    " (was gated on suppressed perk " + wasHex + ").");
             return true;
@@ -250,11 +250,11 @@ namespace Ectype
         /// <summary>
         /// An unlock whose adoption could not be decided yet, because suppression waits for
         /// the perk-tree refs to populate while registration waits only for the asset
-        /// containers, so a class can finish registering first and never revisit the question.
+        /// containers, so a role can finish registering first and never revisit the question.
         /// </summary>
         private struct PendingUnlock
         {
-            public ClassRecord Rec;
+            public RoleRecord Rec;
             public string PerkKey;
             public GUIDUnion Item;
             public GUIDUnion OurPerk;
@@ -262,7 +262,7 @@ namespace Ectype
 
         private static readonly List<PendingUnlock> _pendingUnlocks = new List<PendingUnlock>();
 
-        internal static void DeferUnlock(ClassRecord rec, string perkKey,
+        internal static void DeferUnlock(RoleRecord rec, string perkKey,
                                          GUIDUnion itemGuid, GUIDUnion ourPerkGuid)
         {
             _pendingUnlocks.Add(new PendingUnlock
@@ -282,7 +282,7 @@ namespace Ectype
             foreach (PendingUnlock p in _pendingUnlocks)
             {
                 if (TryAdoptUnlock(p.Rec, p.PerkKey, p.Item, p.OurPerk)) continue;
-                Plugin.Log.LogWarning("Ectype: '" + p.Rec.Manifest.className + "' perk '" +
+                Plugin.Log.LogWarning("Ectype: '" + p.Rec.Manifest.roleName + "' perk '" +
                                       p.PerkKey + "' unlocks item " + p.Item.AsHex() +
                                       ", which already has an UnlockItemDef from vanilla or " +
                                       "another mod. Skipped: this perk grants no fabricator " +

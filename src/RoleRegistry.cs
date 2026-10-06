@@ -8,13 +8,13 @@ using ResourceAssets;
 namespace Ectype
 {
     /// <summary>
-    /// One registered class: manifest + owning assembly + everything the pipeline builds for
-    /// it. Ordinals are allocated once for the whole set, sorted by classId, so every client
+    /// One registered role: manifest + owning assembly + everything the pipeline builds for
+    /// it. Ordinals are allocated once for the whole set, sorted by roleId, so every client
     /// in a room agrees on them regardless of plugin load order.
     /// </summary>
-    internal class ClassRecord
+    internal class RoleRecord
     {
-        public ClassManifest Manifest;
+        public RoleManifest Manifest;
         public Assembly SourceAssembly;
 
         /// <summary>(EPerkTree) ordinal; also the injected PerkTreeVE's element name.</summary>
@@ -54,21 +54,21 @@ namespace Ectype
             new Dictionary<object, ClassAbility>();
         public bool AbilityInstallFailed;
 
-        /// <summary>The HUD slot reports itself once per class, not once per selection.</summary>
+        /// <summary>The HUD slot reports itself once per role, not once per selection.</summary>
         public bool SlotLogged;
     }
 
     /// <summary>
-    /// Discovery and the public code-surface. Class mods that are data-only never touch this
+    /// Discovery and the public code-surface. Role mods that are data-only never touch this
     /// type; mods with abilities or computed unlocks call the Register* methods at plugin
     /// Awake (they hard-depend on this plugin, so their Awake runs after ours).
     /// </summary>
-    public static class ClassRegistry
+    public static class RoleRegistry
     {
-        internal static readonly List<ClassRecord> Classes = new List<ClassRecord>();
+        internal static readonly List<RoleRecord> Roles = new List<RoleRecord>();
 
         /// <summary>The manifest perk at a banner row (0 = hero, else the wide perk on that row), or null.</summary>
-        internal static PerkSpec BannerSpec(ClassRecord rec, int row)
+        internal static PerkSpec BannerSpec(RoleRecord rec, int row)
         {
             if (row == 0) return rec.Manifest.hero;
             foreach (PerkSpec p in rec.Manifest.perks)
@@ -78,7 +78,7 @@ namespace Ectype
 
         /// <summary>The registered PerkBuff at a banner row, or null when the row has no perk,
         /// the perk has no key, or it did not register.</summary>
-        internal static PerkBuff BannerPerk(ClassRecord rec, int row)
+        internal static PerkBuff BannerPerk(RoleRecord rec, int row)
         {
             PerkSpec spec = BannerSpec(rec, row);
             if (spec == null || string.IsNullOrEmpty(spec.key)) return null;
@@ -96,47 +96,47 @@ namespace Ectype
         // ------------------------------------------------------------------ public surface
 
         /// <summary>
-        /// Attach an ability factory to a manifest-declared class. The factory must return a
+        /// Attach an ability factory to a manifest-declared role. The factory must return a
         /// ClassAbility subclass; it is called once per character spawn and the instance is
-        /// installed with its perk identities pointed at the class's hero / row-5 / row-7
+        /// installed with its perk identities pointed at the role's hero / row-5 / row-7
         /// banner perks. Call at plugin Awake.
         /// </summary>
-        public static void RegisterAbilityFactory(string classId, Func<object> factory)
+        public static void RegisterAbilityFactory(string roleId, Func<object> factory)
         {
-            if (string.IsNullOrEmpty(classId) || factory == null) return;
-            _pendingAbilityFactories[classId] = factory;
-            Plugin.Log.LogInfo("Ectype: ability factory registered for '" + classId + "'.");
+            if (string.IsNullOrEmpty(roleId) || factory == null) return;
+            _pendingAbilityFactories[roleId] = factory;
+            Plugin.Log.LogInfo("Ectype: ability factory registered for '" + roleId + "'.");
         }
 
         /// <summary>
         /// The asset GUID a perk registers under, as 32 hex characters. Derived from
-        /// (classId, perk key) exactly as registration derives it, so class code can find
+        /// (roleId, perk key) exactly as registration derives it, so role code can find
         /// its own perks - in PlayerPerkLoader.PerkBuffLevels, say - without pinning a
         /// literal GUID in the manifest. A perk whose manifest pins an explicit "guid"
         /// is not covered: ask the manifest for that one.
         /// </summary>
-        public static string PerkGuid(string classId, string perkKey)
+        public static string PerkGuid(string roleId, string perkKey)
         {
-            return Guids.PerkGuid(classId, perkKey);
+            return Guids.PerkGuid(roleId, perkKey);
         }
 
         /// <summary>
-        /// True while a class is registered and nothing suppresses it in the current room:
-        /// neither the host's per-class toggle nor another active class's suppressClasses. The
+        /// True while a role is registered and nothing suppresses it in the current room:
+        /// neither the host's per-role toggle nor another active role's suppressRoles. The
         /// host's toggle travels as a room property applied on every client and the rest is
         /// manifest data, so every client in the room gives the same answer.
         /// </summary>
-        public static bool IsAvailableInRoom(string classId)
+        public static bool IsAvailableInRoom(string roleId)
         {
-            ClassRecord rec = Find(classId);
-            return rec != null && rec.Registered && !Suppression.IsClassSuppressed(classId);
+            RoleRecord rec = Find(roleId);
+            return rec != null && rec.Registered && !Suppression.IsRoleSuppressed(roleId);
         }
 
         /// <summary>Override the manifest's unlock criteria with code. Reserved surface.</summary>
-        public static void RegisterUnlockPredicate(string classId, Func<bool> predicate)
+        public static void RegisterUnlockPredicate(string roleId, Func<bool> predicate)
         {
-            if (string.IsNullOrEmpty(classId) || predicate == null) return;
-            _pendingUnlockPredicates[classId] = predicate;
+            if (string.IsNullOrEmpty(roleId) || predicate == null) return;
+            _pendingUnlockPredicates[roleId] = predicate;
         }
 
         // ---------------------------------------------------------------------- discovery
@@ -164,95 +164,95 @@ namespace Ectype
                 if (info == null || info.Instance == null) continue;
                 Assembly asm = info.Instance.GetType().Assembly;
                 if (!seen.Add(asm)) continue;
-                if (asm == typeof(ClassRegistry).Assembly) continue;
+                if (asm == typeof(RoleRegistry).Assembly) continue;
 
-                foreach (ClassManifest m in ManifestLoader.LoadFrom(asm))
+                foreach (RoleManifest m in ManifestLoader.LoadFrom(asm))
                 {
-                    ClassRecord dup = Find(m.classId);
+                    RoleRecord dup = Find(m.roleId);
                     if (dup != null)
                     {
-                        Plugin.Log.LogError("Ectype: duplicate classId '" + m.classId +
+                        Plugin.Log.LogError("Ectype: duplicate roleId '" + m.roleId +
                                             "' in " + asm.GetName().Name + " (already " +
                                             "provided by " +
                                             dup.SourceAssembly.GetName().Name +
                                             ") - the duplicate is skipped.");
                         continue;
                     }
-                    Classes.Add(new ClassRecord { Manifest = m, SourceAssembly = asm });
+                    Roles.Add(new RoleRecord { Manifest = m, SourceAssembly = asm });
                 }
             }
 
             // Ordinal comparison, never culture-sensitive: culture must not enter into
             // cross-client agreement.
-            Classes.Sort((a, b) => string.CompareOrdinal(a.Manifest.classId, b.Manifest.classId));
-            for (int i = 0; i < Classes.Count; i++)
-                Classes[i].Ordinal = EctypePluginInfo.FIRST_TREE_ORDINAL + i;
+            Roles.Sort((a, b) => string.CompareOrdinal(a.Manifest.roleId, b.Manifest.roleId));
+            for (int i = 0; i < Roles.Count; i++)
+                Roles[i].Ordinal = EctypePluginInfo.FIRST_TREE_ORDINAL + i;
 
-            foreach (ClassRecord rec in Classes)
+            foreach (RoleRecord rec in Roles)
             {
                 Func<object> f;
-                if (_pendingAbilityFactories.TryGetValue(rec.Manifest.classId, out f))
+                if (_pendingAbilityFactories.TryGetValue(rec.Manifest.roleId, out f))
                     rec.AbilityFactory = f;
                 Func<bool> u;
-                if (_pendingUnlockPredicates.TryGetValue(rec.Manifest.classId, out u))
+                if (_pendingUnlockPredicates.TryGetValue(rec.Manifest.roleId, out u))
                     rec.UnlockPredicate = u;
                 foreach (string hex in rec.Manifest.suppress)
-                    Suppression.Request(hex, rec.Manifest.classId);
-                foreach (string id in rec.Manifest.suppressClasses)
+                    Suppression.Request(hex, rec.Manifest.roleId);
+                foreach (string id in rec.Manifest.suppressRoles)
                 {
-                    if (string.Equals(id, rec.Manifest.classId, StringComparison.OrdinalIgnoreCase))
-                        Plugin.Log.LogError("Ectype: class '" + rec.Manifest.classId +
-                                            "' lists itself in suppressClasses - entry ignored.");
+                    if (string.Equals(id, rec.Manifest.roleId, StringComparison.OrdinalIgnoreCase))
+                        Plugin.Log.LogError("Ectype: role '" + rec.Manifest.roleId +
+                                            "' lists itself in suppressRoles - entry ignored.");
                     else if (Find(id) == null)
-                        Plugin.Log.LogWarning("Ectype: class '" + rec.Manifest.classId +
-                                              "' suppresses class '" + id + "', which is not " +
+                        Plugin.Log.LogWarning("Ectype: role '" + rec.Manifest.roleId +
+                                              "' suppresses role '" + id + "', which is not " +
                                               "installed - entry ignored.");
                 }
             }
 
             Discovered = true;
-            Plugin.Log.LogInfo("Ectype: discovered " + Classes.Count + " class(es)" +
-                               (Classes.Count > 0 ? ": " + Summary() : "."));
+            Plugin.Log.LogInfo("Ectype: discovered " + Roles.Count + " role(s)" +
+                               (Roles.Count > 0 ? ": " + Summary() : "."));
             WarnOnAccentCollisions();
         }
 
         /// <summary>
-        /// Independently-authored class mods cannot coordinate accents, so the framework is
+        /// Independently-authored role mods cannot coordinate accents, so the framework is
         /// the only place this lint can live. Componentwise distance under 90/765 reads as
         /// the same color at gene-tree scale.
         /// </summary>
         private static void WarnOnAccentCollisions()
         {
-            for (int i = 0; i < Classes.Count; i++)
+            for (int i = 0; i < Roles.Count; i++)
             {
                 UnityEngine.Color a;
-                if (string.IsNullOrEmpty(Classes[i].Manifest.color) ||
-                    !UnityEngine.ColorUtility.TryParseHtmlString(Classes[i].Manifest.color, out a))
+                if (string.IsNullOrEmpty(Roles[i].Manifest.color) ||
+                    !UnityEngine.ColorUtility.TryParseHtmlString(Roles[i].Manifest.color, out a))
                     continue;
-                for (int j = i + 1; j < Classes.Count; j++)
+                for (int j = i + 1; j < Roles.Count; j++)
                 {
                     UnityEngine.Color b;
-                    if (string.IsNullOrEmpty(Classes[j].Manifest.color) ||
-                        !UnityEngine.ColorUtility.TryParseHtmlString(Classes[j].Manifest.color, out b))
+                    if (string.IsNullOrEmpty(Roles[j].Manifest.color) ||
+                        !UnityEngine.ColorUtility.TryParseHtmlString(Roles[j].Manifest.color, out b))
                         continue;
                     int dist = (int)(255f * (System.Math.Abs(a.r - b.r) +
                                              System.Math.Abs(a.g - b.g) +
                                              System.Math.Abs(a.b - b.b)));
                     if (dist < 90)
-                        Plugin.Log.LogWarning("Ectype: classes '" +
-                            Classes[i].Manifest.className + "' (" + Classes[i].Manifest.color +
-                            ") and '" + Classes[j].Manifest.className + "' (" +
-                            Classes[j].Manifest.color + ") have nearly identical accent " +
+                        Plugin.Log.LogWarning("Ectype: roles '" +
+                            Roles[i].Manifest.roleName + "' (" + Roles[i].Manifest.color +
+                            ") and '" + Roles[j].Manifest.roleName + "' (" +
+                            Roles[j].Manifest.color + ") have nearly identical accent " +
                             "colors (distance " + dist + " < 90) - the trees will be hard " +
                             "to tell apart.");
                 }
             }
         }
 
-        internal static ClassRecord Find(string classId)
+        internal static RoleRecord Find(string roleId)
         {
-            foreach (ClassRecord rec in Classes)
-                if (string.Equals(rec.Manifest.classId, classId,
+            foreach (RoleRecord rec in Roles)
+                if (string.Equals(rec.Manifest.roleId, roleId,
                                   StringComparison.OrdinalIgnoreCase)) return rec;
             return null;
         }
@@ -260,7 +260,7 @@ namespace Ectype
         internal static bool IsOurGuid(GUIDUnion g)
         {
             if (g.IsNull) return false;
-            foreach (ClassRecord rec in Classes)
+            foreach (RoleRecord rec in Roles)
             {
                 if (g == rec.TreeGuid) return true;
                 foreach (GUIDUnion pg in rec.PerkGuids.Values)
@@ -272,8 +272,8 @@ namespace Ectype
         internal static string Summary()
         {
             List<string> parts = new List<string>();
-            foreach (ClassRecord rec in Classes)
-                parts.Add(rec.Manifest.className + " (tree " + rec.Ordinal + ", " +
+            foreach (RoleRecord rec in Roles)
+                parts.Add(rec.Manifest.roleName + " (tree " + rec.Ordinal + ", " +
                           rec.SourceAssembly.GetName().Name + ")");
             return string.Join("; ", parts.ToArray());
         }

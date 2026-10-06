@@ -13,7 +13,7 @@ namespace Ectype
     ///
     /// The hook arrives with two of its six numbers already modifiable and four not. Its range
     /// is a ModifiableFloat the ability registers as StatType.GrapplingHookRange, and its
-    /// cooldown is the ModifiableFloat every class ability registers as
+    /// cooldown is the ModifiableFloat every role ability registers as
     /// StatType.ClassAbilityCooldown. Flight speed, pull speed, pull acceleration and the
     /// miss cooldown are plain floats read straight off the fields - two of them from inside
     /// a per-tick method with no seam of its own - so each becomes a FieldStat registered into

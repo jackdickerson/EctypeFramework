@@ -8,11 +8,11 @@ using UnityEngine.UIElements;
 namespace Ectype
 {
     /// <summary>
-    /// Adds the framework's named colors TO THE USS, so class-coloring runs through the
+    /// Adds the framework's named colors TO THE USS, so role-coloring runs through the
     /// game's own mechanism (EnableInClassList + cascade) instead of inline writes.
     ///
-    /// For each registered class this clones the donor role's compiled StyleSheet, keeps
-    /// only the donor-role rules, rewrites their selector parts to the framework class's
+    /// For each registered role this clones the donor role's compiled StyleSheet, keeps
+    /// only the donor-role rules, rewrites their selector parts to the framework role's
     /// role string, and recolors the entries where the donor role differs from a second
     /// vanilla role. From then on the game's own class toggle is the whole mechanism.
     /// </summary>
@@ -30,27 +30,27 @@ namespace Ectype
         private static List<StyleSheet> _definerSheets;
         private static bool _warnedNoDefiner;
         private static readonly Dictionary<string, StyleSheet> _clones =
-            new Dictionary<string, StyleSheet>();   // donorInstanceId|classId -> patched clone
+            new Dictionary<string, StyleSheet>();   // donorInstanceId|roleId -> patched clone
         private static readonly Dictionary<string, StyleSheet> _defClones =
-            new Dictionary<string, StyleSheet>();   // definerInstanceId|classId -> def clone
+            new Dictionary<string, StyleSheet>();   // definerInstanceId|roleId -> def clone
 
         private static readonly object _classPartType = ResolveClassPartType();
 
-        public static string RoleClass(ClassRecord rec)
+        public static string RoleClass(RoleRecord rec)
         {
             // Mirrors the game's own class construction; an unnamed enum value stringifies
             // to its number, so tree ordinal 4 (role 5) yields "loadout-role__5".
             return "loadout-role__" + ((EPlayerRole)(rec.Ordinal + 1)).AsStyleString();
         }
 
-        /// <summary>The framework class's entry in the game's named-color dictionary,
+        /// <summary>The framework role's entry in the game's named-color dictionary,
         /// mirroring the vanilla naming scheme.</summary>
-        public static string VarFor(ClassRecord rec)
+        public static string VarFor(RoleRecord rec)
         {
             return "--ui-color__perk-" + ((EPlayerRole)(rec.Ordinal + 1)).AsStyleString();
         }
 
-        /// <summary>Attach every registered class's patched sheet to the panel owning
+        /// <summary>Attach every registered role's patched sheet to the panel owning
         /// <paramref name="anywhere"/>. Idempotent; retries donor discovery until found.</summary>
         public static void EnsureInstalled(VisualElement anywhere)
         {
@@ -59,7 +59,7 @@ namespace Ectype
                 VisualElement root = anywhere;
                 while (root.parent != null) root = root.parent;
 
-                foreach (ClassRecord rec in ClassRegistry.Classes)
+                foreach (RoleRecord rec in RoleRegistry.Roles)
                 {
                     Color accent;
                     if (string.IsNullOrEmpty(rec.Manifest.color) ||
@@ -93,7 +93,7 @@ namespace Ectype
 
         /// <summary>
         /// EVERY sheet that consumes the donor role's styling - by reading the donor variable
-        /// in a rule value, or by keying a selector on a gunner token - needs a per-class
+        /// in a rule value, or by keying a selector on a gunner token - needs a per-role
         /// clone, so this censuses them rather than naming the ones already known.
         /// </summary>
         private static List<StyleSheet> DonorSheets()
@@ -188,11 +188,11 @@ namespace Ectype
             }
         }
 
-        /// <summary>Rewrite a gunner token for the framework class, respecting what the
+        /// <summary>Rewrite a gunner token for the framework role, respecting what the
         /// token names: selectors matching ELEMENT identity (ID/Type parts - e.g. the tree
         /// element named "Gunner") become the tree ordinal ("4"); class parts (role-derived
         /// - "loadout-role__gunner") become the role style string ("5").</summary>
-        private static string SwapToken(string value, string partType, ClassRecord rec)
+        private static string SwapToken(string value, string partType, RoleRecord rec)
         {
             string replacement = partType == "ID" || partType == "Type"
                 ? rec.Ordinal.ToString()
@@ -210,10 +210,10 @@ namespace Ectype
         // ------------------------------------------------------------------ clone builder
 
         private static StyleSheet GetOrBuild(Dictionary<string, StyleSheet> cache,
-                                             StyleSheet source, ClassRecord rec,
+                                             StyleSheet source, RoleRecord rec,
                                              Func<StyleSheet> build)
         {
-            string key = source.GetInstanceID() + "|" + rec.Manifest.classId;
+            string key = source.GetInstanceID() + "|" + rec.Manifest.roleId;
             StyleSheet cached;
             if (cache.TryGetValue(key, out cached)) return cached;
 
@@ -225,7 +225,7 @@ namespace Ectype
             catch (Exception e)
             {
                 Plugin.Log.LogError("Ectype: patching sheet '" + source.name + "' for '" +
-                                    rec.Manifest.className + "' failed: " + e);
+                                    rec.Manifest.roleName + "' failed: " + e);
             }
             cache[key] = built;   // cache failures too - one error, not one per update
             return built;
@@ -329,10 +329,10 @@ namespace Ectype
         /// <summary>
         /// The dictionary entries: clone the theme sheet, keep only the selectors owning
         /// gunner-family variable definitions, strip their rules down to those definitions,
-        /// rename each to the framework class's family and set colors to the accent (base)
+        /// rename each to the framework role's family and set colors to the accent (base)
         /// or derived variants. The game's own var() resolution does everything else.
         /// </summary>
-        private static StyleSheet BuildDefinitionClone(StyleSheet definer, ClassRecord rec,
+        private static StyleSheet BuildDefinitionClone(StyleSheet definer, RoleRecord rec,
                                                        Color accent)
         {
             List<object[]> defs = ScanGunnerVarDefinitions(definer);
@@ -405,15 +405,15 @@ namespace Ectype
             for (int i = 0; i < keptSelectors.Count; i++) kept.SetValue(keptSelectors[i], i);
             Traverse.Create(clone).Property("complexSelectors").SetValue(kept);
             clone.contentHash = unchecked(definer.contentHash * 397 ^
-                                          rec.Manifest.classId.GetHashCode());
+                                          rec.Manifest.roleId.GetHashCode());
 
-            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: USS variable family for " + rec.Manifest.className +
+            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: USS variable family for " + rec.Manifest.roleName +
                                                    " from " + definer.name + " (" + defs.Count + " member(s)): " +
                                                    string.Join(", ", defined.ToArray()) + ".");
             return clone;
         }
 
-        private static StyleSheet BuildPatchedClone(StyleSheet donor, ClassRecord rec,
+        private static StyleSheet BuildPatchedClone(StyleSheet donor, RoleRecord rec,
                                                     Color accent)
         {
             StyleSheet clone = UnityEngine.Object.Instantiate(donor);
@@ -486,11 +486,11 @@ namespace Ectype
             // selector matching tables for the renamed parts.
             Traverse.Create(clone).Property("complexSelectors").SetValue(keptArray);
             clone.contentHash = unchecked(donor.contentHash * 397 ^
-                                          rec.Manifest.classId.GetHashCode());
+                                          rec.Manifest.roleId.GetHashCode());
 
             int iconSwaps = SwapRoleIcon(clone, rec);
 
-            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: USS palette for " + rec.Manifest.className + " from " +
+            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: USS palette for " + rec.Manifest.roleName + " from " +
                                                    donor.name + ": " + kept.Count + " rule(s), " + varRenames +
                                                    " var reference(s) -> " + VarFor(rec) + ", " + recolored +
                                                    " direct color value(s) set" +
@@ -507,11 +507,11 @@ namespace Ectype
         /// <summary>
         /// The role icon on the crew HUD and the lobby list is a background image set by the
         /// role's USS rule, so the cloned gunner rule would draw the gunner's glyph. Every
-        /// gunner image the clone references is repointed at the class's own role icon, or
-        /// at the framework placeholder when the class ships none. The clone owns its asset
+        /// gunner image the clone references is repointed at the role's own role icon, or
+        /// at the framework placeholder when the role ships none. The clone owns its asset
         /// table, so the donor sheet is untouched.
         /// </summary>
-        private static int SwapRoleIcon(StyleSheet clone, ClassRecord rec)
+        private static int SwapRoleIcon(StyleSheet clone, RoleRecord rec)
         {
             UnityEngine.Object[] assets =
                 Traverse.Create(clone).Field("assets").GetValue<UnityEngine.Object[]>();
@@ -530,16 +530,16 @@ namespace Ectype
                 swapped++;
             }
             if (swapped > 0)
-                Plugin.Log.LogInfo("Ectype: " + rec.Manifest.className + " role icon set in " +
+                Plugin.Log.LogInfo("Ectype: " + rec.Manifest.roleName + " role icon set in " +
                                    clone.name + " (" + swapped + " image reference(s)).");
             return swapped;
         }
 
-        private static Sprite RoleIconSprite(ClassRecord rec)
+        private static Sprite RoleIconSprite(RoleRecord rec)
         {
             Sprite s = IconStore.Get(rec.SourceAssembly, rec.Manifest.roleIcon);
             if (s != null) return s;
-            Plugin.Log.LogInfo("Ectype: " + rec.Manifest.className + " ships no role icon - " +
+            Plugin.Log.LogInfo("Ectype: " + rec.Manifest.roleName + " ships no role icon - " +
                                "the crew HUD and lobby show the placeholder.");
             return IconStore.Placeholder(false);
         }
@@ -603,7 +603,7 @@ namespace Ectype
             return false;
         }
 
-        private static void RenameGunnerParts(object cs, ClassRecord rec, List<string> renames)
+        private static void RenameGunnerParts(object cs, RoleRecord rec, List<string> renames)
         {
             foreach (GunnerPart g in GunnerParts(cs))
             {

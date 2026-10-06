@@ -1,6 +1,6 @@
 # framework-stats
 
-F6 toggles a +50% walking top speed on the local character, by contributing a modifier against `Ectype.FrameworkStats.MotorAcceleration`. The framework registers it on every character whether or not a class mod is installed.
+F6 toggles a +50% walking top speed on the local character, by contributing a modifier against `Ectype.FrameworkStats.MotorAcceleration`. The framework registers it on every character whether or not a role mod is installed.
 
 Shows:
 

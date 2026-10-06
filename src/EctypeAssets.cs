@@ -13,10 +13,10 @@ using ResourceAssets;
 namespace Ectype
 {
     /// <summary>
-    /// The registration pipeline, run per discovered class. Staged per EctypeConfig, every
+    /// The registration pipeline, run per discovered role. Staged per EctypeConfig, every
     /// step re-runnable and HasAsset/HasItem-guarded because registration bottoms out in a
-    /// plain Dictionary.Add that throws on the second call. One class failing is one named
-    /// error and one absent class; the rest of the set registers normally.
+    /// plain Dictionary.Add that throws on the second call. One role failing is one named
+    /// error and one absent role; the rest of the set registers normally.
     /// </summary>
     internal static class EctypeAssets
     {
@@ -41,7 +41,7 @@ namespace Ectype
             }
         }
 
-        /// <summary>Fast-returns once every class is settled. Called from the driver's retry
+        /// <summary>Fast-returns once every role is settled. Called from the driver's retry
         /// loop and from the PerkLoadout ctor prefix (the profile-load race).</summary>
         public static void EnsureRegistered()
         {
@@ -52,21 +52,21 @@ namespace Ectype
             { GlobalStatus = "inert: patching did not complete"; return; }
             if (!ReadyToRegister()) { GlobalStatus = "waiting for asset containers"; return; }
 
-            // Before any class registers a perk: a perk effect may name one of these, and it
-            // resolves while the perk asset is being built. Unconditional on the class set,
-            // so the surface exists in an install with no class mods at all.
+            // Before any role registers a perk: a perk effect may name one of these, and it
+            // resolves while the perk asset is being built. Unconditional on the role set,
+            // so the surface exists in an install with no role mods at all.
             try { FrameworkStats.EnsureRegistered(); }
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: framework-owned stat registration failed: " + e); }
 
-            ClassRegistry.DiscoverOnce();
+            RoleRegistry.DiscoverOnce();
             VanillaDump.EnsureDumped();
             try { Suppression.Resolve(); }
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: suppression resolution failed: " + e); }
 
             int done = 0, failed = 0;
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            foreach (RoleRecord rec in RoleRegistry.Roles)
             {
                 if (rec.Registered) { done++; continue; }
                 if (rec.PermanentlyFailed) { failed++; continue; }
@@ -78,9 +78,9 @@ namespace Ectype
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: deferred unlock adoption failed: " + e); }
 
-            GlobalStatus = ClassRegistry.Classes.Count == 0
-                ? "no class manifests found"
-                : done + "/" + ClassRegistry.Classes.Count + " classes registered" +
+            GlobalStatus = RoleRegistry.Roles.Count == 0
+                ? "no role manifests found"
+                : done + "/" + RoleRegistry.Roles.Count + " roles registered" +
                   (failed > 0 ? " (" + failed + " failed)" : "");
         }
 
@@ -98,7 +98,7 @@ namespace Ectype
             UnityEngine.Object.DontDestroyOnLoad(o);
         }
 
-        private static void RegisterOne(ClassRecord rec)
+        private static void RegisterOne(RoleRecord rec)
         {
             rec.Attempts++;
             try
@@ -109,7 +109,7 @@ namespace Ectype
                              (rec.TreeDefPublished ? "tree def published as EPerkTree " +
                                                      rec.Ordinal
                                                    : "tree def not published");
-                Plugin.Log.LogInfo("Ectype: class '" + rec.Manifest.className +
+                Plugin.Log.LogInfo("Ectype: role '" + rec.Manifest.roleName +
                                    "' registered. Tree " + rec.TreeGuid.AsHex() +
                                    " as EPerkTree " + rec.Ordinal + ", " +
                                    rec.PerkGuids.Count + " perk(s). " + rec.Status);
@@ -120,37 +120,37 @@ namespace Ectype
                 rec.Status = "attempt " + rec.Attempts + " failed at [" + rec.Stage + "]: " +
                              e.Message;
                 if (rec.Attempts == 1 || rec.Attempts % 10 == 0)
-                    Plugin.Log.LogWarning("Ectype: '" + rec.Manifest.className +
+                    Plugin.Log.LogWarning("Ectype: '" + rec.Manifest.roleName +
                                           "' registration " + rec.Status);
                 if (rec.Attempts > 200)
                 {
                     rec.PermanentlyFailed = true;
-                    Plugin.Log.LogError("Ectype: giving up on '" + rec.Manifest.className +
+                    Plugin.Log.LogError("Ectype: giving up on '" + rec.Manifest.roleName +
                                         "'. Last error: " + e);
                 }
             }
         }
 
-        private static void RunStages(ClassRecord rec)
+        private static void RunStages(RoleRecord rec)
         {
-            ClassManifest m = rec.Manifest;
+            RoleManifest m = rec.Manifest;
 
             rec.Stage = "guids";
-            rec.TreeGuid = new GUIDUnion(Guids.TreeGuid(m.classId));
+            rec.TreeGuid = new GUIDUnion(Guids.TreeGuid(m.roleId));
 
             // ---- stage 1: custom stats, then perk assets --------------------------------
             rec.Stage = "custom stats";
             foreach (CustomStatSpec spec in m.customStats)
                 if (!rec.CustomStats.ContainsKey(spec.name))
                     rec.CustomStats[spec.name] = StatRegistry.RegisterCustomStat(
-                        m.classId, spec, IconStore.Get(rec.SourceAssembly, spec.icon));
+                        m.roleId, spec, IconStore.Get(rec.SourceAssembly, spec.icon));
 
             rec.Stage = "perk assets";
             BuildPerk(rec, m.hero, true);
             foreach (PerkSpec spec in m.perks) BuildPerk(rec, spec, false);
             if (Stage() < 2) return;
 
-            // ---- stage 2: runtime assets (Required mask - a class changes what a run
+            // ---- stage 2: runtime assets (Required mask - a role changes what a run
             //      contains, and its GUIDs cross the wire in "PBL") -----------------------
             rec.Stage = "runtime assets";
             RuntimeAssetsRegister reg = RuntimeAssetsRegister.Instance;
@@ -162,7 +162,7 @@ namespace Ectype
                         new RuntimeAssetInfo
                         {
                             Name = kv.Value.name,
-                            DisplayName = m.className + ": " + kv.Key
+                            DisplayName = m.roleName + ": " + kv.Key
                         });
             }
             if (Stage() < 3) return;
@@ -187,7 +187,7 @@ namespace Ectype
             if (rec.Tree == null)
             {
                 rec.Tree = ScriptableObject.CreateInstance<PerkTree>();
-                rec.Tree.name = "Ectype_PerkTree_" + m.classId;
+                rec.Tree.name = "Ectype_PerkTree_" + m.roleId;
                 Keep(rec.Tree);
                 rec.Tree.ContainerGuid = rec.TreeGuid;
                 rec.Tree.Perks = new List<PerkBuffRef>();
@@ -199,7 +199,7 @@ namespace Ectype
                     new RuntimeAssetInfo
                     {
                         Name = rec.Tree.name,
-                        DisplayName = m.className + " gene tree"
+                        DisplayName = m.roleName + " gene tree"
                     });
             if (Stage() < 6 ||
                 EctypeConfig.PublishTreeDefs == null || !EctypeConfig.PublishTreeDefs.Value ||
@@ -217,9 +217,9 @@ namespace Ectype
                 rec.TreeDef.Ref = new PerkTreeRef(rec.TreeGuid, "") { IsRuntime = true };
                 ContextInfo treeCtx = ContextInfo.Create(
                     IconStore.Get(rec.SourceAssembly, m.roleIcon)
-                        ?? IconFrom(m.roleIconDonor, m.classId + " (class icon)")
+                        ?? IconFrom(m.roleIconDonor, m.roleId + " (role icon)")
                         ?? IconStore.Placeholder(false),
-                    m.className, m.classDesc ?? "");
+                    m.roleName, m.roleDesc ?? "");
                 Keep(treeCtx);
                 rec.TreeDef.ContextInfo = treeCtx;
                 if (!Refl.SetFieldLogged(rec.TreeDef, "perkTree", (EPerkTree)rec.Ordinal))
@@ -270,22 +270,22 @@ namespace Ectype
             if (!ok)
                 Plugin.Log.LogError("Ectype: the PerkTreeController ctor prefix is not " +
                                     "applied - tree defs are not published this session. " +
-                                    "Classes register but no tree renders.");
+                                    "Roles register but no tree renders.");
             return ok;
         }
 
         // ------------------------------------------------------------------------ builders
 
-        private static void BuildPerk(ClassRecord rec, PerkSpec spec, bool hero)
+        private static void BuildPerk(RoleRecord rec, PerkSpec spec, bool hero)
         {
             GUIDUnion guid = new GUIDUnion(
-                string.IsNullOrEmpty(spec.guid) ? Guids.PerkGuid(rec.Manifest.classId, spec.key)
+                string.IsNullOrEmpty(spec.guid) ? Guids.PerkGuid(rec.Manifest.roleId, spec.key)
                                                 : spec.guid);
             rec.PerkGuids[spec.key] = guid;
             if (rec.Perks.ContainsKey(spec.key)) return;   // re-entry
 
             PerkBuff perk = ScriptableObject.CreateInstance<PerkBuff>();
-            perk.name = "Ectype_PerkBuff_" + rec.Manifest.classId + "_" + spec.key;
+            perk.name = "Ectype_PerkBuff_" + rec.Manifest.roleId + "_" + spec.key;
             Keep(perk);
             // PerkBuff's ctor initialises none of its lists, and the reapply path indexes
             // Levels[level-1].Mods unchecked.
@@ -364,7 +364,7 @@ namespace Ectype
             }
         }
 
-        private static List<PerkBuffLevel> BuildLevels(ClassRecord rec, PerkSpec spec)
+        private static List<PerkBuffLevel> BuildLevels(RoleRecord rec, PerkSpec spec)
         {
             int count = Math.Max(1, Math.Max(spec.levels, spec.mods.Count));
             List<PerkBuffLevel> levels = new List<PerkBuffLevel>();
@@ -379,7 +379,7 @@ namespace Ectype
                         {
                             int statId = StatRegistry.Resolve(fx.stat, rec.CustomStats);
                             ModifierType type = StatRegistry.ResolveModifierType(fx.type);
-                            string ctx = rec.Manifest.className + "/" + spec.key + " L" + (i + 1);
+                            string ctx = rec.Manifest.roleName + "/" + spec.key + " L" + (i + 1);
                             Gameplay.Tags.ModTagConfiguration tags = TagRegistry.Build(fx, ctx);
                             PrimitiveModifier mod = BuildModifier(fx, type);
                             mods.Add(tags != null ? new StatMod(mod, statId, tags)
@@ -387,14 +387,14 @@ namespace Ectype
                         }
                         catch (Exception e)
                         {
-                            Plugin.Log.LogError("Ectype: '" + rec.Manifest.className + "' perk '" +
+                            Plugin.Log.LogError("Ectype: '" + rec.Manifest.roleName + "' perk '" +
                                                 spec.key + "' level " + (i + 1) +
                                                 " effect skipped: " + e.Message);
                         }
                     }
                 }
                 if (mods.Count == 0 && !spec.emptyOk)
-                    Plugin.Log.LogWarning("Ectype: '" + rec.Manifest.className + "' perk '" +
+                    Plugin.Log.LogWarning("Ectype: '" + rec.Manifest.roleName + "' perk '" +
                                           spec.key + "' level " + (i + 1) + " has EMPTY " +
                                           "StatMods - it costs a point and does nothing.");
                 levels.Add(new PerkBuffLevel { Mods = mods });
@@ -402,7 +402,7 @@ namespace Ectype
             return levels;
         }
 
-        private static void PublishPerkDef(ClassRecord rec, PerkSpec spec,
+        private static void PublishPerkDef(RoleRecord rec, PerkSpec spec,
                                            PerkBuffContainer container,
                                            List<PerkBuffDef> authored)
         {
@@ -443,7 +443,7 @@ namespace Ectype
         /// guid already claimed by another UnlockItemDef is skipped with one named warning -
         /// the perk registers normally, it simply grants no unlock.
         /// </summary>
-        private static void PublishUnlocks(ClassRecord rec, PerkSpec spec)
+        private static void PublishUnlocks(RoleRecord rec, PerkSpec spec)
         {
             if (spec.unlocks == null || spec.unlocks.Count == 0) return;
             UnlockContainer container = UnlockContainer.Instance;
@@ -458,11 +458,11 @@ namespace Ectype
                 GUIDUnion itemGuid = new GUIDUnion(hex);
                 if (container.HasItem(itemGuid))
                 {
-                    // A verbatim replacement class claims the same items as the tree it
+                    // A verbatim replacement role claims the same items as the tree it
                     // replaced, so take the claim over when suppression killed its old owner.
                     if (Adoption.TryAdoptUnlock(rec, spec.key, itemGuid, perkGuid)) continue;
                     // Not "someone else owns it" until suppression has resolved, and this
-                    // class registers only once - so defer rather than decide now.
+                    // role registers only once - so defer rather than decide now.
                     Adoption.DeferUnlock(rec, spec.key, itemGuid, perkGuid);
                     continue;
                 }
@@ -475,7 +475,7 @@ namespace Ectype
                     RequiredPerk = new PerkBuffRef(perkGuid, "") { IsRuntime = true },
                 };
                 container.RegisterRuntimeAsset(itemGuid, def);
-                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.className + "' perk '" +
+                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: '" + rec.Manifest.roleName + "' perk '" +
                                                        spec.key + "' registered a PlayerPerk unlock for item " +
                                                        hex + ".");
             }
@@ -515,7 +515,7 @@ namespace Ectype
         /// Walks exactly what the tree build will dereference, so a silent misregistration
         /// surfaces as a named error at registration time instead of a skipped cell.
         /// </summary>
-        private static void Verify(ClassRecord rec)
+        private static void Verify(RoleRecord rec)
         {
             try
             {
@@ -525,19 +525,19 @@ namespace Ectype
                     if (!PerkBuffContainer.Instance.TryGetByGuid(kv.Value, out check) ||
                         check == null)
                     {
-                        Plugin.Log.LogError("Ectype VERIFY '" + rec.Manifest.className +
+                        Plugin.Log.LogError("Ectype VERIFY '" + rec.Manifest.roleName +
                                             "': perk '" + kv.Key + "' does not resolve by GUID.");
                         return;
                     }
                     if (check.Asset == null)
                     {
-                        Plugin.Log.LogError("Ectype VERIFY '" + rec.Manifest.className +
+                        Plugin.Log.LogError("Ectype VERIFY '" + rec.Manifest.roleName +
                                             "': perk '" + kv.Key + "' def.Asset is null - " +
                                             "ref not IsRuntime, or the asset was collected.");
                         return;
                     }
                 }
-                Plugin.Log.LogInfo("Ectype VERIFY '" + rec.Manifest.className + "': ok. " +
+                Plugin.Log.LogInfo("Ectype VERIFY '" + rec.Manifest.roleName + "': ok. " +
                                    rec.PerkGuids.Count + " perk(s) resolve; tree asset " +
                                    (rec.Tree != null ? "built" : "MISSING") + "; tree def " +
                                    (rec.TreeDefPublished ? "published" : "not published") + ".");

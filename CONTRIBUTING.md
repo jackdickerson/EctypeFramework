@@ -53,12 +53,12 @@ properties.
   changed.
 
 A pull request is checked by a workflow that validates line endings, the example manifests
-against `docs/schemas/ectype-class.schema.json`, relative Markdown links, `release/release.json`
+against `docs/schemas/ectype-role.schema.json`, relative Markdown links, `release/release.json`
 and the changelog heading for the current version. It does not compile. A change that compiles
 only on your machine because of a local game folder is caught in review, so say in the pull
 request which game version you tested against.
 
-Testing is in game: a framework change is exercised by loading a class mod, switching loadouts
+Testing is in game: a framework change is exercised by loading a role mod, switching loadouts
 at the terminal and reading `BepInEx\LogOutput.log` for `[Error` lines.
 
 ## AI assistance

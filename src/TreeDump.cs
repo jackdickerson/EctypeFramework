@@ -50,7 +50,7 @@ namespace Ectype
                             PerkBuff perk = cell != null ? cell.PerkData : null;
                             string label = perk == null ? "<empty>"
                                 : SafeName(perk) + "(" + perk.DisplayType + ")";
-                            if (perk != null && ClassRegistry.IsOurGuid(perk.ContainerGuid))
+                            if (perk != null && RoleRegistry.IsOurGuid(perk.ContainerGuid))
                             {
                                 label = "**" + label + "**";
                                 ours++;

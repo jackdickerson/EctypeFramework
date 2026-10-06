@@ -107,7 +107,7 @@ namespace Ectype
         private static HashSet<PerkBuff> FrameworkPerks()
         {
             HashSet<PerkBuff> set = new HashSet<PerkBuff>();
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            foreach (RoleRecord rec in RoleRegistry.Roles)
                 foreach (PerkBuff perk in rec.Perks.Values)
                     if (perk != null) set.Add(perk);
             return set;

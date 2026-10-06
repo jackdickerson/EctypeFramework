@@ -9,10 +9,10 @@ using HarmonyLib;
 namespace Ectype
 {
     /// <summary>
-    /// Host-authoritative, live suppression of registered ectype classes - distinct from
+    /// Host-authoritative, live suppression of registered ectype roles - distinct from
     /// Suppression.cs's manifest-declared vanilla-tree suppression, which is static data
     /// resolved once. This is a runtime choice the host makes from the F5 menu (see
-    /// EctypeConfig.HostSuppressedClassIds), synced to every client via a Photon room
+    /// EctypeConfig.HostSuppressedRoleIds), synced to every client via a Photon room
     /// custom property (RoomSync.cs), and can change more than once per session.
     ///
     /// SetSuppressed is the UI-agnostic entry point: room-property sync calls it today, and
@@ -23,7 +23,7 @@ namespace Ectype
     /// SuppressionOverlay makes the game read them as absent, so lifting it restores the
     /// build exactly.
     ///
-    /// Suppressing a class here never touches AbilityWiring's per-character install loop:
+    /// Suppressing a role here never touches AbilityWiring's per-character install loop:
     /// removing an ability slot for only some clients desynchronises the position-indexed
     /// Photon ability array. The installed ability is deselected instead.
     /// </summary>
@@ -35,24 +35,24 @@ namespace Ectype
         private static bool _armed;
         public static string Status = "nothing host-suppressed";
 
-        public static bool IsClassSuppressed(string classId)
+        public static bool IsRoleSuppressed(string roleId)
         {
-            return !string.IsNullOrEmpty(classId) && _suppressed.Contains(classId);
+            return !string.IsNullOrEmpty(roleId) && _suppressed.Contains(roleId);
         }
 
         /// <summary>
-        /// Replace the host-suppressed class set. No-ops if unchanged, so RoomSync's poll
+        /// Replace the host-suppressed role set. No-ops if unchanged, so RoomSync's poll
         /// can call this every tick for free. On an actual change: rederives vanilla-tree
-        /// suppression (a class's own manifest.suppress entries only count while the class
+        /// suppression (a role's own manifest.suppress entries only count while the role
         /// itself is not host-suppressed - see Suppression.OnHostSuppressionChanged), reloads
         /// every player's perks, rebuilds the gene-tree screens, and arms the one-way
         /// session-modded flag the first time anything is actually suppressed.
         /// </summary>
-        public static void SetSuppressed(IEnumerable<string> classIds)
+        public static void SetSuppressed(IEnumerable<string> roleIds)
         {
             HashSet<string> next = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (classIds != null)
-                foreach (string id in classIds)
+            if (roleIds != null)
+                foreach (string id in roleIds)
                     if (!string.IsNullOrEmpty(id)) next.Add(id);
 
             if (next.SetEquals(_suppressed)) return;
@@ -69,7 +69,7 @@ namespace Ectype
 
             Status = _suppressed.Count == 0
                 ? "nothing host-suppressed"
-                : _suppressed.Count + " class(es) host-suppressed: " +
+                : _suppressed.Count + " role(s) host-suppressed: " +
                   string.Join(", ", new List<string>(_suppressed).ToArray());
             Plugin.Log.LogInfo("Ectype: host suppression changed" +
                                (added.Length > 0 ? " +[" + added + "]" : "") +
@@ -100,7 +100,7 @@ namespace Ectype
         /// prefix removes suppressed perks from the loader's decoded copy, so only a fresh
         /// decode brings them back when suppression lifts.
         ///
-        /// ReApplyPerks raises the static OnPerkBuffLevelsUpdated, and every local class
+        /// ReApplyPerks raises the static OnPerkBuffLevelsUpdated, and every local role
         /// ability re-checks its selection on it - once per loader would be a crew-wide
         /// re-check per player for one change. The event is held for the batch and a single
         /// selection pass on the local character replaces it.
@@ -138,13 +138,13 @@ namespace Ectype
             try { SuppressionOverlay.SyncLocalSelection(Adoption.LocalLoco); }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: class-ability selection sync after a host " +
+                Plugin.Log.LogError("Ectype: role-ability selection sync after a host " +
                                     "suppression change failed: " + e);
             }
         }
 
         /// <summary>
-        /// One-way session flag: suppressing a class changes what every player in the room
+        /// One-way session flag: suppressing a role changes what every player in the room
         /// can do, so it must flag the session as modded, and never un-arms.
         /// </summary>
         private static void Arm()

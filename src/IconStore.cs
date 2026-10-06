@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Ectype
 {
     /// <summary>
-    /// Loads icons from PNGs embedded in a class mod's assembly. Sprites are created once and
+    /// Loads icons from PNGs embedded in a role mod's assembly. Sprites are created once and
     /// cached per (assembly, key); a missing resource degrades to null so callers fall back
     /// to a donor icon or to the framework's own placeholder art rather than a blank cell.
     /// </summary>
@@ -27,8 +27,8 @@ namespace Ectype
             return s;
         }
 
-        /// <summary>The framework's placeholder for a slot the class supplies nothing for:
-        /// 512x512 for square slots, 2048x512 for wide ones. Built exactly like a class icon
+        /// <summary>The framework's placeholder for a slot the role supplies nothing for:
+        /// 512x512 for square slots, 2048x512 for wide ones. Built exactly like a role icon
         /// (centre pivot, 100 PPU, no mip chain) so it scales the same.</summary>
         public static Sprite Placeholder(bool wide)
         {

@@ -11,17 +11,17 @@ namespace Ectype
 {
     /// <summary>
     /// W3: presentation of more than four trees. When over four trees survive (registered
-    /// classes minus suppressed vanilla trees), the authored tree row is wrapped in a
+    /// roles minus suppressed vanilla trees), the authored tree row is wrapped in a
     /// horizontal ScrollView driven by the mouse wheel and a pad bridge (every controller
     /// focus change funnels through NavigatorVE.TryFocusElement; scrolling the focused tree
     /// into view keeps spatial navigation working). With four or fewer trees the row is not
     /// wrapped - but the header band still applies, so a four-tree screen and a nine-tree one
-    /// carry their class names the same way.
+    /// carry their role names the same way.
     ///
-    /// Position is shown by a pager rather than a scrollbar: one pip per class above the row,
-    /// lit for the classes currently on screen. A scrollbar answers "how far along am I",
-    /// which is the wrong question for a small fixed set of classes; the pager answers which
-    /// classes are in view and how many exist, both without estimating a proportion. Its pips
+    /// Position is shown by a pager rather than a scrollbar: one pip per role above the row,
+    /// lit for the roles currently on screen. A scrollbar answers "how far along am I",
+    /// which is the wrong question for a small fixed set of roles; the pager answers which
+    /// roles are in view and how many exist, both without estimating a proportion. Its pips
     /// are built from the game's own sprites, tinted - the art is white silhouettes, so tint
     /// is the whole of their appearance.
     ///
@@ -74,11 +74,11 @@ namespace Ectype
                 }
             }
 
-            // The class-name band is not part of the scroller: it applies to whatever trees
+            // The role-name band is not part of the scroller: it applies to whatever trees
             // this document holds, wrapped or not.
-            try { StyleTreeContent(root); StyleClassNames(root); }
+            try { StyleTreeContent(root); StyleRoleNames(root); }
             catch (Exception e)
-            { Plugin.Log.LogError("Ectype: class-name styling failed: " + e); }
+            { Plugin.Log.LogError("Ectype: role-name styling failed: " + e); }
 
             if (EctypeConfig.GeometryLog == null || EctypeConfig.GeometryLog.Value)
                 PresentationDiagnostics.ScheduleGeometryLog(
@@ -96,7 +96,7 @@ namespace Ectype
         {
             if (root == null) return;
             StyleTreeContent(root);
-            StyleClassNames(root);
+            StyleRoleNames(root);
 
             ScrollView scroll = root.Q<ScrollView>(SCROLL_NAME);
             if (scroll == null) return;
@@ -108,7 +108,7 @@ namespace Ectype
             if (carousel != null) carousel.Refresh();
         }
 
-        // -------------------------------------------------------------- the class-name band
+        // -------------------------------------------------------------- the role-name band
 
         /// <summary>
         /// A PerkTreeVE's frame and its contents are SIBLINGS, not nested ("Title",
@@ -175,7 +175,7 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Put each tree's class name in the band the content just vacated, driving the
+        /// Put each tree's role name in the band the content just vacated, driving the
         /// game's own "ClassName" label rather than adding a parallel one.
         ///
         /// Placement is written to the label's PARENT ("Title"), the absolutely-positioned
@@ -184,12 +184,12 @@ namespace Ectype
         /// Appearance still belongs to the label, and every property is written only when
         /// the spec names it.
         /// </summary>
-        private static void StyleClassNames(VisualElement root)
+        private static void StyleRoleNames(VisualElement root)
         {
             LayoutSpec s = S;
-            if (s.showClassName == null && s.classNameFontSize == null &&
-                s.classNameTopPx == null && s.classNameHeightPx == null &&
-                string.IsNullOrEmpty(s.classNameColorHex)) return;
+            if (s.showRoleName == null && s.roleNameFontSize == null &&
+                s.roleNameTopPx == null && s.roleNameHeightPx == null &&
+                string.IsNullOrEmpty(s.roleNameColorHex)) return;
 
             foreach (PerkTreeVE tree in root.Query<PerkTreeVE>().ToList())
             {
@@ -197,13 +197,13 @@ namespace Ectype
                 if (label == null) continue;
 
                 IStyle st = label.style;
-                if (s.showClassName != null)
-                    st.display = s.showClassName.Value ? DisplayStyle.Flex : DisplayStyle.None;
-                if (s.classNameFontSize != null) st.fontSize = s.classNameFontSize.Value;
-                if (!string.IsNullOrEmpty(s.classNameColorHex))
-                    st.color = LayoutSpec.ParseColor(s.classNameColorHex, Color.white);
+                if (s.showRoleName != null)
+                    st.display = s.showRoleName.Value ? DisplayStyle.Flex : DisplayStyle.None;
+                if (s.roleNameFontSize != null) st.fontSize = s.roleNameFontSize.Value;
+                if (!string.IsNullOrEmpty(s.roleNameColorHex))
+                    st.color = LayoutSpec.ParseColor(s.roleNameColorHex, Color.white);
 
-                if (s.classNameTopPx == null && s.classNameHeightPx == null) continue;
+                if (s.roleNameTopPx == null && s.roleNameHeightPx == null) continue;
 
                 // Title is authored width-to-content, so stretching it edge to edge and
                 // centring its children is what actually centres the name in the tree - the
@@ -215,8 +215,8 @@ namespace Ectype
                 ts.right = 0f;
                 ts.alignItems = Align.Center;
                 ts.justifyContent = Justify.Center;
-                if (s.classNameTopPx != null) ts.top = s.classNameTopPx.Value;
-                if (s.classNameHeightPx != null) ts.height = s.classNameHeightPx.Value;
+                if (s.roleNameTopPx != null) ts.top = s.roleNameTopPx.Value;
+                if (s.roleNameHeightPx != null) ts.height = s.roleNameHeightPx.Value;
             }
         }
 
@@ -364,7 +364,7 @@ namespace Ectype
         /// <summary>
         /// Build the pager to match the current tree count, and place it above the row.
         /// Rebuilt whole whenever the count changes rather than diffed, so a rebuild cannot
-        /// leave a stale pip behind for a class that is no longer registered.
+        /// leave a stale pip behind for a role that is no longer registered.
         ///
         /// The pager is IN FLOW, in a column whose width is the scroller's own, and centred
         /// by the layout engine. That is the whole of its placement.

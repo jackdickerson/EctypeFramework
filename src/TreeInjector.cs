@@ -11,7 +11,7 @@ using UI.Token;
 namespace Ectype
 {
     /// <summary>
-    /// Builds one PerkTreeVE per registered class - named by its tree ordinal ("4", "5", ...)
+    /// Builds one PerkTreeVE per registered role - named by its tree ordinal ("4", "5", ...)
     /// - into the document BEFORE PerkTreeController's constructor queries it, in both the
     /// token terminal and the codex. Registration closes at the first ctor run: an ordinal
     /// allocated after this point could differ between clients, so late discovery is refused.
@@ -26,7 +26,7 @@ namespace Ectype
     ///
     /// If injection cannot produce an element, the published def must not reach the ctor (it
     /// would Q a null and kill the terminal), so the fallback hands the ctor a filtered def
-    /// collection - the terminal degrades by exactly the classes that failed.
+    /// collection - the terminal degrades by exactly the roles that failed.
     /// </summary>
     [HarmonyPatch(typeof(PerkTreeController), MethodType.Constructor,
                   new Type[] { typeof(IReadOnlyCollection<ResourceAssets.PerkTreeDef>),
@@ -50,7 +50,7 @@ namespace Ectype
                                         VisualElement __1)
         {
             VisualElement root = __1;
-            ClassRegistry.RegistrationClosed = true;
+            RoleRegistry.RegistrationClosed = true;
             // Belt for the scrub paths: registration (and with it suppression resolution)
             // normally settled long before the first terminal build.
             try { Suppression.Resolve(); }
@@ -61,18 +61,18 @@ namespace Ectype
             try { if (root != null) UssPalette.EnsureInstalled(root); }
             catch (Exception e) { Plugin.Log.LogError("Ectype: palette install failed: " + e); }
 
-            List<ClassRecord> missing = null;
-            foreach (ClassRecord rec in ClassRegistry.Classes)
+            List<RoleRecord> missing = null;
+            foreach (RoleRecord rec in RoleRegistry.Roles)
             {
                 if (!rec.TreeDefPublished) continue;
-                // Suppressed (by the host or another class's suppressClasses): skip injection
+                // Suppressed (by the host or another role's suppressRoles): skip injection
                 // rather than build-then-hide, so an element with no def reaching the ctor never
                 // exists even transiently; routed through the same `missing` degrade path as a
                 // failed build.
-                if (Suppression.IsClassSuppressed(rec.Manifest.classId))
+                if (Suppression.IsRoleSuppressed(rec.Manifest.roleId))
                 {
                     rec.ElementInjected = false;
-                    (missing = missing ?? new List<ClassRecord>()).Add(rec);
+                    (missing = missing ?? new List<RoleRecord>()).Add(rec);
                     continue;
                 }
                 try
@@ -83,10 +83,10 @@ namespace Ectype
                 {
                     rec.ElementInjected = false;
                     Plugin.Log.LogError("Ectype: tree VE injection for '" +
-                                        rec.Manifest.className + "' failed: " + e);
+                                        rec.Manifest.roleName + "' failed: " + e);
                 }
                 if (!rec.ElementInjected)
-                    (missing = missing ?? new List<ClassRecord>()).Add(rec);
+                    (missing = missing ?? new List<RoleRecord>()).Add(rec);
             }
 
             // Suppressed vanilla trees: take their elements out of the document (freeing
@@ -101,11 +101,11 @@ namespace Ectype
                         PerkTreeVE gone = root.Q<PerkTreeVE>(name);
                         if (gone != null) gone.RemoveFromHierarchy();
                     }
-                    // Suppressed ectype classes: the skip above only stops a NEW element
+                    // Suppressed ectype roles: the skip above only stops a NEW element
                     // appearing, so remove any a previous ctor call already injected.
-                    foreach (ClassRecord rec in ClassRegistry.Classes)
+                    foreach (RoleRecord rec in RoleRegistry.Roles)
                     {
-                        if (!Suppression.IsClassSuppressed(rec.Manifest.classId)) continue;
+                        if (!Suppression.IsRoleSuppressed(rec.Manifest.roleId)) continue;
                         PerkTreeVE gone = root.Q<PerkTreeVE>(rec.Ordinal.ToString());
                         if (gone != null) gone.RemoveFromHierarchy();
                     }
@@ -116,7 +116,7 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: suppressed-tree element removal failed: " + e);
             }
 
-            // Two reasons a def must not reach the unchecked Q: its class's element could
+            // Two reasons a def must not reach the unchecked Q: its role's element could
             // not be injected (degrade), or its tree is suppressed by a manifest (intent).
             if (missing != null || Suppression.HasSuppressedTrees)
                 try
@@ -130,7 +130,7 @@ namespace Ectype
                             bool drop = def != null && def.Ref != null &&
                                         Suppression.IsSuppressedTree(def.Ref.AssetGuid);
                             if (!drop && missing != null)
-                                foreach (ClassRecord rec in missing)
+                                foreach (RoleRecord rec in missing)
                                     if (ReferenceEquals(def, rec.TreeDef)) { drop = true; break; }
                             if (!drop) filtered.Add(def);
                         }
@@ -138,9 +138,9 @@ namespace Ectype
                         {
                             __0 = filtered;
                             if (missing != null)
-                                foreach (ClassRecord rec in missing)
+                                foreach (RoleRecord rec in missing)
                                     Plugin.Log.LogError("Ectype: tree element for '" +
-                                                        rec.Manifest.className + "' missing - its " +
+                                                        rec.Manifest.roleName + "' missing - its " +
                                                         "PerkTreeDef was filtered out of this build so " +
                                                         "the terminal survives without it.");
                         }
@@ -165,7 +165,7 @@ namespace Ectype
             }
         }
 
-        private static bool Inject(VisualElement root, ClassRecord rec)
+        private static bool Inject(VisualElement root, RoleRecord rec)
         {
             if (root == null) return false;
             string treeName = rec.Ordinal.ToString();
@@ -189,14 +189,14 @@ namespace Ectype
             tree.PerkTree.Value = (EPerkTree)rec.Ordinal;
             DressCells(tree, rec);
 
-            Label className = tree.Q<Label>("ClassName");
-            if (className != null)
-                className.text = rec.Manifest.className.ToUpperInvariant();
+            Label nameLabel = tree.Q<Label>("ClassName");
+            if (nameLabel != null)
+                nameLabel.text = rec.Manifest.roleName.ToUpperInvariant();
             Label spent = tree.Q<Label>("SpentPoints");
             if (spent != null) spent.text = "0";
 
             // Insert in ordinal order after the last tree already present, so multiple
-            // classes land as 4, 5, 6... regardless of injection order.
+            // roles land as 4, 5, 6... regardless of injection order.
             VisualElement parent = anchor.parent;
             int insertAt = parent.IndexOf(anchor) + 1;
             for (int o = EctypePluginInfo.FIRST_TREE_ORDINAL; o < rec.Ordinal; o++)
@@ -208,7 +208,7 @@ namespace Ectype
             parent.Insert(insertAt, tree);
             // No accent code here: colors resolve through the USS palette, as a stock tree's do.
             if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: PerkTreeVE '" + treeName + "' (" +
-                                                   rec.Manifest.className + ") instantiated from the authored " +
+                                                   rec.Manifest.roleName + ") instantiated from the authored " +
                                                    "template.");
             return true;
         }
@@ -253,11 +253,11 @@ namespace Ectype
 
         /// <summary>
         /// The authored empty-cell classes reflect the DONOR's occupancy and nothing at
-        /// runtime touches them, so retoggle them per cell to THIS class's occupancy:
+        /// runtime touches them, so retoggle them per cell to THIS role's occupancy:
         /// filled cells are left bare on purpose, because TreeReady's Init/Update owns
         /// their dressing and will fight anything applied here.
         /// </summary>
-        private static void DressCells(PerkTreeVE tree, ClassRecord rec)
+        private static void DressCells(PerkTreeVE tree, RoleRecord rec)
         {
             HashSet<long> occupied = new HashSet<long>();
             occupied.Add(0);   // hero at (0,0)
@@ -285,9 +285,9 @@ namespace Ectype
     /// <summary>
     /// TokenTerminal.UpdateLoadoutButtons tints each loadout slot by toggling USS classes
     /// "loadout-role__&lt;role&gt;" for exactly the four vanilla roles, so a loadout whose role
-    /// is a framework class matches none of them and renders untinted. UssPalette supplies
+    /// is a framework role matches none of them and renders untinted. UssPalette supplies
     /// the missing selectors in patched sheet clones, which lets this postfix toggle a
-    /// framework class's role class exactly as the game toggles a vanilla one - no inline
+    /// framework role's role class exactly as the game toggles a vanilla one - no inline
     /// writes, so nothing has to be cleared or re-asserted.
     /// </summary>
     [HarmonyPatch(typeof(TokenTerminal), "UpdateLoadoutButtons")]
@@ -312,7 +312,7 @@ namespace Ectype
                 for (int i = 0; i < count; i++)
                 {
                     EPlayerRole role = PlayerDataHelper.GetPlayerRole(loadouts[i].GetData());
-                    foreach (ClassRecord rec in ClassRegistry.Classes)
+                    foreach (RoleRecord rec in RoleRegistry.Roles)
                         buttons[i].EnableInClassList(UssPalette.RoleClass(rec),
                                                      (int)role - 1 == rec.Ordinal);
                 }
@@ -326,7 +326,7 @@ namespace Ectype
 
     /// <summary>
     /// PerkTreeVE.CreateClassTooltip (run from DelayedSetup, ~1s after attach) re-localizes
-    /// the ClassName label: text -> GetLocalized(text + "_h"). A framework class has no
+    /// the ClassName label: text -> GetLocalized(text + "_h"). A framework role has no
     /// localization entry, so the title blanks. Restore the manifest name after the game's
     /// pass, matching our trees by element name (the ordinal string).
     /// </summary>
@@ -340,18 +340,18 @@ namespace Ectype
             {
                 int ordinal;
                 if (!int.TryParse(__instance.name, out ordinal)) return;
-                foreach (ClassRecord rec in ClassRegistry.Classes)
+                foreach (RoleRecord rec in RoleRegistry.Roles)
                 {
                     if (rec.Ordinal != ordinal) continue;
                     Label label = __instance.Q<Label>("ClassName");
                     if (label != null)
-                        label.text = rec.Manifest.className.ToUpperInvariant();
+                        label.text = rec.Manifest.roleName.ToUpperInvariant();
                     return;
                 }
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: class-name restore failed: " + e);
+                Plugin.Log.LogError("Ectype: role-name restore failed: " + e);
             }
         }
     }

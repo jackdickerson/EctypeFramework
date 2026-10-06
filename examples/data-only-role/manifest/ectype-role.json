@@ -1,14 +1,14 @@
 {
-  "contractVersion": 1,
-  "classId": "REPLACE_ME",
-  "className": "Example Ability",
-  "classDesc": "A minimal class with one coded ability.",
-  "color": "#C0623A",
+  "contractVersion": 2,
+  "roleId": "REPLACE_ME",
+  "roleName": "Example",
+  "roleDesc": "A minimal role declared entirely in a JSON manifest.",
+  "color": "#3FA7A0",
 
   "hero": {
     "key": "hero",
-    "name": "Brace",
-    "desc": "<color=#FFD700>Class Ability</color>. Brace: take far less damage for a few seconds.",
+    "name": "Example Hero",
+    "desc": "<color=#FFD700>Class Ability</color>. Placeholder: no ability is wired, so this perk grants nothing.",
     "levels": 1,
     "emptyOk": true
   },
@@ -18,7 +18,7 @@
       "key": "steady-hand",
       "name": "Steady Hand",
       "desc": "While manning a <color=#FFD700>System Module</color>, its <color=#FFD700>Accuracy</color> is increased.",
-      "row": 1, "col": 0, "target": "seat",
+      "row": 1, "col": 0, "target": "seat", "icon": "steady-hand",
       "mods": [
         [ { "stat": "Accuracy", "type": "percent", "value": 0.10 } ],
         [ { "stat": "Accuracy", "type": "percent", "value": 0.20 } ],

@@ -11,7 +11,7 @@ LootTables.Register(new LootDrop
     Item     = myItemGuid,
     Rarity   = LootTables.ToLootRarity(RarityType.Rare),   // the two enums differ; mapped by name
     IsAnchor = LootTables.AnyCarryable<PayloadBattery>(),  // which stock entries place it
-    Gate     = () => ClassRegistry.IsAvailableInRoom(MyId), // optional, asked at each roll
+    Gate     = () => RoleRegistry.IsAvailableInRoom(MyId), // optional, asked at each roll
     RequireRarityInTable = true,                            // optional, default false
     ExcludeTables = new[] { "LootTable_OneShot_Collector" }, // optional, by asset name
 });

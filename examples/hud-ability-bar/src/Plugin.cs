@@ -12,7 +12,7 @@ using VoidManager.MPModChecks;
 namespace ExampleHudBar
 {
     /// <summary>
-    /// Adds one button to the row beside the class-ability widget, through Ectype.HudAbilityBar.
+    /// Adds one button to the row beside the role-ability widget, through Ectype.HudAbilityBar.
     /// The bar draws the button and its cooldown fill; this mod owns the key and the cooldown.
     /// F9 logs a line and starts a five second cooldown.
     /// </summary>

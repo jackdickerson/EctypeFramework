@@ -18,7 +18,7 @@ namespace Ectype
     /// Built from the game's own machinery:
     ///  * Stat changes are StatMods applied to the character's StatTagCollection via
     ///    ApplyModifiers(mods, source, true) and removed with RemoveModifier(source), the
-    ///    same pair a vanilla channel class ability uses on the same collection. Removal
+    ///    same pair a vanilla channel role ability uses on the same collection. Removal
     ///    is by source, so expiry cannot leak a modifier.
     ///  * Fresh StatMod instances per application: applying overwrites a modifier's
     ///    Source and removal matches on it, so one instance can never serve two targets
@@ -53,7 +53,7 @@ namespace Ectype
     /// </summary>
     public sealed class CharacterStatusDef
     {
-        /// <summary>Identity. Namespace it with the owning mod ("myclass.dash-guard").
+        /// <summary>Identity. Namespace it with the owning mod ("myrole.dash-guard").
         /// Replication, when it exists, will require the same literal on every client.</summary>
         public readonly string Key;
 
@@ -221,7 +221,7 @@ namespace Ectype
         }
 
         /// <summary>Drop every status on a character. Call this when a character is about
-        /// to stop being the thing the mods were meant for - a class switch, say. Death
+        /// to stop being the thing the mods were meant for - a role switch, say. Death
         /// and despawn need no call: the poll reaps a status whose target went away.</summary>
         public static void RemoveAll(Player target)
         {

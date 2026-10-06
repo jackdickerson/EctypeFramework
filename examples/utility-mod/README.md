@@ -1,10 +1,10 @@
 # utility-mod
 
-A plugin that is not a class and makes one framework call: it subscribes to `Ectype.ShipArrivals.Arrived`, which fires on the local machine each time the player ship leaves the void, and logs the arrival kind and server timestamp.
+A plugin that is not a role and makes one framework call: it subscribes to `Ectype.ShipArrivals.Arrived`, which fires on the local machine each time the player ship leaves the void, and logs the arrival kind and server timestamp.
 
 Shows:
 
-- Depending on the framework without declaring a class: no manifest, no embedded resource.
+- Depending on the framework without declaring a role: no manifest, no embedded resource.
 - `MultiplayerType.Client`: nothing here changes what other players see, so a room does not require the mod and it does not flag the session.
 
 ## Before you build

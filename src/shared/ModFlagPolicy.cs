@@ -29,7 +29,7 @@ using VoidManager.MPModChecks;
 /// A mod with no runtime assets loses nothing but the version check, since it
 /// had nothing in the required set to begin with.
 ///
-/// The switch only reaches mods that compile this file. The class framework declares
+/// The switch only reaches mods that compile this file. The Ectype framework declares
 /// MultiplayerType.All unconditionally, and VoidManager flags the session from that
 /// declaration at load. A no-flag build of any mod that depends on the framework
 /// therefore still produces a flagged session whenever the framework is installed.

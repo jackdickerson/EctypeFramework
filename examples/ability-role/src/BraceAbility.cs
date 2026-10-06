@@ -1,13 +1,13 @@
 using System;
 
-namespace ExampleAbilityClass
+namespace ExampleAbilityRole
 {
     /// <summary>
-    /// A class ability that cuts all incoming damage while it is active. The framework
+    /// A role ability that cuts all incoming damage while it is active. The framework
     /// installs it, selects it through the hero perk, binds the ability key, and runs the
     /// cooldown and duration. The subclass supplies the effect.
     /// </summary>
-    public class BraceAbility : Ectype.EctypeClassAbility
+    public class BraceAbility : Ectype.EctypeRoleAbility
     {
         private const string StatusKey = Plugin.PLUGIN_GUID + ".brace";
 
