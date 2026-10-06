@@ -34,8 +34,9 @@ properties.
 
 - **A clean build.** `dotnet build -c Release` finishes with 0 warnings and 0 errors.
 - **A version bump.** `PLUGIN_VERSION` in `src/PluginInfo.cs` is the only place the version is
-  written. Raise `z` on every change. Raise `y` only for a Thunderstore release, which the
-  maintainer does. [docs/versioning.md](docs/versioning.md) has the full rules.
+  written. Raise `z` on every change. `y` rises only in the maintainer's release commit: when
+  a Thunderstore release is made, one commit raises `y`, resets `z` to 0 and is tagged, and
+  the package is built from it. [docs/versioning.md](docs/versioning.md) has the full rules.
 - **A changelog line** in `CHANGELOG.md` under the new version for any change a dependent mod
   can observe: new or removed API, changed behaviour, new manifest fields or stats. A change
   nobody downstream can see needs no entry.
@@ -46,8 +47,8 @@ properties.
 - **Logged exceptions in patches.** Wrap every Harmony patch body in a try/catch that logs the
   exception. An exception that escapes a patch propagates into game code and breaks unrelated
   systems, often silently.
-- **LF line endings.** `.gitattributes` enforces them and `.editorconfig` keeps editors from
-  writing CRLF. `git ls-files --eol` should report `i/lf w/lf` for every text file.
+- **LF line endings.** The repository enforces them through `.gitattributes`; nothing to do
+  unless the workflow reports CRLF.
 - **Docs that match the code.** Update the page under `docs/` that describes the behaviour you
   changed.
 
@@ -60,12 +61,21 @@ request which game version you tested against.
 Testing is in game: a framework change is exercised by loading a class mod, switching loadouts
 at the terminal and reading `BepInEx\LogOutput.log` for `[Error` lines.
 
+## AI assistance
+
+Much of this code and documentation was written with Claude and reviewed by the maintainer.
+AI-assisted pull requests are welcome on the same terms as any other: you have built the
+change, read it, and can answer questions about it.
+
+## Declined without discussion
+
+A pull request that changes the multiplayer type, the modded-session flag, or what the join
+checks see ([docs/multiplayer.md](docs/multiplayer.md)) is declined. Open an issue instead.
+
 ## Needs an issue first
 
 Open an issue and wait for a reply before sending a pull request that:
 
-- changes the multiplayer posture: the multiplayer type, the modded-session flag, or what the
-  join checks see ([docs/multiplayer.md](docs/multiplayer.md));
 - changes the manifest contract version or the meaning of an existing manifest field
   ([docs/versioning.md](docs/versioning.md));
 - removes or renames a public type or member.

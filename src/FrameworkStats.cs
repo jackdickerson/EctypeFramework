@@ -96,7 +96,7 @@ namespace Ectype
         // own collection; consumed on the master by BuildStats, keyed off the player who
         // started the install.
         /// <summary>Multiplier on how fast the player installs, uninstalls and upgrades ship modules.</summary>
-        public const string ModuleInstallSpeed = "ModuleInstallSpeed";
+        public const string SystemModuleConstructionSpeed = "SystemModuleConstructionSpeed";
 
         // The player ship platform's quadratic drag, MovingSpacePlatform.PhysicalData.Friction, on
         // the ship's own collection; wired by ShipPlatformStats.
@@ -234,7 +234,7 @@ namespace Ectype
             } },
             new Spec { IconDonor = StatType.ProcessingSpeed, Stat = new CustomStatSpec
             {
-                name = ModuleInstallSpeed,
+                name = SystemModuleConstructionSpeed,
                 displayName = "Installation Speed",
                 desc = "How fast you install, uninstall and upgrade ship systems.",
                 displayType = "percentage",

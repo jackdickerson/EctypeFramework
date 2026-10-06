@@ -1,15 +1,6 @@
 {
   "$comment": [
-    "Every stat the framework itself owns: what it wraps, where it lives, what it does, what",
-    "the game authored, and who reads it. Ids derive from the framework's reserved owner",
-    "string 'ectype' and the name (MD5 of 'ectype:stat:ectype/<name>', low 28 bits under",
-    "0x20000000); they are also rows in stat-names.csv, which is the perk builder's alias",
-    "list. The declaration is src/FrameworkStats.cs; the wiring is the file named in",
-    "'wiredBy'. Authored values are the prefab's as read at wiring time and logged at spawn",
-    "('grapple stat surface installed' / 'character stat surface installed'); re-check them",
-    "after a game update. 'mechanism' says how the game consumes the number, so a reader",
-    "can predict what a modifier does without opening the decompile.",
-    "'authoredVerified' is false where the value is the Opsive/class default rather than one read back from a spawn log; replace it with the logged number after the first run."
+    "Every stat the framework itself owns: what it wraps, where it lives, what it does, what the game authored, and who reads it. Ids derive from the framework's reserved owner string 'ectype' and the name (MD5 of 'ectype:stat:ectype/<name>', low 28 bits under 0x20000000); they are also rows in stat-names.csv, which is the perk builder's alias list. The declaration is src/FrameworkStats.cs; the wiring is the file named in 'wiredBy'. Authored values are the prefab's as read at wiring time and logged at spawn ('grapple stat surface installed' / 'character stat surface installed'); re-check them after a game update. 'mechanism' says how the game consumes the number, so a reader can predict what a modifier does without opening the decompile. 'authoredVerified' is false where the value is the Opsive/class default rather than one read back from a spawn log; replace it with the logged number after the first run."
   ],
   "owner": "ectype",
   "stats": [
@@ -23,7 +14,7 @@
       "authored": 250,
       "units": "m/s",
       "lowerIsBetter": false,
-      "mechanism": "Speed the hook head is launched at toward the aim point. Higher reaches the anchor sooner; range is a separate vanilla stat (GrapplingHookRange).",
+      "mechanism": "Speed the hook head is launched at toward the aim point. Higher reaches the anchor sooner.",
       "consumers": [
         "perk StatMods targeting character (recurse into the ability's collection)"
       ],
@@ -39,7 +30,7 @@
       "authored": 25,
       "units": "m/s",
       "lowerIsBetter": false,
-      "mechanism": "Cap on the character's speed along the line while being pulled. Read per tick inside the pull update, which is why the field stays the sink.",
+      "mechanism": "Cap on the character's speed along the line while being pulled. Read per tick inside the pull update.",
       "consumers": [
         "perk StatMods targeting character"
       ],
@@ -281,8 +272,8 @@
       "authoredVerified": false
     },
     {
-      "name": "ModuleInstallSpeed",
-      "id": 592760197,
+      "name": "SystemModuleConstructionSpeed",
+      "id": 761402164,
       "displayName": "Installation Speed",
       "wraps": "no field: a factor on the progress clock (BuildProcess.StateTimer) of an install, uninstall or upgrade the player started",
       "collection": "the player's own StatTagCollection (Player.Stats)",

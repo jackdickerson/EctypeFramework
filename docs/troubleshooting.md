@@ -619,4 +619,4 @@ item that never drops usually has an anchor no table matches.
 | --- | --- |
 | `Ectype: wiring <label> as a stat failed - the field keeps its authored number: <exception>` | The stat could not be attached. Perks that name it do nothing. |
 | `Ectype: ChannelGrapplingHook.<name> not found (game update?) - that grapple stat is registered nowhere and perks written against it do nothing.` | A field the framework wraps no longer exists. |
-| `Ectype: BuildProcess.StateTimer is not reachable - ModuleInstallSpeed is inert: <exception>` | The module install-speed stat has no effect. |
+| `Ectype: BuildProcess.StateTimer is not reachable - SystemModuleConstructionSpeed is inert: <exception>` | The module install-speed stat has no effect. |

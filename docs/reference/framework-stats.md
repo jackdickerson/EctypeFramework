@@ -42,7 +42,7 @@ A perk with target `character` reaches them.
 
 ## Install speed
 
-`ModuleInstallSpeed` is a factor (authored 1) on the player's own collection. It sets how fast
+`SystemModuleConstructionSpeed` is a factor (authored 1) on the player's own collection. It sets how fast
 that player installs, uninstalls and upgrades ship modules.
 
 The master runs every build process against one room-wide duration. A `BuildProcess.Run`

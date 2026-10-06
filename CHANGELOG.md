@@ -4,6 +4,14 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.10
+
+- The framework stat `ModuleInstallSpeed` is renamed `SystemModuleConstructionSpeed`. Its id
+  derives from its name, so it changes from 592760197 to 761402164; a perk or manifest that
+  names the old name no longer resolves and must be rewritten. Behaviour is unchanged: the
+  stat still scales install, uninstall and upgrade, because the game runs all three on one
+  progress clock.
+
 ## 0.19.9
 
 - No API or behaviour change. The framework now builds from its own repository against the

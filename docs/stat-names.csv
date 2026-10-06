@@ -122,5 +122,5 @@ HandAttractorPullVelocity,618829903,character,float,framework
 HandAttractorDuration,599926723,character,float,framework
 HandAttractorCooldown,670551379,character,float,framework
 HandAttractorBeams,701901862,character,float,framework
-ModuleInstallSpeed,592760197,character,float,framework
+SystemModuleConstructionSpeed,761402164,character,float,framework
 ShipDrag,554310235,ship movement,float,framework

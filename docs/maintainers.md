@@ -41,7 +41,7 @@ column.
 
 | Seam | Why |
 | --- | --- |
-| `PlayerDataHelper.GetPlayerRole(Dictionary<GUIDUnion,int>)` prefix (replacing) | four-key literal throws on any fifth tree; replacement seeds from registered `PerkTreeDef`s, N-tree by construction |
+| `PlayerDataHelper.GetPlayerRole(Dictionary<GUIDUnion,int>)` prefix (replacing) | Replaces fixed Roles array with N-tree to allow more PerkTreeDefs. N-tree seeds from framework-registered PerkTreeDefs. |
 | `PlayerPerkLoader.ReApplyPerks` prefix | null-def dereference and unchecked `Levels[level - 1]` wipe perks after `ResetPerks`; drop unknown GUIDs and perks with no levels (covers all mods' strays), plus suppressed perks so their effects never apply, and clamp a held level above the perk's `Levels.Count` to its top level (backstop for a peer whose owner did not refund at load) |
 | `PlayerPerkLoader.ReApplyPerks` postfix + finalizer | applies the holder's `characterShip` effects to `ClientGame.Current.PlayerShip.Stats`; the finalizer re-runs the apply when the method threw after `ResetPerks` had already removed them. The postfix also runs the target-reach check |
 | `PlayerPerkLoader.ResetPerks` postfix | removes the holder's `characterShip` modifiers, each by its own source |
@@ -73,8 +73,8 @@ column.
 | `VoidJumpSystem.ChangeActiveStateByIndex` prefix + postfix | every void-jump state change on every machine: the owner's from `UpdateState`, everyone else's from `OnPhotonSerializeView`. Raises `ShipArrivals` |
 | `VoidJumpSpinningDown.enterTimestamp`, `VoidJumpInterdiction.enterTimestamp` (read) | the replicated start of the exit state, plus its length constant, stamps an arrival on the server clock |
 | `ModDynamicValue<FloatModifier, float>` (subclassed), `StatTagCollection.ApplyModifiers` / `RemoveModifier` (called) | a timed stat contribution's amount is rewritten in place through the game's dynamic-value recalculation, which dirties the stat in each collection that registers it; removal is by source |
-| `Player.Awake` postfix | registers the character's field-backed stats and `ModuleInstallSpeed` onto the player's own collection; covers the local player and every replica, idempotent per collection |
-| `BuildProcess.Run` prefix | master only (the game runs build processes there): advances a `ConstructionProcess` / `DeconstructionProcess` / `UpgradeProcess`'s private `StateTimer`, in the `Working` and `Completing` states, by `deltaTime * (ModuleInstallSpeed - 1)` of the requesting player |
+| `Player.Awake` postfix | registers the character's field-backed stats and `SystemModuleConstructionSpeed` onto the player's own collection; covers the local player and every replica, idempotent per collection |
+| `BuildProcess.Run` prefix | master only (the game runs build processes there): advances a `ConstructionProcess` / `DeconstructionProcess` / `UpgradeProcess`'s private `StateTimer`, in the `Working` and `Completing` states, by `deltaTime * (SystemModuleConstructionSpeed - 1)` of the requesting player |
 | `BaseNpcAbility.TryActivateAbility(bool)` prefix | ability suspension: refuses a non-forced start on a suspended enemy; a refusal outside a cast behaviour's tick is held for replay. See [reference/enemy-abilities.md](reference/enemy-abilities.md) |
 | every declared `Tick` / `PassiveTick` in the `BaseNpcAbility` hierarchy, prefix | ability suspension: an enumerated set, so a subclass a game update adds is held too |
 | `CastAbilitiesRandomlyPhaseDrivenBeh.Tick`, `CastAbilitiesSequentiallyPhaseDrivenBeh.Tick` prefix + finalizer | marks the callers that retry every tick, so their refusals are not replayed |
@@ -102,27 +102,6 @@ and comes out once that is found. Each line is a player-caused event, never a pe
 Refusals log at most once per 2 s per ability, and all of these lines share a budget of 20 per
 10 s, with the count of dropped lines carried on the next one.
 
-## Developer config keys
-
-These sit in `BepInEx/config/jack.voidcrew.ectype.cfg` beside the keys in
-[reference/config.md](reference/config.md).
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `[Dev] LayoutWorkbench` | `false` | Shows the layout workbench in the F5 menu and binds Shift+F10 to reload the class-tree layout live from `BepInEx/EctypeLayout/layout.json`, for tuning presentation numbers without restarting. The layout file overrides the shipped defaults whenever it exists, whether or not this switch is on. |
-| `[Dev] LayoutPollSeconds` | `0` | Seconds between checks of `layout.json`; 0 disables the watcher. On a change the layout reloads, the open terminal is re-styled, its panel is written to `capture.png` and the cycle is recorded in `status.json`, so a tuning loop needs no keypress and no window focus. The check is one timestamp read. |
-| `[Dev] DemoHudButton` | `false` | Adds a demo button to the HUD ability bar (ring glyph, F9 on its key chip, 3 s ready then a 5 s cooldown) that exercises the bar with no consumer installed. |
-| `[Dev] CharacterShipTestPerk` | (empty) | `classId/perkKey` of one framework perk to register as `characterShip` with a single `JumpChargeSpeed` +50% effect per level, replacing its authored effects. Also a text field under F5 -> Ectype Framework -> Developer tools. Read at registration (restart to change); every player in the room needs the same value. |
-
-F5 -> Ectype Framework -> Developer tools holds the gene-tree grid dump (ground truth for
-manifest row and col), the HUD ability bar's demo toggle and tree dump, and the layout
-workbench. The foldout is gated on VoidManager's debug mode.
-
-The HUD bar dump lists every button's element tree with its resolved style beside the inline
-values the bar wrote, in the format the `vcm` plugin's `scripts/hud-badge.py --dump` reads.
-`docs/hud-badge.json` is a preview spec for a button on the default chrome; swap its glyph to
-preview a new one.
-
 ## Geometry watcher
 
 `[Presentation] GeometryLog` starts a watcher on every terminal build. It polls the tree row's
@@ -144,11 +123,9 @@ construction", which the code does not do: the verdict constant is 20 s.
 - **Adding a framework-owned stat is four edits:** a name constant and its spec in
   `src/FrameworkStats.cs`, a consumer that reads it, a row in `docs/stat-names.csv` so the perk
   builder can offer it, and an entry in `docs/framework-stats.json` saying what the number
-  does and what value the game authored. A framework stat with no consumer is inert, and the
-  startup log says so.
+  does and what value the game authored. A framework stat with no consumer is inert, logged at startup.
 - **The framework-owned names and the reserved owner string their ids hash from are part of
-  the shipped contract across a room.** Renaming one derives a different id, which is a silent
-  no-op on the side of a mixed room that has the older build.
+  the shipped contract across a room.**
 - **A framework-owned name that shadows a vanilla one is a framework bug**, caught at
   registration by the `StatTable` collision check.
 - Regenerating `docs/stat-names.csv` after a game update uses
@@ -159,31 +136,11 @@ construction", which the code does not do: the verdict constant is 20 s.
   registered` line the framework logs at startup rather than recomputing them.
 - `CharacterStatusReplication` (in `src/CharacterStatus.cs`) records what building replication
   for character statuses involves.
-- Donor names for `EnemyStatusDef.VfxDonorName` come from the Kitbash prefab dump and the asset
-  catalog tools.
 - The saved-mutator-list warning names the mod when the mutator GUID is one of the
   repository's own, from a small table in `src/MutatorSafety.cs`.
-- Recon and engine facts for any of the above live in the `vcm` plugin, not in the framework
-  docs.
 
-## Manifest notes for the VoidCrewModding repository
+## Manifest notes
 
-- `examples/data-only-class/manifest/ectype-class.json` is the small
-  worked example for a manifest; `src/Manifest.cs` holds the model.
-- A class authored in the perk builder is exported to a hand-written-manifest form. In the
-  `.ectype` format, `grid.rows[].width` only derives each perk's `wide` at pack time and
-  `grid.rowUnlockRequirement` is dropped, so every tree renders at the stock shape and gates at
-  the game's 3 points per prior row. Other layouts and gating are the intended direction; no
-  class needs them yet.
-- `minFrameworkVersion` is stamped by the perk builder.
-- The four verbatim fixtures recreate vanilla "Fabricate X" perks. Their `unlocks` entries hit
-  the already-claimed skip path by design while the real vanilla tree coexists, so the
-  fixtures prove the field is wired and safe, not that it grants anything. The runtime-asset
-  steps a class mod's own craftable item needs are in
-  `vcm/references/runtime-assets-and-custom-items.md` (section 9, steps 7 and 8, before the
-  `UnlockContainer` registration that `unlocks` automates).
-- Stat semantics, including the `*Pip` variants, are in
-  `vcm/references/stats-and-modifiers.md`.
 - `ModFlagPolicy` is VoidCrewModding infrastructure: its mods link `shared\*.cs` from that
   repository, and the framework compiles its own copy in `src/shared/`. Class mods there declare
   `MPType => MultiplayerType.All` hardcoded instead of using `ModFlagPolicy.MPType` (which is

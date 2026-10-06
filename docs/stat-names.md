@@ -42,7 +42,7 @@ modifier surface:
 - Five character movement numbers on the player's own collection (`ExternalForceDamping`,
   `ExternalForceDampingTime`, `MotorDamping`, `MotorAcceleration`, `GravityAmount`), so a
   `character`-target perk reaches them.
-- `ModuleInstallSpeed`, a factor on install, uninstall and upgrade rate, on the player's own
+- `SystemModuleConstructionSpeed`, a factor on install, uninstall and upgrade rate, on the player's own
   collection.
 - `IncomingProjectileSpeed` and `ShipDrag` (the platform's quadratic drag) on the player
   ship's collection.

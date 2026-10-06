@@ -32,9 +32,7 @@ small plugin, with no framework code in it.
    Rename-Item ExampleClass.csproj WardenClass.csproj
    ```
 
-2. Replace the example's identifiers, using the table below. Edit the files in an editor
-   and save them as UTF-8 without a byte order mark; Windows PowerShell 5.1 writes a BOM
-   with `Set-Content -Encoding utf8`. The example does not build as shipped: `src\Plugin.cs`
+2. Replace the example's identifiers, using the table below. The example does not build as shipped: `src\Plugin.cs`
    has a `#error` directive that fails the build until you delete it, and the plugin GUID and
    the manifest's `classId` are the placeholder `REPLACE_ME`.
 

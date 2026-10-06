@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Ectype
 {
     /// <summary>
-    /// ModuleInstallSpeed: a factor (authored 1) on how fast a player installs, uninstalls and
+    /// SystemModuleConstructionSpeed: a factor (authored 1) on how fast a player installs, uninstalls and
     /// upgrades ship modules, on the player's own collection, so character-target perks reach it.
     ///
     /// There is no field to sink into. The game times all three jobs on the master: its
@@ -59,7 +59,7 @@ namespace Ectype
             {
                 if (player == null || player.Stats == null || player.Stats.Stats == null) return;
                 FrameworkStats.EnsureRegistered();
-                int id = FrameworkStats.Id(FrameworkStats.ModuleInstallSpeed);
+                int id = FrameworkStats.Id(FrameworkStats.SystemModuleConstructionSpeed);
                 if (id == 0 || player.Stats.Stats.ContainsKey(id)) return;
 
                 ModifiableFloat stat = (ModifiableFloat)1f;
@@ -67,7 +67,7 @@ namespace Ectype
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: registering " + FrameworkStats.ModuleInstallSpeed +
+                Plugin.Log.LogError("Ectype: registering " + FrameworkStats.SystemModuleConstructionSpeed +
                                     " failed - installs run at the stock rate: " + e);
             }
         }
@@ -75,7 +75,7 @@ namespace Ectype
         private static float Factor(Player player)
         {
             if (player == null || player.Stats == null || player.Stats.Stats == null) return 1f;
-            int id = FrameworkStats.Id(FrameworkStats.ModuleInstallSpeed);
+            int id = FrameworkStats.Id(FrameworkStats.SystemModuleConstructionSpeed);
             StatBase sb;
             if (id == 0 || !player.Stats.Stats.TryGetValue(id, out sb)) return 1f;
             ModifiableFloat f = sb.Data as ModifiableFloat;
@@ -99,7 +99,7 @@ namespace Ectype
                 _accessorsFailed = true;
                 _getTimer = null;
                 Plugin.Log.LogError("Ectype: BuildProcess.StateTimer is not reachable - " +
-                                    FrameworkStats.ModuleInstallSpeed + " is inert: " + e);
+                                    FrameworkStats.SystemModuleConstructionSpeed + " is inert: " + e);
                 return false;
             }
         }
@@ -122,7 +122,7 @@ namespace Ectype
                     if (Plugin.Verbose)
                         Plugin.Log.LogInfo("Ectype: " + process.Type + " started by actor " +
                                            process.RequesterActorId + " at " +
-                                           FrameworkStats.ModuleInstallSpeed + " " +
+                                           FrameworkStats.SystemModuleConstructionSpeed + " " +
                                            Factor(who.Player).ToString("0.###") + ".");
                 }
 
@@ -132,7 +132,7 @@ namespace Ectype
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: applying " + FrameworkStats.ModuleInstallSpeed +
+                Plugin.Log.LogError("Ectype: applying " + FrameworkStats.SystemModuleConstructionSpeed +
                                     " failed: " + e);
             }
         }
