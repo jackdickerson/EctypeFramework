@@ -60,8 +60,9 @@ namespace Ectype
             { Plugin.Log.LogError("Ectype: framework-owned stat registration failed: " + e); }
 
             RoleRegistry.DiscoverOnce();
-            if (EctypeConfig.WriteVanillaDump != null && EctypeConfig.WriteVanillaDump.Value)
-                VanillaDump.EnsureDumped();
+#if ECTYPE_DEV
+            DevTools.AfterDiscovery();
+#endif
             try { Suppression.Resolve(); }
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: suppression resolution failed: " + e); }
@@ -293,16 +294,17 @@ namespace Ectype
             perk.RequiredFor = new List<PerkBuffRef>();
             PerkBuffTarget target;
             TryParseTarget(spec.target, out target);   // validation refused an unknown one
-            bool devTest = CharacterShipRoute.IsDevTestPerk(rec.Manifest, spec);
-            perk.Target = devTest ? CharacterShipRoute.CharacterShip : target;
+            perk.Target = target;
             perk.DisplayType = hero ? PerkDisplayType.Hero
                                     : DisplayTypeFor(spec.row, spec.wide);
             perk.BuyingDisabled = false;
             perk.ContainerGuid = guid;
             perk.Row = spec.row;
             perk.Column = spec.col;
-            perk.Levels = devTest ? CharacterShipRoute.DevTestLevels(rec, spec)
-                                  : BuildLevels(rec, spec);
+            perk.Levels = BuildLevels(rec, spec);
+#if ECTYPE_DEV
+            CharacterShipTestPerk.Apply(rec, spec, perk);
+#endif
             rec.Perks[spec.key] = perk;
         }
 

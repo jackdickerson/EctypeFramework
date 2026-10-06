@@ -21,10 +21,10 @@ using VoidManager.MPModChecks;
 /// whether a joiner is missing a mod. Dropping an asset out of the required set to
 /// clear the flag also drops it out of the mod check.
 ///
-/// So for the mods that register network-spawned content - ppc and railgun - a
+/// So for a mod that registers network-spawned content (a weapon module, say), a
 /// no-flag build CANNOT stop a crewmate without the mod from joining. They will
 /// not be bounced with "MISSING MODS"; they will join and then meet spawned
-/// objects their client has no asset for. Everyone needs the same zip.
+/// objects their client has no asset for. Everyone needs the same build.
 ///
 /// A mod with no runtime assets loses nothing but the version check, since it
 /// had nothing in the required set to begin with.
@@ -39,7 +39,7 @@ using VoidManager.MPModChecks;
 /// no signal that the room is modded. That is the purpose of the switch.
 ///
 /// The build records which way it went in AssemblyMetadata("ProgressionFlag"),
-/// so a DLL can always be identified after the fact - see scripts\package.ps1.
+/// so a DLL can always be identified after the fact.
 /// </summary>
 internal static class ModFlagPolicy
 {

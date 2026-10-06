@@ -11,8 +11,8 @@ using UnityEngine;
 // key and never consults this gate.
 
 /// <summary>
-/// Scene-marker gate that lets one owner (kitbash mode) put every mod's dev-key
-/// polling to sleep without either side knowing about the other's assembly.
+/// Scene-marker gate that lets one owner (a tool that takes over the keyboard) put every
+/// mod's dev-key polling to sleep without either side knowing about the other's assembly.
 /// </summary>
 internal static class DevKeyGate
 {

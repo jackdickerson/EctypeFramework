@@ -4,13 +4,12 @@ using System.Globalization;
 using System.Text;
 using UnityEngine;
 
-// Deliberately in the global namespace, same reasoning as ModFlagPolicy and TuningFile:
-// shared source is compiled into each opting-in mod, every mod has its own root
-// namespace, and `internal` gives each assembly a private copy with no collisions.
+// Deliberately in the global namespace, same reasoning as ModFlagPolicy: shared source
+// is compiled into each opting-in mod, every mod has its own root namespace, and
+// `internal` gives each assembly a private copy with no collisions.
 //
-// This file plus KitbashDocument.cs are the parser half and depend only on
-// UnityEngine.CoreModule (Vector3/Transform); the applier half is KitbashCore.cs and
-// KitbashEmbedded.cs.
+// This file is the parser half and depends only on UnityEngine.CoreModule
+// (Vector3/Transform); the applier half is KitbashCore.cs.
 
 /// <summary>
 /// One kitbash recipe: clone a donor subtree and graft it onto a target module.
@@ -32,12 +31,12 @@ internal sealed class KitbashRecipe
     public Vector3 SFactor = Vector3.one;
     public bool Full;
     /// <summary>User-given display name, carried through save and load. Never the GameObject's
-    /// name: the applier and the hierarchy dumper both match on the real name. Written only
+    /// name: the applier matches on the real name. Written only
     /// when non-empty. ';' and '=' are the field separators of this grammar and are therefore
     /// not representable in a caption; whatever sets one strips them.</summary>
     public string Caption = "";
-    /// <summary>Id of the group record this part hangs under inside a .kbasset, or empty for
-    /// a part directly under the asset root. Meaningless in a .kitbash recipe.</summary>
+    /// <summary>Id of the group record this part hangs under in a grouped asset document, or
+    /// empty for a part directly under the asset root. Meaningless in a single recipe.</summary>
     public string GroupId = "";
     public string ParseError;
 

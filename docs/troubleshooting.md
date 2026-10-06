@@ -335,12 +335,13 @@ authored layout, and report the dump.
 
 ### `Ectype: vanilla role dump written to <path> (<n> trees).` and `Ectype: vanilla dump attempt <n> failed: <message>`
 
-Both come from `[Dev] WriteVanillaDump = true`. The first confirms
+Both come from a dev tools build with `[Dev] WriteVanillaDump = true`
+([CONTRIBUTING.md](../CONTRIBUTING.md#dev-tools-build)). The first confirms
 `BepInEx/EctypeDump/vanilla-roles.json` was written. The second is a failed attempt, retried
 on the next registration pass and logged on the first and the twentieth failure, after which
-the dump stops trying for that launch. If `vanilla-roles.json` does not exist, the switch is
-off: set it in `BepInEx/config/jack.voidcrew.ectype.cfg`, restart the game and reach the main
-menu.
+the dump stops trying for that launch. If `vanilla-roles.json` does not exist, the build is a
+release build or the switch is off: set it in `BepInEx/config/jack.voidcrew.ectype.cfg`,
+restart the game and reach the main menu.
 
 ### `Ectype: tree scroller install failed in [<document>]: <exception>` and `Ectype: no PerkTreeVE in this document - nothing to wrap.`
 

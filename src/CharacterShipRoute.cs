@@ -307,41 +307,6 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: characterShip player-removal handling failed: " + e);
             }
         }
-
-        // ------------------------------------------------------------------ dev test perk
-
-        private const string DevTestStat = "JumpChargeSpeed";
-        private const float DevTestValue = 0.5f;
-
-        /// <summary>True when [Dev] CharacterShipTestPerk names this perk as
-        /// "roleId/perkKey".</summary>
-        internal static bool IsDevTestPerk(RoleManifest m, PerkSpec spec)
-        {
-            string want = EctypeConfig.CharacterShipTestPerk != null
-                ? (EctypeConfig.CharacterShipTestPerk.Value ?? "").Trim() : "";
-            return want.Length > 0 && m != null && spec != null &&
-                   string.Equals(want, m.roleId + "/" + spec.key, StringComparison.OrdinalIgnoreCase);
-        }
-
-        /// <summary>The dev test perk's levels: each level carries one unconditioned
-        /// JumpChargeSpeed +50% effect, in place of the authored ones.</summary>
-        internal static List<PerkBuffLevel> DevTestLevels(RoleRecord rec, PerkSpec spec)
-        {
-            int count = Math.Max(1, Math.Max(spec.levels, spec.mods != null ? spec.mods.Count : 0));
-            int statId = StatRegistry.Resolve(DevTestStat, rec.CustomStats);
-            ModifierType type = StatRegistry.ResolveModifierType("percent");
-            List<PerkBuffLevel> levels = new List<PerkBuffLevel>();
-            for (int i = 0; i < count; i++)
-                levels.Add(new PerkBuffLevel
-                {
-                    Mods = new List<StatMod> { new StatMod(new FloatModifier(DevTestValue, type), statId) }
-                });
-            Plugin.Log.LogWarning("Ectype: [Dev] CharacterShipTestPerk - '" + rec.Manifest.roleName +
-                                  "' perk '" + spec.key + "' registers as characterShip with " +
-                                  DevTestStat + " +" + (DevTestValue * 100f) + "% at every level, " +
-                                  "replacing its authored effects.");
-            return levels;
-        }
     }
 
     /// <summary>

@@ -18,8 +18,8 @@ namespace Ectype
     /// which is a silent no-op on one side of a mixed room.
     ///
     /// Adding one is four edits: a name constant and a spec here, a consumer that reads it,
-    /// a row in docs/stat-names.csv (with the id printed at registration) so the perk
-    /// builder can offer it, and an entry in docs/framework-stats.json saying what the
+    /// a row in docs/stat-names.csv (with the id printed at registration) so tooling that
+    /// reads the alias list can offer it, and an entry in docs/framework-stats.json saying what the
     /// number does and what the game authored. A stat with no consumer is inert, and the
     /// log says so.
     ///

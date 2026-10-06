@@ -34,10 +34,6 @@ namespace Ectype
         public static ConfigEntry<bool> EnableScroll;
         public static ConfigEntry<string> ScrollExcludeDocuments;
         public static ConfigEntry<bool> RoleWording;
-        public static ConfigEntry<bool> WriteVanillaDump;
-        public static ConfigEntry<bool> LayoutWorkbench;
-        public static ConfigEntry<float> LayoutPollSeconds;
-        public static ConfigEntry<string> CharacterShipTestPerk;
 
         public static void Bind(ConfigFile cfg)
         {
@@ -103,32 +99,6 @@ namespace Ectype
                 "descriptions and the hub's \"Class: <role>\" projections. Display text only; " +
                 "other languages are untouched. Off restores the game's wording; a screen " +
                 "already open keeps its text until the game rebuilds it.");
-
-            WriteVanillaDump = cfg.Bind("Dev", "WriteVanillaDump", false,
-                "Write the game's stock role trees to BepInEx/EctypeDump/vanilla-roles.json " +
-                "once per launch, for the perk builder's import.");
-
-            LayoutWorkbench = cfg.Bind("Dev", "LayoutWorkbench", false,
-                "Show the layout workbench in the F5 menu: reload the gene-tree layout " +
-                "from BepInEx/EctypeLayout/layout.json and re-style or rebuild the open " +
-                "terminal without restarting, and dump a tree's visual elements. For tuning " +
-                "the presentation; the layout file overrides the shipped defaults whenever it " +
-                "exists, whether or not this switch is on.");
-
-            LayoutPollSeconds = cfg.Bind("Dev", "LayoutPollSeconds", 0f,
-                "Seconds between checks of BepInEx/EctypeLayout/layout.json; 0 disables " +
-                "the watcher. When the file changes, the layout reloads, the open terminal " +
-                "is re-styled, its panel is written to capture.png and the cycle is " +
-                "recorded in status.json - so a tuning loop needs no keypress and no " +
-                "window focus. The check is one timestamp read, so a short interval costs " +
-                "nothing; a long one only adds latency.");
-
-            CharacterShipTestPerk = cfg.Bind("Dev", "CharacterShipTestPerk", "",
-                "Test the characterShip perk target: name one framework perk as " +
-                "\"roleId/perkKey\" and it registers as characterShip with a single " +
-                "JumpChargeSpeed +50% effect at every level, replacing its authored effects. " +
-                "Read at registration, so a change needs a restart; every player in the room " +
-                "needs the same value. Empty = off.");
         }
 
         /// <summary>

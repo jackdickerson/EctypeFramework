@@ -18,11 +18,21 @@ with code and a utility-only mod; [choosing.md](choosing.md) says which to write
 
 ## Finding the game folder
 
-The game folder is the one that holds `Void Crew.exe`. Every build in these docs reads it
-from the `VOID_CREW_DIR` environment variable, shown as `$env:VOID_CREW_DIR` in commands. On
-Windows the Steam root is the registry value `HKCU:\Software\Valve\Steam\SteamPath`, and the
-game may sit in another library that `<SteamPath>\steamapps\libraryfolders.vdf` lists. This
-reads both and sets the variable for the current PowerShell session:
+The game folder is the one that holds `Void Crew.exe`. The framework's and the examples'
+`Directory.Build.props` take the first of these that is set:
+
+1. `-p:VoidCrewDir="<path>"` on the command line.
+2. `VoidCrewDir` in a gitignored `Local.props` beside the `Directory.Build.props`, copied from
+   `Local.props.example`.
+3. The `VOID_CREW_DIR` environment variable, shown as `$env:VOID_CREW_DIR` in commands.
+4. The Steam folder in the registry value `HKCU\Software\Valve\Steam\SteamPath`, plus
+   `steamapps\common\Void Crew`.
+5. `C:\Program Files (x86)\Steam\steamapps\common\Void Crew`.
+
+Step 4 finds the game only in Steam's default library. A game in another Steam library needs
+`Local.props` or `VOID_CREW_DIR`. The libraries are listed in
+`<SteamPath>\steamapps\libraryfolders.vdf`. This reads both registry value and list, and sets
+the variable for the current PowerShell session:
 
 ```powershell
 $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath -replace '/', '\'
@@ -66,6 +76,8 @@ fewest references.
 
   <PropertyGroup>
     <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">$(VOID_CREW_DIR)</VoidCrewDir>
+    <EctypeSteamPath Condition="'$(VoidCrewDir)' == '' and '$(OS)' == 'Windows_NT'">$([MSBuild]::GetRegistryValueFromView('HKEY_CURRENT_USER\Software\Valve\Steam', 'SteamPath', null, RegistryView.Registry32, RegistryView.Default))</EctypeSteamPath>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == '' and '$(EctypeSteamPath)' != ''">$(EctypeSteamPath.Replace('/', '\'))\steamapps\common\Void Crew</VoidCrewDir>
     <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Void Crew</VoidCrewDir>
     <ManagedDir>$(VoidCrewDir)\Void Crew_Data\Managed</ManagedDir>
     <PluginsDir>$(VoidCrewDir)\BepInEx\plugins</PluginsDir>
@@ -108,7 +120,7 @@ check for one when a build behaves differently from the examples.
 | `AppendTargetFrameworkToOutputPath` | `false` | Output goes to `bin\Release\`, with no `net472` subfolder. |
 | `DebugType` | `portable` | Writes a `.pdb` beside the DLL. Nothing requires installing it. |
 | `IsPackable` | `false` | Stops `dotnet pack` from treating the project as a NuGet package. |
-| `VoidCrewDir` | the game folder | The one path every reference derives from. It takes the value of `-p:VoidCrewDir="<path>"` first, then the `VOID_CREW_DIR` environment variable, then the standard Steam path. |
+| `VoidCrewDir` | the game folder | The one path every reference derives from. It takes the value of `-p:VoidCrewDir="<path>"` first, then the `VOID_CREW_DIR` environment variable, then the Steam folder from the registry, then the standard Steam path. |
 | `ManagedDir`, `PluginsDir` | derived from `VoidCrewDir` | `Void Crew_Data\Managed` holds the game's assemblies. `BepInEx\plugins` holds VoidManager and the framework. |
 
 ### References
@@ -158,7 +170,9 @@ adds the references every example needs (`BepInEx`, `VoidManager`, `UnityEngine`
 `UnityEngine.CoreModule`). The game folder, the `VoidCrewDir` property, is taken from the first
 of these that is set: `-p:VoidCrewDir="<path>"` on the command line, a `VoidCrewDir` set in an
 optional, gitignored `examples\Local.props` (copy `examples\Local.props.example` and edit the
-one property), the `VOID_CREW_DIR` environment variable, then the standard Steam path. The
+one property), the `VOID_CREW_DIR` environment variable, the Steam folder from the registry,
+then the standard Steam path ([Finding the game folder](#finding-the-game-folder)). A missing
+game, BepInEx or VoidManager stops the build with one error naming the folder it looked in. The
 file is read from the project's folder upward, so an example copied out of `examples\` builds
 only if the props file is copied into a folder above it.
 
@@ -233,8 +247,9 @@ The DLL embeds its manifest and icons, so it is the only file a role mod install
 locate the assembly "BepInEx"` once for each reference under the wrong folder, then the
 compiler reports `CS0246` for the namespaces that came from them. Set `VoidCrewDir` to the
 folder that holds `Void Crew.exe`, by `-p:VoidCrewDir="<path>"` or the `VOID_CREW_DIR`
-environment variable. A library on another drive is the usual cause, since the default is the
-Steam folder on `C:`; [Finding the game folder](#finding-the-game-folder) locates it.
+environment variable. A Steam library other than the default one is the usual cause, since
+the registry names only Steam's own folder; [Finding the game folder](#finding-the-game-folder)
+locates it. The examples' property file reports this case as one error naming the folder.
 
 **A missing DLL in a correct game folder.** The same two messages appear for one reference
 only. `VoidManager.dll` and `EctypeFramework.dll` come from `BepInEx\plugins`, so a game folder

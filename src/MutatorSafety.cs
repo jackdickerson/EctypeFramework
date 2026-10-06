@@ -80,7 +80,7 @@ namespace Ectype
                     string id = guid.ToString();
                     if (Warned.Add(id))
                     {
-                        Plugin.Log.LogWarning("Ectype: mutator " + id + KnownMutators.Describe(id) +
+                        Plugin.Log.LogWarning("Ectype: mutator " + id +
                             " is listed (saved or selected session) but not registered on this " +
                             "client - hidden from the mutator list until its mod is enabled.");
                     }
@@ -91,23 +91,6 @@ namespace Ectype
             {
                 Plugin.Log.LogWarning("Ectype: mutator-list UI filter failed, list unfiltered: " + e);
             }
-        }
-    }
-
-    /// <summary>Names for this repo's own mutators, used only to make the warning actionable.</summary>
-    internal static class KnownMutators
-    {
-        private static readonly Dictionary<string, string> Names = new Dictionary<string, string>
-        {
-            { "4d1f7c2a9e6b40518c3a7fbe25d90a11", "Field Promotion, FieldPromotion.dll" },
-            { "7cb9e33adfb6443888d7fe719c27e65d", "Void Tunnel Decay, VoidTunnelDecay.dll" },
-            { "fef0fdfd958440729881b458666b53ca", "Insanity, Insanity.dll" },
-        };
-
-        internal static string Describe(string guid)
-        {
-            string key = (guid ?? "").Replace("-", "").ToLowerInvariant();
-            return Names.TryGetValue(key, out string name) ? " (" + name + ")" : "";
         }
     }
 }

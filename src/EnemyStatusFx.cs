@@ -276,11 +276,10 @@ namespace Ectype
     /// The optional looping visual on the affected object. Two routes, tried in order:
     /// the template's own factory (full control - it returns a fresh GameObject and this
     /// layer parents, offsets and destroys it), or a stock-donor clone by name - the
-    /// kitbash pipeline from shared/kitbash: instantiate into an inactive holder, strip
+    /// clone pipeline in src/shared/kitbash: instantiate into an inactive holder, strip
     /// to visuals (behaviours, colliders and the donor's PhotonView removed before
-    /// anything wakes), then parent to the target and activate. Donor names come from
-    /// the kitbash prefab dumps / asset catalog; lookup is by substring over loaded
-    /// prefab assets and cached per name.
+    /// anything wakes), then parent to the target and activate. Lookup is by substring
+    /// over loaded prefab assets and cached per name.
     /// </summary>
     internal static class EnemyStatusVfx
     {

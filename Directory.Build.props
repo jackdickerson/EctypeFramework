@@ -20,9 +20,15 @@
          1. -p:VoidCrewDir=... on the command line (global properties beat any file),
          2. VoidCrewDir in Local.props,
          3. the VOID_CREW_DIR environment variable,
-         4. the default Steam path below. -->
+         4. the Steam install folder from the registry (HKCU\Software\Valve\Steam,
+            SteamPath), plus steamapps\common\Void Crew,
+         5. the default Steam path below.
+       4 finds the game only in Steam's default library. A game in another Steam library
+       folder needs 1, 2 or 3. -->
   <PropertyGroup>
     <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">$(VOID_CREW_DIR)</VoidCrewDir>
+    <EctypeSteamPath Condition="'$(VoidCrewDir)' == '' and '$(OS)' == 'Windows_NT'">$([MSBuild]::GetRegistryValueFromView('HKEY_CURRENT_USER\Software\Valve\Steam', 'SteamPath', null, RegistryView.Registry32, RegistryView.Default))</EctypeSteamPath>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == '' and '$(EctypeSteamPath)' != ''">$(EctypeSteamPath.Replace('/', '\'))\steamapps\common\Void Crew</VoidCrewDir>
     <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Void Crew</VoidCrewDir>
     <ManagedDir>$(VoidCrewDir)\Void Crew_Data\Managed</ManagedDir>
     <BepInExCoreDir>$(VoidCrewDir)\BepInEx\core</BepInExCoreDir>
@@ -65,6 +71,17 @@
        ModCategories metadata and the build tag ModFlagPolicy reports. -->
   <PropertyGroup Condition="'$(NoProgressionFlag)' == 'true'">
     <DefineConstants>$(DefineConstants);NO_SESSION_FLAG</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Dev tools build:
+         dotnet build -c Release -p:DevTools=true    defines ECTYPE_DEV
+       Compiles src\dev\ (the [Dev] config section, the F5 developer section, the dumps,
+       the layout workbench, the ability diagnostics) and marks the assembly with
+       AssemblyMetadata("EctypeDevTools", "true"). Its bytes differ from the release build
+       at the same version, so the host's hash check bounces anyone on the other build:
+       never ship it. -->
+  <PropertyGroup Condition="'$(DevTools)' == 'true'">
+    <DefineConstants>$(DefineConstants);ECTYPE_DEV</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

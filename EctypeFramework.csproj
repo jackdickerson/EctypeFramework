@@ -19,9 +19,15 @@
   <ItemGroup>
     <Compile Include="src\shared\ModFlagPolicy.cs" />
     <Compile Include="src\shared\Refl.cs" />
-    <Compile Include="src\shared\MenuKit.cs" />
     <Compile Include="src\shared\kitbash\KitbashCore.cs" />
     <Compile Include="src\shared\kitbash\KitbashRecipe.cs" />
+  </ItemGroup>
+
+  <!-- Dev tools, compiled only with -p:DevTools=true (Directory.Build.props defines
+       ECTYPE_DEV for the code that calls into them). Never shipped. -->
+  <ItemGroup Condition="'$(DevTools)' == 'true'">
+    <Compile Include="src\dev\*.cs" />
+    <Compile Include="src\shared\MenuKit.cs" />
     <Compile Include="src\shared\devkeys\DevKeyGate.cs" />
   </ItemGroup>
 

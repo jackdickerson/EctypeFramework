@@ -12,8 +12,8 @@ using ResourceAssets;
 // Global namespace, internal, opt-in - see KitbashRecipe.cs.
 
 // The option fields and PrefabResolver are assigned only by consumers that opt in
-// (kitbash3d does; a consumer using the defaults never writes them), so CS0649 is
-// noise in every other including project.
+// (a consumer using the defaults never writes them), so CS0649 is noise in every
+// other including project.
 #pragma warning disable 649
 
 /// <summary>Strip behaviour for visual clones. Defaults are the safe ones: no colliders
@@ -33,9 +33,7 @@ internal struct KitbashStripOptions
 
 /// <summary>
 /// The reusable kitbash pipeline: clone a donor subtree inert, strip it to visuals,
-/// graft it onto a live module, place it. Extracted from the tools/kitbash3d workbench;
-/// the workbench consumes this copy and keeps only what is workbench-specific
-/// (functional mode, nudge, dumps, previews, the asset forge).
+/// graft it onto a live module, place it.
 ///
 /// Two rules make it work, neither obvious:
 ///  * clone into an INACTIVE holder, so the copy's Awake/OnEnable never run while it
@@ -54,8 +52,8 @@ internal static class KitbashCore
     public static ManualLogSource Log;
 
     /// <summary>
-    /// Hook for resolving a non-@self donor prefab query to a prefab root. The
-    /// workbench installs its indexed resolver here; when unset, a minimal built-in
+    /// Hook for resolving a non-@self donor prefab query to a prefab root. A consumer with
+    /// its own prefab index installs its resolver here; when unset, a minimal built-in
     /// walk over the ResourceAssets containers is used (cheap for GUID queries,
     /// potentially a multi-second Resources.Load walk for name queries - embedded
     /// documents should prefer GUID donors).
@@ -535,7 +533,7 @@ internal static class KitbashCore
 
     /// <summary>
     /// Minimal donor-prefab resolution over the ResourceAssets containers, for consumers
-    /// without the workbench's prefab index. GUID queries are cheap (GUID comparison,
+    /// without their own prefab index. GUID queries are cheap (GUID comparison,
     /// one asset resolve). Name queries have to resolve assets one by one until a name
     /// matches - that is a Resources.Load walk and can hitch for seconds, which is why
     /// embedded documents should carry GUID donors.

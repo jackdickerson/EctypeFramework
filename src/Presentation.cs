@@ -39,8 +39,8 @@ namespace Ectype
         private const string IGNORE_CLASS = "picking-mode-setter-ignore";
 
         /// <summary>Every tunable number below comes from here, read at the point of use so a
-        /// reload from disk takes effect without rebuilding anything (see DevLayout).</summary>
-        private static LayoutSpec S { get { return DevLayout.Spec; } }
+        /// replaced spec takes effect without rebuilding anything.</summary>
+        private static LayoutSpec S { get { return LayoutSpec.Current; } }
 
         /// <summary>Called at the end of the PerkTreeController ctor prefix, after injection
         /// and def filtering; liveTreeCount is the filtered def count = trees this build

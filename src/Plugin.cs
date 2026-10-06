@@ -37,9 +37,9 @@ namespace Ectype
         {
             Log = Logger;
             EctypeConfig.Bind(Config);
-            // Unconditional: a layout file overrides the shipped defaults wherever it exists;
-            // the workbench switch only decides whether the F5 menu can reload it mid-session.
-            DevLayout.Reload();
+#if ECTYPE_DEV
+            DevTools.Awake(Config);
+#endif
 
             // Not role machinery: dependents call the gate whether or not roles are enabled.
             try { SelectionGate.EnsureBound(); }
@@ -139,55 +139,15 @@ namespace Ectype
 
             GUILayout.Label("Config: BepInEx/config/" + EctypePluginInfo.PLUGIN_GUID + ".cfg");
 
-            MenuKit.DevZone("ectype-framework", DrawDevTools);
+#if ECTYPE_DEV
+            MenuKit.DevZone("ectype-framework", DevTools.DrawMenu);
+#endif
         }
 
         private static string SafeStatCount()
         {
             try { return StatRegistry.VanillaCount.ToString(); }
             catch { return "?"; }
-        }
-
-        /// <summary>Dev tooling. MenuKit.DevZone already gates this on VoidManager's DebugMode
-        /// and exception-isolates the body, so neither is repeated here.</summary>
-        private static void DrawDevTools()
-        {
-            if (GUILayout.Button("Dump gene-tree grid to LogOutput.log"))
-                TreeDump.Dump();
-            GUILayout.Label(TreeDump.LastSummary);
-            GUILayout.Space(8f);
-
-            GUILayout.Label("HUD bar: " + HudAbilityBar.Buttons.Count + "/" +
-                            HudAbilityBar.MaxButtons + " buttons");
-            if (GUILayout.Button("Dump HUD ability bar to LogOutput.log"))
-                HudAbilityBar.DumpTree();
-            GUILayout.Space(8f);
-
-            // Read at registration, so typing here changes nothing until the next launch.
-            GUILayout.Label("characterShip test perk - \"roleId/perkKey\", empty = off. " +
-                            "Restart to apply; every client in the room needs the same value.");
-            EctypeConfig.CharacterShipTestPerk.Value =
-                GUILayout.TextField(EctypeConfig.CharacterShipTestPerk.Value ?? string.Empty);
-            GUILayout.Space(8f);
-
-            if (EctypeConfig.LayoutWorkbench != null && EctypeConfig.LayoutWorkbench.Value)
-            {
-                GUILayout.Label("Layout workbench - " + DevLayout.Dir);
-                GUILayout.Label("Watcher: " + (EctypeConfig.LayoutPollSeconds.Value > 0f
-                    ? "every " + EctypeConfig.LayoutPollSeconds.Value.ToString("0.#") + "s"
-                    : "off ([Dev] LayoutPollSeconds)"));
-                if (GUILayout.Button("Reload layout file, re-style and capture the terminal"))
-                    DevInspector.ReloadAndApply();
-                if (GUILayout.Button("Reload and rebuild the terminal panel (re-injects)"))
-                    DevInspector.RebuildTerminal();
-                if (GUILayout.Button("Write the current layout out as a starting file"))
-                    DevLayout.WriteTemplate();
-                if (GUILayout.Button("Dump a gene tree's visual elements"))
-                    DevInspector.DumpTree();
-                if (GUILayout.Button("Dump the chrome recon (scroller art and USS rules)"))
-                    DevInspector.DumpChrome();
-                GUILayout.Label(DevInspector.LastSummary);
-            }
         }
 
         /// <summary>The toggle isn't bound until EnsureRoleToggles has run at least once
@@ -224,7 +184,9 @@ namespace Ectype
                 _nextRegister = Time.unscaledTime + 2f;
                 Step("register", EctypeAssets.EnsureRegistered);
             }
+#if ECTYPE_DEV
             Step("layout poll", DevLayout.Poll);
+#endif
             Step("role toggles", EctypeConfig.EnsureRoleToggles);
             Step("room sync", RoomSync.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);

@@ -13,7 +13,6 @@ launch.
 | `[Presentation] ScrollExcludeDocuments` | (empty) | Comma-separated, case-insensitive substrings. A document whose `UIDocument` name, GameObject name or visual-tree-asset name matches any of them keeps its authored layout, with no scroller. The layout-failed warning (needs `VerboseLogging`) prints each document's names. |
 | `[Presentation] RoleWording` | `true` | Where the game's English text calls a playable role a "Class", it says "Role": the ability keybind in Settings -> Controls, the ability cooldown and duration lines on item tooltips, the stock hero-perk descriptions and the hub's "Class: <role>" projection headers. Display text only, and other languages are untouched. Off restores the game's wording; a screen already open keeps its text until the game rebuilds it. |
 | `[RoleSuppression] Suppress_<roleId>` | `false` | Host only, one per discovered role. Makes that role unavailable to everyone in the room. See [roles.md](roles.md#host-driven-suppression). |
-| `[Dev] WriteVanillaDump` | `false` | Writes the game's stock role trees to `BepInEx/EctypeDump/vanilla-roles.json` once per launch, for the perk builder's import. |
 | `[EnemyStatuses] Markers` | `true` | Countdown markers over objects carrying a status. Off runs statuses markerless. Each marker is a live UI entity the game's viewer repositions every frame, hence the cap. |
 | `[EnemyStatuses] MarkerCap` | `10` | Most status markers alive at once, across all statuses and targets. Past the cap a status runs without a marker until one frees up. |
 | `[EnemyStatuses] Vfx` | `true` | Attached status visuals. Off runs statuses without them. |
@@ -24,6 +23,6 @@ launch.
 F5 -> Ectype Framework shows the registration pipeline status for each role, the vanilla stat
 count, and the per-role suppress toggles. The toggles act only for the host.
 
-With VoidManager's debug mode on, a dev section adds the tree and HUD-bar dumps and, when
-`[Dev] LayoutWorkbench` is on, the layout workbench with its "Reload layout file, re-style and
-capture the terminal" button. No dev action has a keyboard shortcut.
+A dev tools build adds a `[Dev]` config section and, with VoidManager's debug mode on, a
+developer section on this page. A release build has neither. See
+[CONTRIBUTING.md](../../CONTRIBUTING.md#dev-tools-build).

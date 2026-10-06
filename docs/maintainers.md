@@ -13,7 +13,7 @@ Paths are relative to the framework project folder.
 
 | Area | Where |
 | --- | --- |
-| Helpers compiled into the framework (flag policy, reflection, F5 menu, kitbash, dev keys) | `src/shared/` |
+| Helpers compiled into the framework (flag policy, reflection, prefab cloning; F5 menu and dev keys in a dev tools build only) | `src/shared/` |
 | Manifest model and validation | `src/Manifest.cs` |
 | Framework-owned stat declarations | `src/FrameworkStats.cs` |
 | Field-backed stat wrapper | `src/FieldStat.cs` |
@@ -30,7 +30,8 @@ Paths are relative to the framework project folder.
 | Hand attractor stats | `src/HandAttractorStats.cs` |
 | Runtime ability replication | `src/AbilitySync.cs` |
 | Geometry watcher | `src/PresentationDiagnostics.cs` |
-| Vanilla dump | `src/VanillaDump.cs` |
+| Gene-tree layout values | `src/LayoutSpec.cs` |
+| Dev tools (dev tools build only) | `src/dev/` |
 | Role wording | `src/RoleWording.cs` |
 
 ## Hooks relied on
@@ -93,16 +94,35 @@ column.
 | `GameSession.InitStartingMutators` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 | `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 
-## Ability diagnostics (temporary)
+## Dev tools build
 
-Every framework role ability logs its own lifecycle on the owning client, whatever
-`VerboseLogging` says: input bound and unbound with a running count, the ability disabled
-while still selected, a channel stopped with time left (with a short stack), and a key press
-refused for a reason other than cooldown or already running. It exists to catch an
-intermittent "ability dead after cancel, until the loadout changes" bug in its next repro,
-and comes out once that is found. Each line is a player-caused event, never a per-frame poll.
-Refusals log at most once per 2 s per ability, and all of these lines share a budget of 20 per
-10 s, with the count of dropped lines carried on the next one.
+`dotnet build -c Release -p:DevTools=true` adds `ECTYPE_DEV` to the compile constants and
+compiles `src/dev/` plus the F5 menu and dev-key helpers from `src/shared/`. A release build
+compiles none of it, so a player's `.cfg` has no `[Dev]` section and the F5 page has no
+developer section. The dev build carries `AssemblyMetadata("EctypeDevTools", "true")` and logs
+`Ectype Framework <version> (dev tools build)` at startup.
+
+Never ship a dev build. Its bytes differ from the release build at the same version, and the
+host's hash check bounces anyone whose build differs from the host's.
+
+What it adds:
+
+- `[Dev] WriteVanillaDump`, the vanilla dump below.
+- `[Dev] LayoutWorkbench` and `[Dev] LayoutPollSeconds`: the gene-tree layout reloads from
+  `BepInEx/EctypeLayout/layout.json` while the game runs, and the F5 section re-styles,
+  rebuilds and captures the open terminal. A release build uses the defaults in
+  `src/LayoutSpec.cs`; settle values in the file, then copy them into those defaults.
+- `[Dev] CharacterShipTestPerk`: names one framework perk as `roleId/perkKey`, which then
+  registers as `characterShip` with JumpChargeSpeed +50% at every level.
+- F5 developer section (VoidManager debug mode on): gene-tree grid dump, HUD ability bar
+  dump, the test-perk field, and the layout workbench buttons.
+- Ability diagnostics: every framework role ability logs its own lifecycle on the owning
+  client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
+  ability disabled while still selected, a channel stopped with time left (with a short
+  stack), and a key press refused for a reason other than cooldown or already running. Each
+  line is a player-caused event, never a per-frame poll. Refusals log at most once per 2 s per
+  ability, and all of these lines share a budget of 20 per 10 s, with the count of dropped
+  lines carried on the next one.
 
 ## Geometry watcher
 
@@ -117,12 +137,13 @@ warning, with the geometry dump appended, and the watcher stops.
 
 ## Vanilla dump
 
-`[Dev] WriteVanillaDump` (default off) writes the game's stock role trees to
-`BepInEx/EctypeDump/vanilla-roles.json` once per launch, as soon as the perk and tree
+In a dev tools build, `[Dev] WriteVanillaDump` (default off) writes the game's stock role trees
+to `BepInEx/EctypeDump/vanilla-roles.json` once per launch, as soon as the perk and tree
 containers are populated. The file records perk names, tooltip text, grid positions, display
-types, targets and each level's stat modifiers, which is what the perk builder's import reads
-and what shows a game update's changes to a stock tree. With the switch off the framework
-never reads the stock trees for this purpose and writes nothing.
+types, targets and each level's stat modifiers: the input for tooling that reads the stock
+trees, and the record of what a game update changed in a stock tree. With the switch off, or
+in a release build, the framework never reads the stock trees for this purpose and writes
+nothing.
 
 ## Role wording
 
@@ -153,8 +174,8 @@ added to the list, and a renamed key logs `no entry '<key>'`.
   with the field as its sink, so perks and abilities contribute through the game's own
   modifier composition. A private write needs a concrete reason.
 - **Adding a framework-owned stat is four edits:** a name constant and its spec in
-  `src/FrameworkStats.cs`, a consumer that reads it, a row in `docs/stat-names.csv` so the perk
-  builder can offer it, and an entry in `docs/framework-stats.json` saying what the number
+  `src/FrameworkStats.cs`, a consumer that reads it, a row in `docs/stat-names.csv` so tooling that
+  reads the alias list can offer it, and an entry in `docs/framework-stats.json` saying what the number
   does and what value the game authored. A stat may be added before anything consumes it, as
   a contributor's way to offer a modifier surface ahead of its reader. A framework stat with
   no consumer is inert and logged at startup. `.github/scripts/check-stats.py` fails when the
@@ -171,8 +192,7 @@ added to the list, and a renamed key logs `no entry '<key>'`.
   registered` line the framework logs at startup rather than recomputing them.
 - `CharacterStatusReplication` (in `src/CharacterStatus.cs`) records what building replication
   for character statuses involves.
-- The saved-mutator-list warning names the mod when the mutator GUID is in a small table of
-  known mutator mods in `src/MutatorSafety.cs`; any other GUID is reported by id alone.
+- The saved-mutator-list warning reports a missing mutator by GUID.
 
 ## Manifest notes
 

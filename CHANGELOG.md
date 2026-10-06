@@ -4,6 +4,29 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.14
+
+- Dev tooling is compiled only into a dev tools build, `dotnet build -c Release
+  -p:DevTools=true`, which defines `ECTYPE_DEV`, carries
+  `AssemblyMetadata("EctypeDevTools", "true")` and logs
+  `Ectype Framework <version> (dev tools build)` at startup. A release build has no `[Dev]`
+  config section, no F5 developer section and no ability lifecycle logging, and does not read
+  `BepInEx/EctypeLayout/layout.json`: the gene-tree layout always uses its built-in values.
+  `[Dev]` keys in an existing `.cfg` are orphaned harmlessly. Never ship a dev build: its bytes
+  differ from the release build at the same version, so the host's hash check bounces anyone
+  on the other build.
+- `HudAbilityBar.DumpTree()` is no longer public; it exists only in a dev tools build.
+- The missing-mutator warning reports the mutator by GUID only.
+- Removed `docs/hud-badge.json` and `assets/hud-button-glyph.png`, a HUD button preview spec
+  and its glyph. Neither was embedded in the DLL.
+- The plugin description, shown in VoidManager's mod list, is one sentence under 250
+  characters.
+- The build looks up the game folder in Steam's default library through the registry
+  (`HKCU\Software\Valve\Steam`, `SteamPath`) when neither `VoidCrewDir` nor
+  `VOID_CREW_DIR` is set, in the framework's and the examples' `Directory.Build.props`. The
+  examples' props now stop with one error naming the folder when the game, BepInEx or
+  VoidManager is missing, and accept VoidManager in a `VoidManager` subfolder of `plugins`.
+
 ## 0.19.13
 
 - Removed `[Presentation] GeometryLog`. The geometry watcher now runs only with
@@ -15,8 +38,8 @@ build.
 - Removed the Shift+F10 layout reload key. The F5 page's layout workbench has the same
   "Reload layout file, re-style and capture the terminal" button.
 - New `[Dev] WriteVanillaDump`, default off. `BepInEx\EctypeDump\vanilla-roles.json` is no longer
-  written every launch: it is written once per launch only with the switch on. The perk
-  builder's import needs the file, so turn the switch on and launch once before importing.
+  written every launch: it is written once per launch only with the switch on. Tooling that
+  reads the stock trees needs the file, so turn the switch on and launch once before using it.
 - A second role whose perk lists an unlock item that another role's perk already claimed this
   session now logs a named warning (it was skipped silently). Behaviour is otherwise unchanged:
   the first claim holds.

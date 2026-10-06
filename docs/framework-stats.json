@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Every stat the framework itself owns: what it wraps, where it lives, what it does, what the game authored, and who reads it. Ids derive from the framework's reserved owner string 'ectype' and the name (MD5 of 'ectype:stat:ectype/<name>', low 28 bits under 0x20000000); they are also rows in stat-names.csv, which is the perk builder's alias list. The declaration is src/FrameworkStats.cs; the wiring is the file named in 'wiredBy'. Authored values are the prefab's as read at wiring time and logged at spawn ('grapple stat surface installed' / 'character stat surface installed'); re-check them after a game update. 'mechanism' says how the game consumes the number, so a reader can predict what a modifier does without opening the decompile. 'authoredVerified' is false where the value is the Opsive/class default rather than one read back from a spawn log; replace it with the logged number after the first run."
+    "Every stat the framework itself owns: what it wraps, where it lives, what it does, what the game authored, and who reads it. Ids derive from the framework's reserved owner string 'ectype' and the name (MD5 of 'ectype:stat:ectype/<name>', low 28 bits under 0x20000000); they are also rows in stat-names.csv, the alias list tooling reads. The declaration is src/FrameworkStats.cs; the wiring is the file named in 'wiredBy'. Authored values are the prefab's as read at wiring time and logged at spawn ('grapple stat surface installed' / 'character stat surface installed'); re-check them after a game update. 'mechanism' says how the game consumes the number, so a reader can predict what a modifier does without opening the decompile. 'authoredVerified' is false where the value is the Opsive/class default rather than one read back from a spawn log; replace it with the logged number after the first run."
   ],
   "owner": "ectype",
   "_fields": {
@@ -109,11 +109,10 @@
       "authored": 0.1,
       "units": "per-tick decay coefficient",
       "lowerIsBetter": false,
-      "mechanism": "Every tick the locomotion divides its external-force velocity by (1 + ExternalForceDamping * timeScale * ExternalForceDampingMultiplier). The jetpack moves the character exclusively through AddForce into that channel, so this is how long EVA momentum persists. 0 is fully Newtonian and plays as uncontrollable; the Skirmisher's Thruster Suit cuts it to x0.1 for its channel.",
+      "mechanism": "Every tick the locomotion divides its external-force velocity by (1 + ExternalForceDamping * timeScale * ExternalForceDampingMultiplier). The jetpack moves the character exclusively through AddForce into that channel, so this is how long EVA momentum persists. 0 is fully Newtonian and plays as uncontrollable.",
       "consumers": [
         "perk StatMods targeting character",
-        "ectype-skirmisher ThrusterSuitAbility: ExponentialMultiplier (multiplier - 1) applied on channel start, removed by source on stop",
-        "gameplay/anthem-eva FlightState: ExponentialMultiplier (DampingScale - 1) applied while the Anthem flight model is engaged and the knob is off its sentinel, removed by source otherwise"
+        "role abilities and flight mods: an ExponentialMultiplier applied while the effect runs, removed by source when it ends"
       ],
       "authoredVerified": false
     },

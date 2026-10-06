@@ -11,16 +11,27 @@
        one property. -->
   <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
 
-  <!-- The game install. Effective precedence, highest first:
+  <!-- The game install, the folder that holds Void Crew.exe. Effective precedence,
+       highest first:
          1. -p:VoidCrewDir=... on the command line (global properties beat any file),
          2. VoidCrewDir in Local.props,
          3. the VOID_CREW_DIR environment variable,
-         4. the default Steam path below. -->
+         4. the Steam install folder from the registry (HKCU\Software\Valve\Steam,
+            SteamPath), plus steamapps\common\Void Crew,
+         5. the default Steam path below.
+       4 finds the game only in Steam's default library. A game in another Steam library
+       folder needs 1, 2 or 3. -->
   <PropertyGroup>
     <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">$(VOID_CREW_DIR)</VoidCrewDir>
+    <EctypeSteamPath Condition="'$(VoidCrewDir)' == '' and '$(OS)' == 'Windows_NT'">$([MSBuild]::GetRegistryValueFromView('HKEY_CURRENT_USER\Software\Valve\Steam', 'SteamPath', null, RegistryView.Registry32, RegistryView.Default))</EctypeSteamPath>
+    <VoidCrewDir Condition="'$(VoidCrewDir)' == '' and '$(EctypeSteamPath)' != ''">$(EctypeSteamPath.Replace('/', '\'))\steamapps\common\Void Crew</VoidCrewDir>
     <VoidCrewDir Condition="'$(VoidCrewDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Void Crew</VoidCrewDir>
     <ManagedDir>$(VoidCrewDir)\Void Crew_Data\Managed</ManagedDir>
+    <BepInExCoreDir>$(VoidCrewDir)\BepInEx\core</BepInExCoreDir>
     <PluginsDir>$(VoidCrewDir)\BepInEx\plugins</PluginsDir>
+    <!-- VoidManager installs either flat in plugins\ or in a VoidManager\ subfolder. -->
+    <VoidManagerDll Condition="'$(VoidManagerDll)' == '' and Exists('$(PluginsDir)\VoidManager.dll')">$(PluginsDir)\VoidManager.dll</VoidManagerDll>
+    <VoidManagerDll Condition="'$(VoidManagerDll)' == ''">$(PluginsDir)\VoidManager\VoidManager.dll</VoidManagerDll>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -41,9 +52,20 @@
 
   <!-- References every example needs. An example adds its own in its csproj. -->
   <ItemGroup>
-    <Reference Include="BepInEx" HintPath="$(VoidCrewDir)\BepInEx\core\BepInEx.dll" Private="false" />
-    <Reference Include="VoidManager" HintPath="$(PluginsDir)\VoidManager.dll" Private="false" />
+    <Reference Include="BepInEx" HintPath="$(BepInExCoreDir)\BepInEx.dll" Private="false" />
+    <Reference Include="VoidManager" HintPath="$(VoidManagerDll)" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
   </ItemGroup>
+
+  <!-- A wrong game folder otherwise surfaces as one MSB3245 per reference followed by a
+       wall of CS0246. Stop first, naming the folder and the ways to set it. -->
+  <Target Name="EctypeCheckGameDir" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(ManagedDir)\Assembly-CSharp.dll')"
+           Text="Void Crew not found at '$(VoidCrewDir)'. Set the folder that holds Void Crew.exe with -p:VoidCrewDir=&quot;&lt;path&gt;&quot;, a VoidCrewDir in Local.props beside this Directory.Build.props (copy Local.props.example), or the VOID_CREW_DIR environment variable." />
+    <Error Condition="!Exists('$(BepInExCoreDir)\BepInEx.dll')"
+           Text="BepInEx not found at '$(BepInExCoreDir)'. Install BepInEx 5 into the game folder." />
+    <Error Condition="!Exists('$(VoidManagerDll)')"
+           Text="VoidManager.dll not found in '$(PluginsDir)' or its VoidManager subfolder. Install VoidManager, or set VoidManagerDll to its path." />
+  </Target>
 </Project>

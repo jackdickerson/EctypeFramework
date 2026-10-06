@@ -11,7 +11,7 @@ namespace Ectype
 {
     /// <summary>
     /// Timed statuses (buffs/debuffs) on a player character - the counterpart to
-    /// EnemyStatuses, which only targets CG.Space.OrbitObject. Repo-wide utility: a mod
+    /// EnemyStatuses, which only targets CG.Space.OrbitObject. Not role-specific: a mod
     /// registers a template once at Awake, then applies it to any Player for a duration;
     /// the framework drives the timer and removes everything the status added on expiry.
     ///

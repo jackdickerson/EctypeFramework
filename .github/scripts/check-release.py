@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check release/release.json parses and CHANGELOG.md has a heading for PLUGIN_VERSION."""
+"""Check release/release.json parses, and CHANGELOG.md and release/CHANGELOG.md each have a
+heading for PLUGIN_VERSION."""
 import json
 import re
 import sys
@@ -23,12 +24,15 @@ def main():
         return 1
     version = m.group(1)
 
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    if not re.search(r"^##\s+" + re.escape(version) + r"\s*$", changelog, re.M):
-        print(f"CHANGELOG.md: no '## {version}' heading (PLUGIN_VERSION in src/PluginInfo.cs)")
-        return 1
-    print(f"CHANGELOG.md: has '## {version}'")
-    return 0
+    failed = False
+    for name in ("CHANGELOG.md", "release/CHANGELOG.md"):
+        changelog = (ROOT / name).read_text(encoding="utf-8")
+        if re.search(r"^##\s+" + re.escape(version) + r"\s*$", changelog, re.M):
+            print(f"{name}: has '## {version}'")
+        else:
+            print(f"{name}: no '## {version}' heading (PLUGIN_VERSION in src/PluginInfo.cs)")
+            failed = True
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

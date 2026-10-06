@@ -1,21 +1,20 @@
-﻿using System;
-using System.IO;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace Ectype
 {
     /// <summary>
-    /// Every tunable number the gene-tree presentation uses, in one object that can be
-    /// re-read from disk while the game runs.
+    /// Every tunable number the gene-tree presentation uses, in one object.
     ///
-    /// The defaults below are the shipping values; the file only ever overrides them, and a
-    /// missing or malformed one leaves them intact. When a tuning session settles, transcribe
-    /// the accepted numbers back into these defaults and delete the file - it is a workbench,
-    /// never a shipped artifact.
+    /// The defaults below are the shipping values. A dev tools build can replace the live
+    /// spec from a layout file while the game runs; a release build always uses the
+    /// defaults.
     /// </summary>
     public class LayoutSpec
     {
+        /// <summary>The live spec. Never null. Every consumer reads it at the point of use,
+        /// so a replacement takes effect without rebuilding anything.</summary>
+        internal static LayoutSpec Current = new LayoutSpec();
+
         /// <summary>Trees per screen. Every tree is sized to viewport/this, so raising it
         /// shows more, smaller trees and re-scales each tree's internals proportionally;
         /// extras beyond one screen scroll.</summary>
@@ -148,153 +147,6 @@ namespace Ectype
             if (!string.IsNullOrEmpty(hex) && ColorUtility.TryParseHtmlString(hex, out c))
                 return c;
             return fallback;
-        }
-    }
-
-    /// <summary>
-    /// Owns the live <see cref="LayoutSpec"/> and the file it can be reloaded from. Nothing
-    /// caches a value out of the spec: every consumer reads <see cref="Spec"/> at the point
-    /// of use, which is what makes a reload take effect without rebuilding anything.
-    /// </summary>
-    internal static class DevLayout
-    {
-        /// <summary>Never null. A failed load leaves the previous (or default) spec in
-        /// place - a half-parsed layout would be worse than the one already on screen.</summary>
-        public static LayoutSpec Spec = new LayoutSpec();
-
-        public static string LastStatus = "defaults (no file loaded)";
-
-        /// <summary>Input and both outputs share one directory so a tuning loop - whoever
-        /// or whatever is running it - watches a single place.</summary>
-        public static string Dir
-        {
-            get { return Path.Combine(BepInEx.Paths.BepInExRootPath, "EctypeLayout"); }
-        }
-
-        public static string FilePath { get { return Path.Combine(Dir, "layout.json"); } }
-        public static string CapturePath { get { return Path.Combine(Dir, "capture.png"); } }
-        public static string StatusPath { get { return Path.Combine(Dir, "status.json"); } }
-
-        public static void EnsureDir()
-        {
-            if (!Directory.Exists(Dir)) Directory.CreateDirectory(Dir);
-        }
-
-        /// <summary>Re-read the file. Returns whether the live spec changed; the caller
-        /// decides whether that warrants re-applying to open documents.</summary>
-        public static bool Reload()
-        {
-            try
-            {
-                if (!File.Exists(FilePath))
-                {
-                    Spec = new LayoutSpec();
-                    LastStatus = "no file at " + FilePath + " - using defaults";
-                    Plugin.Log.LogInfo("Ectype: " + LastStatus);
-                    return true;
-                }
-
-                string json = File.ReadAllText(FilePath);
-                LayoutSpec loaded = JsonConvert.DeserializeObject<LayoutSpec>(json);
-                if (loaded == null)
-                {
-                    LastStatus = "file parsed to nothing - keeping the current layout";
-                    Plugin.Log.LogWarning("Ectype: " + LastStatus);
-                    return false;
-                }
-                Spec = loaded;
-                LastStatus = "loaded " + Path.GetFileName(FilePath) + " (treeScale=" +
-                             loaded.treeScale.ToString("0.###") + " band=" +
-                             loaded.headerBandPx.ToString("0") + " perPage=" +
-                             loaded.treesPerPage + ")";
-                Plugin.Log.LogInfo("Ectype: layout " + LastStatus);
-                return true;
-            }
-            catch (Exception e)
-            {
-                LastStatus = "load failed, keeping the current layout: " + e.Message;
-                Plugin.Log.LogError("Ectype: layout " + LastStatus + " (" + e + ")");
-                return false;
-            }
-        }
-
-        /// <summary>Write the live spec out, so the file starts as a complete, valid
-        /// document with every key at its current value rather than something hand-typed
-        /// from the source.</summary>
-        public static void WriteTemplate()
-        {
-            try
-            {
-                EnsureDir();
-                File.WriteAllText(FilePath,
-                    JsonConvert.SerializeObject(Spec, Formatting.Indented));
-                LastStatus = "wrote the current layout to " + FilePath;
-                Plugin.Log.LogInfo("Ectype: " + LastStatus);
-            }
-            catch (Exception e)
-            {
-                LastStatus = "template write failed: " + e.Message;
-                Plugin.Log.LogError("Ectype: layout " + LastStatus);
-            }
-        }
-
-        // ------------------------------------------------------------------- the watcher
-
-        /// <summary>The timestamp of the layout file as of the last successful load. What
-        /// the acknowledgement in status.json reports, so a watcher can tell whether the
-        /// game has taken up the edit it just made rather than timing a guess.</summary>
-        public static long LoadedFileTicks;
-
-        private static long _seenTicks;
-        private static float _nextPoll;
-
-        /// <summary>Record the layout file's current write time as loaded, and stop the
-        /// watcher re-firing on the same edit. Called by the manual reload paths so a
-        /// keypress and a watcher tick leave identical state behind.</summary>
-        public static void MarkLoadedFileTime()
-        {
-            try
-            {
-                if (!File.Exists(FilePath)) { LoadedFileTicks = 0; return; }
-                LoadedFileTicks = File.GetLastWriteTimeUtc(FilePath).Ticks;
-                _seenTicks = LoadedFileTicks;
-            }
-            catch { }
-        }
-
-        /// <summary>
-        /// Poll the layout file's write time and, when it moves, run the whole cycle:
-        /// reload, re-style the open terminal, capture the panel, write status. The check is
-        /// a single timestamp read, so a short interval costs effectively nothing.
-        ///
-        /// This is what makes the loop hands-free: the keypress and F5 reload paths both
-        /// need the game focused, and the editor is a different window.
-        /// </summary>
-        public static void Poll()
-        {
-            if (EctypeConfig.LayoutPollSeconds == null) return;
-            float interval = EctypeConfig.LayoutPollSeconds.Value;
-            if (interval <= 0f) return;                     // 0 = watcher off
-            if (Time.unscaledTime < _nextPoll) return;
-            _nextPoll = Time.unscaledTime + interval;
-
-            long ticks;
-            try
-            {
-                if (!File.Exists(FilePath)) return;
-                ticks = File.GetLastWriteTimeUtc(FilePath).Ticks;
-            }
-            catch { return; }
-
-            if (ticks == _seenTicks) return;
-
-            // Advance the seen-timestamp only on a successful load, so a torn read of a
-            // non-atomic write is retried next tick instead of swallowed as "already handled".
-            if (!Reload()) return;
-            _seenTicks = ticks;
-            LoadedFileTicks = ticks;
-
-            DevInspector.ApplyAndCapture("watcher");
         }
     }
 }

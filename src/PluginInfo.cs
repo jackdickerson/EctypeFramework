@@ -5,15 +5,11 @@ namespace Ectype
         public const string PLUGIN_GUID = "jack.voidcrew.ectype";
         public const string PLUGIN_NAME = "EctypeFramework";
         public const string USERS_PLUGIN_NAME = "Ectype Framework";
-        public const string PLUGIN_VERSION = "0.19.13";
+        public const string PLUGIN_VERSION = "0.19.14";
         public const string PLUGIN_DESCRIPTION =
-            "General framework for Ectype-family mods. Owns the singleton machinery a playable " +
-            "role needs (tree-ordinal allocation, the closed-set compatibility patches, the " +
-            "registration pipeline, tree UI injection, the stat registry), plus repo-wide " +
-            "utilities not specific to roles, such as guarding clients against a session " +
-            "mutator they do not have installed. Role mods carry only a JSON manifest, icons " +
-            "and optional code callbacks. MPType.All: every client in the room needs the same " +
-            "build.";
+            "Role framework and gameplay utilities for Void Crew mods: playable roles from a " +
+            "JSON manifest, plus stats, statuses, loot and HUD helpers. Every player in the " +
+            "room needs the same build.";
         public const string PLUGIN_AUTHORS = "Jack";
         public const string PLUGIN_THUNDERSTORE_ID = "Jack_Modding/Ectype_Framework";
 

@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyFileVersion(Ectype.EctypePluginInfo.PLUGIN_VERSION + ".0")]
 [assembly: ComVisible(false)]
 
-// Distribution metadata, read by scripts\package.ps1 to build the zip listing.
+// Distribution metadata, read by packaging tooling to describe the mod.
 // MPType mirrors the VoidPlugin declaration - keep the two in step.
 #if NO_SESSION_FLAG
 [assembly: AssemblyMetadata("ModCategories", "Mods")]
@@ -18,3 +18,7 @@ using System.Runtime.InteropServices;
 #endif
 [assembly: AssemblyMetadata("MPType", "All")]
 [assembly: AssemblyMetadata("ProgressionFlag", ModFlagPolicy.BuildTag)]
+#if ECTYPE_DEV
+// A dev tools build (-p:DevTools=true). Never shipped: see Directory.Build.props.
+[assembly: AssemblyMetadata("EctypeDevTools", "true")]
+#endif

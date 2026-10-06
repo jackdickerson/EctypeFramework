@@ -75,8 +75,9 @@ A stat is read from the collection it lives on. `weapon/module` and `ship *` sta
 want `seat` or `seatShip`, and `EVA suit` and `character` stats want `character`. Some stats
 exist on more than one collection: vanilla ships `*Vulnerability` and `BatteryRechargeAmount`
 on `character`-target perks (personal damage resistance, carried-cell charging) despite their
-ship-side category bits. The vanilla dump the framework can write to
-`BepInEx\EctypeDump\vanilla-roles.json` when the `[Dev] WriteVanillaDump` switch is on is the
+ship-side category bits. The vanilla dump a dev tools build of the framework
+([CONTRIBUTING.md](../CONTRIBUTING.md#dev-tools-build)) writes to
+`BepInEx\EctypeDump\vanilla-roles.json` with the `[Dev] WriteVanillaDump` switch on is the
 authority: when it shows a stat on a target, that pairing works. A stat routed to a collection that never reads
 it registers cleanly, renders a tooltip, and does nothing.
 

@@ -12,7 +12,7 @@ namespace Ectype
 {
     /// <summary>
     /// Timed statuses (buffs/debuffs) on space objects - NPC ships, turrets, asteroids,
-    /// anything that is a CG.Space.OrbitObject. Repo-wide utility: a mod registers a
+    /// anything that is a CG.Space.OrbitObject. Not role-specific: a mod registers a
     /// status template once at Awake, then applies it to any target for a duration; the
     /// framework replicates the application to every peer, drives the timer on the game's
     /// own clock, and removes everything the status added when it expires.
@@ -129,9 +129,8 @@ namespace Ectype
         /// when the status ends. Wins over VfxDonorName when both are set.</summary>
         public Func<OrbitObject, GameObject> CreateVfx;
 
-        /// <summary>Stock-donor visual: substring name of a loaded prefab asset (find
-        /// candidates with the kitbash dumps / asset catalog); cloned and stripped to
-        /// visuals via the shared kitbash pipeline, attached for the status lifetime.</summary>
+        /// <summary>Stock-donor visual: substring name of a loaded prefab asset; cloned and
+        /// stripped to visuals, attached for the status lifetime.</summary>
         public string VfxDonorName;
 
         /// <summary>Optional child-substring inside the donor (e.g. a GFX_ subtree).</summary>

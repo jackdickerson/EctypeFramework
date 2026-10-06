@@ -42,6 +42,7 @@ small plugin, with no framework code in it.
    | `src\Plugin.cs` | `namespace`, class `ExampleVoidPlugin` | A namespace and class name of your own. |
    | `src\Plugin.cs` | `PLUGIN_GUID` (`REPLACE_ME`) and the `#error` line above it | A GUID of your own, for example `acme.voidcrew.warden`. Delete the `#error` line. |
    | `src\Plugin.cs` | `[BepInPlugin]` name, `Author`, `Description` | What players see in VoidManager's mod list. |
+   | `src\Plugin.cs` | The `"Example Role v"` text in `Awake` | The line your plugin logs at startup, for example `"Warden Role v"`. |
    | `manifest\ectype-role.json` | `roleId` (`REPLACE_ME`) | The same string as `PLUGIN_GUID`. |
    | `manifest\ectype-role.json` | `roleName`, `roleDesc`, `color`, hero `name` and `desc` | The role's title, tooltip and accent colour. |
 
@@ -86,9 +87,11 @@ small plugin, with no framework code in it.
 
 4. Build. The shared property file takes the game folder from `-p:VoidCrewDir`, then a
    `VoidCrewDir` in a `Local.props` beside it (copy `Local.props.example` from the examples
-   folder), then the `VOID_CREW_DIR` environment variable, and falls back to the default Steam
-   folder on `C:`. Set `VOID_CREW_DIR` for the session; the snippet that finds the folder is
-   in [setup.md](setup.md#finding-the-game-folder).
+   folder), then the `VOID_CREW_DIR` environment variable, then the Steam folder named in the
+   registry, and falls back to the default Steam folder on `C:`. The registry finds the game
+   only in Steam's default library. The steps below also use `VOID_CREW_DIR`, so set it for
+   the session; the snippet that finds the folder is in
+   [setup.md](setup.md#finding-the-game-folder).
 
    ```powershell
    dotnet build -c Release
@@ -110,7 +113,7 @@ small plugin, with no framework code in it.
 The log is overwritten on every launch. Copy it before you start the game again.
 
 ```powershell
-Select-String -Path "$env:VOID_CREW_DIR\BepInEx\LogOutput.log" -Pattern "Ectype|Warden"
+Select-String -Path "$env:VOID_CREW_DIR\BepInEx\LogOutput.log" -Pattern "Ectype|Warden|Example Role"
 ```
 
 A loaded role produces these lines, in this order. Each line starts with the BepInEx
@@ -119,7 +122,7 @@ prefix `[Info   :<source>]`.
 | Line | Meaning |
 | --- | --- |
 | `Ectype Framework v<version> loaded (contract v2).` | The framework started and applied its patches. |
-| `Warden Role v0.1.0 loaded.` | Your plugin's `Awake` ran. The framework's line comes first because your plugin depends on it. |
+| `Example Role v0.1.0 loaded.`, or `Warden Role v0.1.0 loaded.` after the step 2 edit | Your plugin's `Awake` ran; the text is the literal in `Awake`. The framework's line comes first because your plugin depends on it. |
 | `Ectype: discovered 1 role(s): Warden (tree <n>, WardenRole)` | The framework found your embedded manifest. The count includes every installed role mod. |
 | `Ectype: role 'Warden' registered. Tree <guid> as EPerkTree <n>, <m> perk(s). registered (stage limit 9); tree def published as EPerkTree <n>` | Registration finished. |
 | `Ectype VERIFY 'Warden': ok. <m> perk(s) resolve; tree asset built; tree def published.` | Every perk resolves by GUID. |

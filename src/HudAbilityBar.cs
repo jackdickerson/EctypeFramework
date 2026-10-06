@@ -777,12 +777,13 @@ namespace Ectype
         }
 
         // ------------------------------------------------------------------ diagnostics
+#if ECTYPE_DEV
 
         /// <summary>
-        /// Every button's element tree, resolved style beside what the bar wrote inline, in
-        /// the format <c>vcm/scripts/hud-badge.py --dump</c> reads. Called from a dev button.
+        /// Every button's element tree, resolved style beside what the bar wrote inline.
+        /// Called from the dev tools build's F5 section.
         /// </summary>
-        public static void DumpTree()
+        internal static void DumpTree()
         {
             var sb = new StringBuilder("Ectype HUD bar TREE DUMP\n");
             if (Buttons.Count == 0) sb.AppendLine("no buttons registered.");
@@ -824,5 +825,6 @@ namespace Ectype
                 st.width, st.height, st.left, st.top,
                 string.Join(",", rs.transitionProperty), string.Join(",", rs.transitionDuration)));
         }
+#endif
     }
 }

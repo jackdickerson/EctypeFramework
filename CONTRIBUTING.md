@@ -18,7 +18,10 @@ Tell the build where the game is. The first of these that is set wins:
 1. `-p:VoidCrewDir="<path>"` on the command line.
 2. `VoidCrewDir` in `Local.props`, copied from `Local.props.example` (gitignored).
 3. The `VOID_CREW_DIR` environment variable.
-4. The default Steam path.
+4. The Steam folder from the registry (`HKCU\Software\Valve\Steam`, `SteamPath`), plus
+   `steamapps\common\Void Crew`. This finds only Steam's default library; a game in another
+   library needs 1, 2 or 3.
+5. The default Steam path, `C:\Program Files (x86)\Steam\steamapps\common\Void Crew`.
 
 The folder is the one that holds `Void Crew.exe`. Then:
 
@@ -30,9 +33,26 @@ The DLL lands in `bin\Release\`. Nothing is built on GitHub, so every contributo
 locally. [docs/setup.md](docs/setup.md) covers the project file and the examples' shared
 properties.
 
+### Dev tools build
+
+```
+dotnet build -c Release -p:DevTools=true
+```
+
+adds the `ECTYPE_DEV` compile constant and compiles the dev tools in `src/dev/`: a `[Dev]`
+config section (vanilla tree dump, gene-tree layout workbench, a characterShip test perk), a
+developer section on the F5 page (shown with VoidManager's debug mode on), and lifecycle
+logging for every framework role ability. A dev build carries
+`AssemblyMetadata("EctypeDevTools", "true")` and logs
+`Ectype Framework <version> (dev tools build)` at startup. A release build compiles none of it.
+
+Never ship a dev build, and never hand one to a player. Its bytes differ from the release build
+at the same version, so the host's hash check bounces anyone in the room on the other build.
+
 ## What a pull request needs
 
-- **A clean build.** `dotnet build -c Release` finishes with 0 warnings and 0 errors.
+- **A clean build.** `dotnet build -c Release` and `dotnet build -c Release -p:DevTools=true`
+  both finish with 0 warnings and 0 errors.
 - **A version bump.** `PLUGIN_VERSION` in `src/PluginInfo.cs` is the only place the version is
   written. Raise `z` on every change. `y` rises only in the maintainer's release commit: when
   a Thunderstore release is made, one commit raises `y`, resets `z` to 0 and is tagged, and
@@ -54,7 +74,7 @@ properties.
 
 A pull request is checked by a workflow that validates line endings, the example manifests
 against `docs/schemas/ectype-role.schema.json`, relative Markdown links, `release/release.json`
-and the changelog heading for the current version. It does not compile. A change that compiles
+and the heading for the current version in `CHANGELOG.md` and `release/CHANGELOG.md`. It does not compile. A change that compiles
 only on your machine because of a local game folder is caught in review, so say in the pull
 request which game version you tested against.
 
