@@ -14,7 +14,10 @@ in [manifest.md](../manifest.md), and the stat names an effect can use are in
 
 1. A plugin with `[BepInDependency("jack.voidcrew.ectype")]` and a `VoidPlugin` that declares
    `MultiplayerType.All` (see [../multiplayer.md](../multiplayer.md) for why a role mod cannot
-   be anything else).
+   be anything else). This is the current build's posture. A coming framework version makes
+   role mods optional per player: the framework will suppress a role for the whole room when
+   any member lacks it, and refuse a joiner who lacks a role that is active in a running
+   session.
 2. An embedded JSON manifest whose resource name ends `ectype-role.json`. That suffix is the
    discovery marker; a data-only role needs no reference to the framework assembly.
 3. Icons as PNGs embedded in the assembly, named by the manifest's icon keys. An icon

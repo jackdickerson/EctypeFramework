@@ -28,4 +28,4 @@ The first restore downloads the .NET Framework 4.7.2 reference assemblies from n
 
 Copy `bin\Release\ExampleAbilityRole.dll` to `<game>\BepInEx\plugins\`.
 
-A framework update changes the framework assembly this DLL was compiled against. Rebuild and reship the role mod with each framework release.
+Rebuild against a newer framework only to use API it added; a framework update alone does not require reshipping this DLL.

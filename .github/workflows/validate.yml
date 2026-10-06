@@ -33,5 +33,8 @@ jobs:
       - name: Relative Markdown links resolve
         run: python .github/scripts/check-links.py
 
+      - name: Framework stats agree across source, JSON and CSV
+        run: python .github/scripts/check-stats.py
+
       - name: Release metadata and changelog
         run: python .github/scripts/check-release.py

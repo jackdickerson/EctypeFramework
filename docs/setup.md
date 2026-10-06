@@ -16,6 +16,29 @@ with code and a utility-only mod; [choosing.md](choosing.md) says which to write
   `Microsoft.NETFramework.ReferenceAssemblies`. That package is the only NuGet dependency and
   carries no game or BepInEx code.
 
+## Finding the game folder
+
+The game folder is the one that holds `Void Crew.exe`. Every build in these docs reads it
+from the `VOID_CREW_DIR` environment variable, shown as `$env:VOID_CREW_DIR` in commands. On
+Windows the Steam root is the registry value `HKCU:\Software\Valve\Steam\SteamPath`, and the
+game may sit in another library that `<SteamPath>\steamapps\libraryfolders.vdf` lists. This
+reads both and sets the variable for the current PowerShell session:
+
+```powershell
+$steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath -replace '/', '\'
+$libs = Select-String -Path "$steam\steamapps\libraryfolders.vdf" -Pattern '"path"\s+"(.+)"' |
+    ForEach-Object { $_.Matches[0].Groups[1].Value -replace '\\\\', '\' }
+$env:VOID_CREW_DIR = $libs |
+    ForEach-Object { Join-Path $_ 'steamapps\common\Void Crew' } |
+    Where-Object { Test-Path (Join-Path $_ 'Void Crew.exe') } |
+    Select-Object -First 1
+$env:VOID_CREW_DIR
+```
+
+The last line prints the folder, or nothing when no library holds the game. The setting
+lasts for that session only; run the snippet again in a new window, or set the variable
+permanently in Windows settings once the folder is known.
+
 ## The project file
 
 The three starter examples ([data-only](../examples/data-only-role/),
@@ -211,7 +234,7 @@ locate the assembly "BepInEx"` once for each reference under the wrong folder, t
 compiler reports `CS0246` for the namespaces that came from them. Set `VoidCrewDir` to the
 folder that holds `Void Crew.exe`, by `-p:VoidCrewDir="<path>"` or the `VOID_CREW_DIR`
 environment variable. A library on another drive is the usual cause, since the default is the
-Steam folder on `C:`.
+Steam folder on `C:`; [Finding the game folder](#finding-the-game-folder) locates it.
 
 **A missing DLL in a correct game folder.** The same two messages appear for one reference
 only. `VoidManager.dll` and `EctypeFramework.dll` come from `BepInEx\plugins`, so a game folder
@@ -237,11 +260,13 @@ the mod records the newer assembly version and needs that framework or newer at 
 Update the installed framework before each build, and declare the version you built against
 in `[BepInDependency]`.
 
-**A framework update changes your DLL.** A compiled mod records the assembly version of each
-assembly it references, so rebuilding against a new framework changes the bytes at an
-unchanged version number. Rebuild, raise the version and reship with each framework release.
-A data-only role references no framework assembly, so its bytes change only when BepInEx or
-VoidManager change. See [multiplayer.md](multiplayer.md).
+**Rebuilding against a new framework changes your DLL.** A compiled mod records the assembly
+version of each assembly it references, so a rebuild against a new framework changes the bytes
+at an unchanged version number. Rebuild only to use API the new framework added, and raise the
+version when you do. A framework update does not by itself require a rebuild, because the
+framework is not strong-named and the game's runtime binds it by simple name
+([versioning.md](versioning.md)). A data-only role references no framework assembly, so its
+bytes change only when its author rebuilds it.
 
 **A BOM or trailing comma in the manifest.** The framework logs `failed to parse` with the
 JSON reader's message. Save the manifest as UTF-8 without a byte order mark.

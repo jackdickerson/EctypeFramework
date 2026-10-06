@@ -24,10 +24,10 @@ small plugin, with no framework code in it.
    project. The role is named Warden here.
 
    ```powershell
-   New-Item -ItemType Directory C:\src\warden | Out-Null
-   Copy-Item <examples>\Directory.Build.props C:\src\warden
-   Copy-Item -Recurse <examples>\data-only-role C:\src\warden\WardenRole
-   cd C:\src\warden\WardenRole
+   New-Item -ItemType Directory warden | Out-Null
+   Copy-Item <examples>\Directory.Build.props warden
+   Copy-Item -Recurse <examples>\data-only-role warden\WardenRole
+   cd warden\WardenRole
    Remove-Item -Recurse -Force bin, obj -ErrorAction SilentlyContinue
    Rename-Item ExampleRole.csproj WardenRole.csproj
    ```
@@ -84,13 +84,14 @@ small plugin, with no framework code in it.
    }
    ```
 
-4. Build. The shared property file finds the game under
-   `C:\Program Files (x86)\Steam\steamapps\common\Void Crew` unless `-p:VoidCrewDir`, a
+4. Build. The shared property file takes the game folder from `-p:VoidCrewDir`, then a
    `VoidCrewDir` in a `Local.props` beside it (copy `Local.props.example` from the examples
-   folder) or the `VOID_CREW_DIR` environment variable says otherwise, in that order.
+   folder), then the `VOID_CREW_DIR` environment variable, and falls back to the default Steam
+   folder on `C:`. Set `VOID_CREW_DIR` for the session; the snippet that finds the folder is
+   in [setup.md](setup.md#finding-the-game-folder).
 
    ```powershell
-   dotnet build -c Release -p:VoidCrewDir="D:\Steam\steamapps\common\Void Crew"
+   dotnet build -c Release
    ```
 
    The build ends with `Build succeeded.` and writes `bin\Release\WardenRole.dll`.
@@ -98,7 +99,7 @@ small plugin, with no framework code in it.
 5. Close the game. Copy the DLL into the game's plugin folder.
 
    ```powershell
-   Copy-Item bin\Release\WardenRole.dll "D:\Steam\steamapps\common\Void Crew\BepInEx\plugins\"
+   Copy-Item bin\Release\WardenRole.dll "$env:VOID_CREW_DIR\BepInEx\plugins\"
    ```
 
 6. Launch the game and reach the main menu. The framework registers a role once the
@@ -109,7 +110,7 @@ small plugin, with no framework code in it.
 The log is overwritten on every launch. Copy it before you start the game again.
 
 ```powershell
-Select-String -Path "D:\Steam\steamapps\common\Void Crew\BepInEx\LogOutput.log" -Pattern "Ectype|Warden"
+Select-String -Path "$env:VOID_CREW_DIR\BepInEx\LogOutput.log" -Pattern "Ectype|Warden"
 ```
 
 A loaded role produces these lines, in this order. Each line starts with the BepInEx
@@ -155,6 +156,9 @@ this role has no ability.
 
 A role mod is declared `MultiplayerType.All`. Everyone in a room needs the framework and
 every role mod any player has, at the same build, and hosting with the mod installed marks
-the session as modded. [multiplayer.md](multiplayer.md) has the checks and the consequences.
+the session as modded. This is the current build's posture. A coming framework version makes
+role mods optional per player: the framework will suppress a role for the whole room when
+any member lacks it, and refuse a joiner who lacks a role that is active in a running
+session. [multiplayer.md](multiplayer.md) has the checks and the consequences.
 [choosing.md](choosing.md) compares the three kinds of mod, and [publishing.md](publishing.md)
 covers the Thunderstore package.

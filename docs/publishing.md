@@ -91,7 +91,10 @@ plain words.
 
 1. **Everyone in the room needs it.** A role mod and the framework are multiplayer type
    `All`. A player without them cannot join a room that has them, and a host without them
-   bounces a joiner who has them.
+   bounces a joiner who has them. This is the current build's posture. A coming framework
+   version makes role mods optional per player: the framework will suppress a role for the
+   whole room when any member lacks it, and refuse a joiner who lacks a role that is active
+   in a running session.
 2. **Everyone needs the same build.** Versions must match, and the host also compares a hash
    of each DLL. A player on an older copy is refused. State the version the listing was
    written for and tell players to update the framework and your mod together.

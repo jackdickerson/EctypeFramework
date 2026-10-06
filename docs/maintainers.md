@@ -9,13 +9,11 @@ names itself in the log, and the row says what the patch was for.
 
 ## Source map
 
-Paths are relative to the framework project folder, except where marked.
+Paths are relative to the framework project folder.
 
 | Area | Where |
 | --- | --- |
-| Role-framework design and work plan | `plans/07-class-framework.md` in the VoidCrewModding repository |
-| Helpers shared with the VoidCrewModding mods (flag policy, reflection, F5 menu, kitbash, dev keys) | `src/shared/`, copies of that repository's `shared/` files |
-| Engine facts the framework is built on (Harmony, UI Toolkit, Opsive, Photon, stats and perks) | `docs/engine-notes.md`, a map into the `vcm` plugin's reference set |
+| Helpers compiled into the framework (flag policy, reflection, F5 menu, kitbash, dev keys) | `src/shared/` |
 | Manifest model and validation | `src/Manifest.cs` |
 | Framework-owned stat declarations | `src/FrameworkStats.cs` |
 | Field-backed stat wrapper | `src/FieldStat.cs` |
@@ -114,8 +112,7 @@ document. A row with a width logs its dump (with `VerboseLogging`) and the watch
 20 s without a width the watcher classifies the cause. A document that is detached, under a
 `display:none` ancestor or in an unsized panel is expected, and logs at Info under
 `VerboseLogging` while polling continues. A document that is attached, shown and in a sized
-panel logs the warning and stops. The config entry's own description text says "~3s after
-construction", which the code does not do: the verdict constant is 20 s.
+panel logs the warning and stops.
 
 ## Role wording
 
@@ -148,7 +145,10 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 - **Adding a framework-owned stat is four edits:** a name constant and its spec in
   `src/FrameworkStats.cs`, a consumer that reads it, a row in `docs/stat-names.csv` so the perk
   builder can offer it, and an entry in `docs/framework-stats.json` saying what the number
-  does and what value the game authored. A framework stat with no consumer is inert, logged at startup.
+  does and what value the game authored. A stat may be added before anything consumes it, as
+  a contributor's way to offer a modifier surface ahead of its reader. A framework stat with
+  no consumer is inert and logged at startup. `.github/scripts/check-stats.py` fails when the
+  constants, the JSON entries and the framework rows of the CSV disagree.
 - **The framework-owned names and the reserved owner string their ids hash from are part of
   the shipped contract across a room.**
 - **A framework-owned name that shadows a vanilla one is a framework bug**, caught at
@@ -161,18 +161,15 @@ added to the list, and a renamed key logs `no entry '<key>'`.
   registered` line the framework logs at startup rather than recomputing them.
 - `CharacterStatusReplication` (in `src/CharacterStatus.cs`) records what building replication
   for character statuses involves.
-- The saved-mutator-list warning names the mod when the mutator GUID is one of the
-  repository's own, from a small table in `src/MutatorSafety.cs`.
+- The saved-mutator-list warning names the mod when the mutator GUID is in a small table of
+  known mutator mods in `src/MutatorSafety.cs`; any other GUID is reported by id alone.
 
 ## Manifest notes
 
-- `ModFlagPolicy` is VoidCrewModding infrastructure: its mods link `shared\*.cs` from that
-  repository, and the framework compiles its own copy in `src/shared/`. Role mods there declare
-  `MPType => MultiplayerType.All` hardcoded instead of using `ModFlagPolicy.MPType` (which is
-  Session or Client for the repository's non-role mods and never All), and return
-  `SetMod_Session = ModFlagPolicy.FlagsSession` from `OnSessionChange`. The three
-  `AssemblyMetadata` attributes (`ModCategories` under the `NO_SESSION_FLAG` conditional,
-  `MPType`, `ProgressionFlag`) are read by that repository's packaging scripts.
+- `src/shared/ModFlagPolicy.cs` is a compile-time switch for whether a build flags the session.
+  Its `MPType` is `Session` or `Client` and never `All`, so a role mod declares
+  `MPType => MultiplayerType.All` itself and returns `SetMod_Session = true` from
+  `OnSessionChange`. The framework returns `ModFlagPolicy.FlagsSession` there.
 - Role mods may copy their boilerplate from `examples/data-only-role/`.
 
 ## Posture
@@ -183,5 +180,5 @@ The mutator-safety prefix needs the same posture for the same reason. The room i
 hash-locked, updates are all-hands re-sends, and `PLUGIN_VERSION` is bumped on every deploy.
 Registered role content sits in the Required mask, so hosting with any role mod installed
 flags the session (one-way). The framework alone also flags at load, from its declared
-`MPType`. The mechanism is in `vcm/references/modded-session-flag.md`; the public statement is
-[multiplayer.md](multiplayer.md).
+`MPType`. The flag is a process-wide static that is never reset, so a room hosted later in the
+same process carries it too. The public statement is [multiplayer.md](multiplayer.md).

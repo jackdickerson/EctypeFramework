@@ -50,10 +50,10 @@ game's own types allow. The API areas are indexed in [api.md](api.md).
 
 It asks the author for C# written against the framework and the game's assemblies, with the
 extra references listed in [setup.md](setup.md). The DLL records the framework assembly
-version it was compiled against. After every framework update, rebuild it against the new
-framework, raise its version and reship it, because the new reference changes the DLL's bytes
-and a mismatch is refused at join. A mod that depends on the framework with a minimum version
-in `[BepInDependency]` also refuses to load under an older one.
+version it was compiled against. Rebuild it only to use API a newer framework added; a
+framework update does not by itself require reshipping it, and its bytes change only when its
+author rebuilds ([versioning.md](versioning.md)). A mod that depends on the framework with a
+minimum version in `[BepInDependency]` refuses to load under an older one.
 
 ## Utility-only mod
 
@@ -65,7 +65,10 @@ indexes them.
 It asks the author for C# against the framework, with the same rebuild rule as a role with
 code.
 
-Its multiplayer type follows from what it changes:
+Weapon mods and other content mods belong here. They are utility-only mods with no role, and
+they use the loot, selection gate and stat APIs.
+
+A utility-only mod's multiplayer type follows from what it changes:
 
 - A mod whose effects only the local player sees, such as a log line or a readout, declares
   `Client`. VoidManager never refuses a join over a `Client` mod, and the mod does not raise
@@ -96,6 +99,9 @@ Its multiplayer type follows from what it changes:
 - **Role content is mandatory for the whole room.** A role's tree and perks register in the
   game's required-asset set, and the game refuses a join when the host's required assets and
   the joiner's differ, whatever the mods declare. A role cannot be optional for some players.
+  This is the current build's posture. A coming framework version makes role mods optional
+  per player: the framework will suppress a role for the whole room when any member lacks
+  it, and refuse a joiner who lacks a role that is active in a running session.
 
 The listing for a mod that declares `All` says all of this in plain words;
 [publishing.md](publishing.md) lists the points.

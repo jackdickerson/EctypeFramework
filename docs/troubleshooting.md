@@ -476,14 +476,13 @@ Which screen says what the problem is:
 | Removed from the room after arriving, with no message from the framework | VoidManager, on the host | Same version, different DLL bytes. Only the host compares hashes. |
 
 Fix every case the same way: give everyone the same files. Raise the version of any mod whose
-bytes changed. After a framework update, rebuild and reship every mod that depends on it.
+bytes changed.
 
 ### Everyone has the same version and one player is still refused
 
-The two DLLs differ. A framework update changes the bytes of every dependent built against it,
-because each records the framework assembly version it was compiled against, so a locally
-rebuilt dependent differs from a downloaded one at the same version number. Reship from one
-set of files.
+The two DLLs differ. A dependent records the framework assembly version it was compiled
+against, so a locally rebuilt dependent differs from a downloaded one at the same version
+number. Reship from one set of files.
 
 ### A player lacks a role mod and the room runs
 

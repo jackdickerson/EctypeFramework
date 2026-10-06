@@ -93,19 +93,24 @@ to a mod of that type when a player joins a room.
 Host migration changes who runs the second check. The framework re-sends each client's hashed
 list to the new host so the check keeps working for members who were already present.
 
-### A framework update rebuilds every dependent
+### Rebuild only to use new API
 
 A compiled mod records the assembly version of each assembly it references. A dependent built
-against framework `0.19.7` carries a reference to `EctypeFramework, Version=0.19.7.0`. Building
-the same source against framework `0.20.0` writes a reference to `0.20.0.0`, so the dependent's
-bytes change and so does its hash, with no change to its own code or its own version.
+against framework `0.19.7` carries a reference to `EctypeFramework, Version=0.19.7.0`.
+`EctypeFramework.dll` is not strong-named, and the game's Mono runtime binds a reference to a
+non-strong-named assembly by simple name, so that dependent loads and runs against a newer
+framework as long as the members it calls still exist. This is verified by mechanism and not
+yet by a test in game.
 
 The consequences for the author of a dependent:
 
-1. After a framework update, rebuild the dependent against the new framework DLL.
-2. Raise the dependent's own version. Two builds of the same version number that differ in
-   bytes are bounced by the host's hash check, and the version number is what tells a player
-   which copy is stale.
-3. Reship the dependent, and tell players to update the framework and the dependent
-   together. The Thunderstore dependency string names the framework version the dependent
-   was built against, so a mod manager installs the pair as one set.
+1. Rebuild against a new framework only to use API that framework added.
+2. A framework update does not by itself require reshipping dependents. The host's hash check
+   compares each DLL with the same DLL on the joiner's machine, so a dependent's bytes change
+   only when its author rebuilds it. Players still update the framework itself to the host's
+   build.
+3. When you do rebuild, raise the dependent's own version. Two builds of the same version
+   number that differ in bytes are bounced by the host's hash check, and the version number is
+   what tells a player which copy is stale.
+4. Name the framework version you built against, or newer, in the Thunderstore dependency
+   string, so a mod manager installs a framework that has every member your build calls.

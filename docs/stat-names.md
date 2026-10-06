@@ -44,15 +44,19 @@ modifier surface:
   `character`-target perk reaches them.
 - `SystemModuleConstructionSpeed`, a factor on install, uninstall and upgrade rate, on the player's own
   collection.
-- `IncomingProjectileSpeed` and `ShipDrag` (the platform's quadratic drag) on the player
-  ship's collection.
+- `IncomingProjectileSpeed` on the player ship's collection: a factor (authored 1) on the
+  speed of every hostile NPC projectile, applied to each shot as it registers. Below 1 slows
+  enemy shots in flight.
+- `ShipDrag` (the platform's quadratic drag) on the player ship's collection.
 - A hand-held attractor's `HandAttractorMaxRange`, `HandAttractorPullVelocity`,
   `HandAttractorDuration`, `HandAttractorCooldown` and `HandAttractorBeams` on the owning
   ability's collection. Duration and cooldown are second ids onto the ability's own
-  `ClassAbilityDuration` / `ClassAbilityCooldown` floats, scoped to the hand. The hand
-  attractor stats mirror the vanilla `AttractorMaxRange` / `AttractorPullVelocity`: each float
-  is registered under both ids, so a `character`-side modifier on the vanilla id reaches the
-  hand too. An effect list names one of the pair, never both, or the two compound.
+  `ClassAbilityDuration` / `ClassAbilityCooldown` floats, scoped to the hand. Range and pull
+  velocity mirror the vanilla `AttractorMaxRange` / `AttractorPullVelocity`: each hand float
+  is registered under two ids, the framework id and the vanilla id, so a character-side
+  modifier on either id reaches it. One source must never name both ids, or the two
+  modifiers compound. A modifier applied to the ship's collection (`seatShip`,
+  `characterShip`, ship-installed items) never reaches the hand.
 
 [framework-stats.json](framework-stats.json) describes each one: what it wraps, the game's
 authored value, and how the game consumes it. [reference/framework-stats.md](reference/framework-stats.md)
@@ -71,9 +75,9 @@ A stat is read from the collection it lives on. `weapon/module` and `ship *` sta
 want `seat` or `seatShip`, and `EVA suit` and `character` stats want `character`. Some stats
 exist on more than one collection: vanilla ships `*Vulnerability` and `BatteryRechargeAmount`
 on `character`-target perks (personal damage resistance, carried-cell charging) despite their
-ship-side category bits. The vanilla dump the framework writes to
-`BepInEx\EctypeDump\vanilla-roles.json` (rewritten every launch) is the authority: when it
-shows a stat on a target, that pairing works. A stat routed to a collection that never reads
+ship-side category bits. The vanilla dump the framework can write to
+`BepInEx\EctypeDump\vanilla-roles.json` when the `[Dev] WriteVanillaDump` switch is on is the
+authority: when it shows a stat on a target, that pairing works. A stat routed to a collection that never reads
 it registers cleanly, renders a tooltip, and does nothing.
 
 ## `*Pip` variants

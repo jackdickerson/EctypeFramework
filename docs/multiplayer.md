@@ -84,7 +84,10 @@ Three facts bear on a mixed room:
 
 A role mod therefore declares `All`, depends on the framework with `[BepInDependency]`, and
 is installed by everyone in the room. A design that relies on players holding different role
-sets is refused by the game regardless of the `MultiplayerType` a mod declares.
+sets is refused by the game regardless of the `MultiplayerType` a mod declares. This is the
+current build's posture. A coming framework version makes role mods optional per player: the
+framework will suppress a role for the whole room when any member lacks it, and refuse a
+joiner who lacks a role that is active in a running session.
 
 
 ## Same build
@@ -98,10 +101,11 @@ Rules that follow:
 
 - Raise the version in your `[BepInPlugin]` attribute on every build you hand to another
   player. The version is the part of the check that every client can run.
-- A dependent's DLL records the version of the framework assembly it was compiled against. A
-  rebuild against a newer framework changes the dependent's bytes at the same version number.
-  After a framework update, rebuild every dependent, raise each version, and reship them
-  together with the framework.
+- A dependent's DLL records the version of the framework assembly it was compiled against, so
+  a rebuild against a newer framework changes its bytes at the same version number. A
+  framework update alone does not change a dependent's bytes and does not require reshipping
+  it ([versioning.md](versioning.md)). Rebuild only to use new API, and raise the version when
+  you do.
 - Send the whole room one set of files. A player who rebuilds locally and a player who
   downloaded the release hold different hashes.
 

@@ -11,7 +11,10 @@ with source `framework`), and code builds a `StatMod` against `FrameworkStats.Id
 same way it would for a vanilla stat. `FrameworkStats` is public. A stat the framework
 registers is not scoped to a role, and unlike a role's own `customStats` it already has a
 consumer. [../framework-stats.json](../framework-stats.json) describes each stat: what it
-wraps, the value the game authored, and how the game consumes it.
+wraps, the value the game authored, and how the game consumes it. The file is hand-maintained
+documentation that no code reads; its `_fields` object defines each per-stat field, and
+`.github/scripts/check-stats.py` checks its names and ids against the declarations in
+`src/FrameworkStats.cs` and the framework rows of [../stat-names.csv](../stat-names.csv).
 
 ## Field-backed stats
 

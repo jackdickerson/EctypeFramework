@@ -1,5 +1,5 @@
 {
-  "_note": "Preview spec for a HUD ability bar button on the framework's default chrome, beside the stock widget. Swap the grapple layers' image for a new glyph. Tints are measured from the game's tree dump; fill is the fraction of Fill revealed (1 = ready).",
+  "_note": "Preview spec for a HUD ability bar button on the framework's default chrome, beside the stock widget. Swap the grapple layers' image for a new glyph. Tints are measured from the game's tree dump; fill is the fraction of Fill revealed (1 = ready). Top-level fields: \"readyColor\" is the accent used wherever a tint says \"$ready\"; \"backdrop\" is the colour the widgets are drawn over (a #RRGGBB value, or the path of a screenshot); \"zoom\" is output pixels per UI point; \"states\" lists the states to render, each with a \"name\" and a \"fill\" fraction (1 = fully revealed, 0 = empty); \"widgets\" lists what is drawn, left to right. Paths are relative to this file. An image given as a bare name with no extension is a game image looked up by name prefix in the extracted game image library. Every key beginning with an underscore is documentation and carries no data.",
   "readyColor": "#E6A42D",
   "backdrop": "#0E121A",
   "zoom": 4,
@@ -15,11 +15,13 @@
   ],
   "widgets": [
     {
+      "_note": "The stock widget, drawn for comparison. \"width\" and \"height\" are the widget's size in UI points. Its layers carry explicit \"box\" rectangles measured from the stock widget, and no \"slice\", so their images are drawn stretched.",
       "name": "vanilla",
       "width": 269,
       "height": 68,
       "layers": [
         {
+          "_note": "Soft glow behind the button, drawn only in the states listed in \"states\" (ready). Its image is a nine-slice texture; \"slice\" is the slice width in texels and \"scale\" multiplies the widget's slice scale, so the glow's corners render larger than the plate's. \"pad\" grows the box by that many texels (times the slice scale) on each side. \"box\", where present, is an explicit rectangle in points [x, y, width, height] relative to the widget.",
           "name": "GlowContainer",
           "image": "WideHeroBtn_glow",
           "box": [
@@ -36,6 +38,7 @@
           ]
         },
         {
+          "_note": "The button's plate: the dark chamfered background. \"plate\": true marks this layer's silhouette as the area a glyph must stay inside. \"slice\" is the nine-slice width in texels, \"tint\" the colour the image is multiplied by for each state (\"*\" is the default).",
           "name": "PerkItem",
           "image": "WideHeroBtn_background",
           "tint": {
@@ -44,6 +47,7 @@
           "plate": true
         },
         {
+          "_note": "The glyph at rest, white on transparent. \"glyph\": true marks it as an icon layer. \"size\" is the background-size as a fraction of the box. \"trim\" clears the glyph outside the octagon whose corner cuts are the lines x + y = trim, as fractions of the button's side; 0.4395 is the frame's inner chamfer edge (225 of 512 texels), so a square glyph's corners do not cross the chamfer.",
           "name": "Icon",
           "image": "PerkBuff_Pilot_IconWide_Ability",
           "tint": {
@@ -52,6 +56,7 @@
           "glyph": true
         },
         {
+          "_note": "The plate image again, painted over the plate. \"fill\": true reveals it from the left by the state's \"fill\" fraction. Its tint is the ready colour in the ready state and white otherwise.",
           "name": "Fill",
           "image": "WideHeroBtn_background",
           "tint": {
@@ -61,6 +66,7 @@
           "fill": true
         },
         {
+          "_note": "The glyph again in black, revealed by the same fill fraction as the Fill layer, so the part of the glyph over the fill reads dark. It uses the same \"size\" and \"trim\" as Icon.",
           "name": "IconFilled",
           "image": "PerkBuff_Pilot_IconWide_Ability",
           "tint": {
@@ -70,6 +76,7 @@
           "glyph": true
         },
         {
+          "_note": "Soft shadow under the frame, black at about 65% alpha (the trailing A6 of the tint).",
           "name": "Shadow",
           "image": "wideherobtn_border_shadow",
           "tint": {
@@ -77,6 +84,7 @@
           }
         },
         {
+          "_note": "The button's outline, the hollow border image. It paints last, over everything else.",
           "name": "Frame",
           "image": "WideHeroBtn_border",
           "tint": {
@@ -94,6 +102,7 @@
       }
     },
     {
+      "_note": "The framework's button. \"width\" and \"height\" are the widget's size in UI points; \"gap\" is the space in points before the next widget in the row. \"texelHeight\" is the height in texels of the chrome textures, so the nine-slice scale is height / texelHeight (times a layer's own \"scale\"). \"dump\": true means a tree dump of this widget, read from the game log, replaces the assumed layer boxes and tints with measured ones. \"layers\" paint in order, back to front. \"chip\" is the key-label badge: \"anchor\" is where its centre sits as a fraction of the widget ([1, 1] is the bottom-right corner), \"size\" its size in points, \"label\" the text drawn in it.",
       "name": "button",
       "width": 68,
       "height": 68,
@@ -102,6 +111,7 @@
       "dump": true,
       "layers": [
         {
+          "_note": "Soft glow behind the button, drawn only in the states listed in \"states\" (ready). Its image is a nine-slice texture; \"slice\" is the slice width in texels and \"scale\" multiplies the widget's slice scale, so the glow's corners render larger than the plate's. \"pad\" grows the box by that many texels (times the slice scale) on each side. \"box\", where present, is an explicit rectangle in points [x, y, width, height] relative to the widget.",
           "name": "GlowContainer",
           "image": "WideHeroBtn_glow",
           "slice": 250,
@@ -115,6 +125,7 @@
           ]
         },
         {
+          "_note": "The button's plate: the dark chamfered background. \"plate\": true marks this layer's silhouette as the area a glyph must stay inside. \"slice\" is the nine-slice width in texels, \"tint\" the colour the image is multiplied by for each state (\"*\" is the default).",
           "name": "PerkItem",
           "image": "WideHeroBtn_background",
           "slice": 190,
@@ -124,6 +135,7 @@
           "plate": true
         },
         {
+          "_note": "The glyph at rest, white on transparent. \"glyph\": true marks it as an icon layer. \"size\" is the background-size as a fraction of the box. \"trim\" clears the glyph outside the octagon whose corner cuts are the lines x + y = trim, as fractions of the button's side; 0.4395 is the frame's inner chamfer edge (225 of 512 texels), so a square glyph's corners do not cross the chamfer.",
           "name": "Icon",
           "image": "../assets/hud-button-glyph.png",
           "size": 0.76,
@@ -134,6 +146,7 @@
           "trim": 0.4395
         },
         {
+          "_note": "The plate image again, painted over the plate. \"fill\": true reveals it from the left by the state's \"fill\" fraction. Its tint is the ready colour in the ready state and white otherwise.",
           "name": "Fill",
           "image": "WideHeroBtn_background",
           "slice": 190,
@@ -144,6 +157,7 @@
           "fill": true
         },
         {
+          "_note": "The glyph again in black, revealed by the same fill fraction as the Fill layer, so the part of the glyph over the fill reads dark. It uses the same \"size\" and \"trim\" as Icon.",
           "name": "IconFilled",
           "image": "../assets/hud-button-glyph.png",
           "size": 0.76,
@@ -155,6 +169,7 @@
           "trim": 0.4395
         },
         {
+          "_note": "Soft shadow under the frame, black at about 65% alpha (the trailing A6 of the tint).",
           "name": "Shadow",
           "image": "wideherobtn_border_shadow",
           "slice": 190,
@@ -163,6 +178,7 @@
           }
         },
         {
+          "_note": "The button's outline, the hollow border image. It paints last, over everything else.",
           "name": "Frame",
           "image": "WideHeroBtn_border",
           "slice": 190,
