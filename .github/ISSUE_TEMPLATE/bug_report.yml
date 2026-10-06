@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in the framework misbehaves or logs an error.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check `docs/troubleshooting.md` first. It lists the log lines the framework writes and what each means.
+  - type: input
+    id: framework_version
+    attributes:
+      label: Framework version
+      description: Shown on the F5 settings page under Ectype Framework, and in the first framework line of the log.
+      placeholder: "0.19.9"
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Void Crew version
+    validations:
+      required: true
+  - type: input
+    id: bepinex_version
+    attributes:
+      label: BepInEx version
+      placeholder: "5.4.23"
+    validations:
+      required: true
+  - type: input
+    id: voidmanager_version
+    attributes:
+      label: VoidManager version
+      placeholder: "1.2.11"
+    validations:
+      required: true
+  - type: dropdown
+    id: context
+    attributes:
+      label: Where it happens
+      options:
+        - Solo
+        - In a room, as host
+        - In a room, as joiner
+        - Both solo and in a room
+    validations:
+      required: true
+  - type: textarea
+    id: mods
+    attributes:
+      label: Installed mods
+      description: Every plugin in `BepInEx\plugins`, with versions. If the problem is in a room, list the host's mods and yours.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, what you expected and what happened instead.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines
+      description: |
+        The relevant lines from `BepInEx\LogOutput.log`. The file is overwritten on every launch, so copy it before relaunching. Framework lines start with `[Info   :Ectype Framework]`, `[Warning:Ectype Framework]` or `[Error  :Ectype Framework]`. Include any `[Error` line near them, with its stack trace. For a multiplayer problem, add the host's and the joiner's logs. For a per-character or per-open event, set `VerboseLogging = true` under `[Debug]` in `BepInEx\config\jack.voidcrew.ectype.cfg` before reproducing.
+      render: text
+    validations:
+      required: true

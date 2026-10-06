@@ -1,0 +1,37 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Line endings are LF
+        run: |
+          if git ls-files --eol | grep -E '(^|[[:space:]])(i|w)/crlf'; then
+            echo "CRLF found in the files above. Convert them to LF." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install jsonschema
+        run: python -m pip install jsonschema==4.23.0
+
+      - name: Example manifests match the schema
+        run: python .github/scripts/validate-examples.py
+
+      - name: Relative Markdown links resolve
+        run: python .github/scripts/check-links.py
+
+      - name: Release metadata and changelog
+        run: python .github/scripts/check-release.py
