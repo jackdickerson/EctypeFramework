@@ -235,7 +235,7 @@ namespace Ectype
             new Spec { IconDonor = StatType.ProcessingSpeed, Stat = new CustomStatSpec
             {
                 name = SystemModuleConstructionSpeed,
-                displayName = "Installation Speed",
+                displayName = "Construction Speed",
                 desc = "How fast you install, uninstall and upgrade ship systems.",
                 displayType = "percentage",
             } },

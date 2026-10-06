@@ -288,7 +288,7 @@
     {
       "name": "SystemModuleConstructionSpeed",
       "id": 761402164,
-      "displayName": "Installation Speed",
+      "displayName": "Construction Speed",
       "wraps": "no field: a factor on the progress clock (BuildProcess.StateTimer) of an install, uninstall or upgrade the player started",
       "collection": "the player's own StatTagCollection (Player.Stats)",
       "wiredBy": "src/BuildStats.cs; registered by the Player.Awake postfix, consumed by a BuildProcess.Run prefix",

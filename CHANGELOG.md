@@ -4,6 +4,10 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.15
+
+- `SystemModuleConstructionSpeed` displays as Construction Speed (was Installation Speed).
+
 ## 0.19.14
 
 - Dev tooling is compiled only into a dev tools build, `dotnet build -c Release
