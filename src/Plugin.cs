@@ -72,6 +72,10 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: enemy ability gates failed: " + e); }
             try { LootTables.ApplyPatch(harmony); }
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
+            // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
+            // driver when the localization settings are not loaded yet.
+            try { RoleWording.Install(); }
+            catch (Exception e) { Log.LogError("Ectype: role wording install failed: " + e); }
 
             GameObject driver = new GameObject("Ectype.Driver");
             UnityEngine.Object.DontDestroyOnLoad(driver);
@@ -234,6 +238,7 @@ namespace Ectype
             Step("timed stats", TimedStatContributions.Poll);
             Step("ability bar", HudAbilityBar.Tick);
             Step("loot warm-up", LootTables.PollWarmUp);
+            Step("role wording", RoleWording.Poll);
         }
 
         /// <summary>Runs one step; logs its first failure and suppresses repeats.</summary>

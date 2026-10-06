@@ -34,6 +34,7 @@ namespace Ectype
         public static ConfigEntry<bool> EnableScroll;
         public static ConfigEntry<string> ScrollExcludeDocuments;
         public static ConfigEntry<bool> GeometryLog;
+        public static ConfigEntry<bool> RoleWording;
         public static ConfigEntry<bool> LayoutWorkbench;
         public static ConfigEntry<float> LayoutPollSeconds;
         public static ConfigEntry<bool> DemoHudButton;
@@ -103,6 +104,14 @@ namespace Ectype
                 "lay out is always logged as a warning; " +
                 "the full dump of a healthy row also needs [Debug] VerboseLogging. The " +
                 "evidence the presentation work is verified against.");
+
+            RoleWording = cfg.Bind("Presentation", "RoleWording", true,
+                "Where the game's English text calls a playable role a \"Class\", show " +
+                "\"Role\" instead: the Class Ability keybind in Settings -> Controls, the " +
+                "Class Ability Cooldown/Duration lines on item tooltips, the stock hero-perk " +
+                "descriptions and the hub's \"Class: <role>\" projections. Display text only; " +
+                "other languages are untouched. Off restores the game's wording; a screen " +
+                "already open keeps its text until the game rebuilds it.");
 
             LayoutWorkbench = cfg.Bind("Dev", "LayoutWorkbench", false,
                 "Show the layout workbench in the F5 menu: reload the gene-tree layout " +

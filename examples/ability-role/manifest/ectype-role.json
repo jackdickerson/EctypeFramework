@@ -8,7 +8,7 @@
   "hero": {
     "key": "hero",
     "name": "Brace",
-    "desc": "<color=#FFD700>Class Ability</color>. Brace: take far less damage for a few seconds.",
+    "desc": "<color=#FFD700>Role Ability</color>. Brace: take far less damage for a few seconds.",
     "levels": 1,
     "emptyOk": true
   },

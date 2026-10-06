@@ -32,6 +32,7 @@ Paths are relative to the framework project folder, except where marked.
 | Hand attractor stats | `src/HandAttractorStats.cs` |
 | Runtime ability replication | `src/AbilitySync.cs` |
 | Geometry watcher | `src/PresentationDiagnostics.cs` |
+| Role wording | `src/RoleWording.cs` |
 
 ## Hooks relied on
 
@@ -88,6 +89,8 @@ column.
 | `ClientGame.OnPlayerShipSet` (subscribed), `ClientGame.PlayerShip` (read) | starts the loot warm-up; a game whose ship is already set counts as raised |
 | `CarryableDef.Ref`, `ResourcePaths.TryGetPath`, `Resources.LoadAsync<Object>` | the loot warm-up's prefab preload: the same call as the game's own `ResourceAssetRef.PreloadAssetAsync`, on the path the def's synchronous `Resources.Load` uses |
 | `OrbitObject.CsTags` (read on the prefab), `CsTagTable` | `AnyCarryableTagged`: the prefab's authored tags, matched by reference against the named stock tags |
+| `LocalizedStringDatabase.TablePostprocessor` (set, chaining any existing one); the internal `LocalizedDatabase.TableOperations` map (read) | `[Presentation] RoleWording`: rewrites listed English string-table entries as each table loads. The map is read once at install to catch tables loaded before the hook; a miss costs only that catch-up |
+| `LocalizationExtensions.LocalizationStringCache` / `LocalizedStringCache` (cleared), `InputKeyBinding.RebuildKeybindArray` via `ServiceBase<InputService>._instance._inputKeyBinding` (called) | the same invalidation the game runs on a language change, repeated after a rewrite of a table it may already have read |
 | `GameSession.InitStartingMutators` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 | `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 
@@ -113,6 +116,28 @@ document. A row with a width logs its dump (with `VerboseLogging`) and the watch
 `VerboseLogging` while polling continues. A document that is attached, shown and in a sized
 panel logs the warning and stops. The config entry's own description text says "~3s after
 construction", which the code does not do: the verdict constant is 20 s.
+
+## Role wording
+
+Every on-screen "Class" that names a playable role is a Unity Localization string-table entry:
+no UXML literal, C# literal or input-action display name carries the word. The game reads those
+entries three ways - `LocalizedString.GetLocalizedString`, its own memoising wrappers, and
+`StringTableEntry.LocalizedValue` directly - so a postfix on any one lookup method misses the
+others. The entry's value is the one point they share, and `TablePostprocessor` is Unity
+Localization's hook for editing it: it runs once per table as the load completes, before
+anything reads the table, and again on the fresh table loaded after a language change. A
+postprocessor set after a table has loaded is never offered that table, hence the catch-up walk
+of the loaded-table map at install.
+
+The rewrite is a key list, not a pattern, because the same tables hold ship classes ("REIGN-Class
+Frigate", "Ship Class", "Beta class", "DESTROYER class") that must keep the word. Only locales
+whose code starts with `en` are touched. The `ContextInfo` assets in `resources.assets` also
+carry an English copy of the text as their fallback string; the game shows it only when the
+table lookup fails, so it is left alone.
+
+After a game update, re-extract the English tables (`localization-string-tables-english(en)`
+bundle under `StreamingAssets/aa`) and search them for "class": a new role string needs a key
+added to the list, and a renamed key logs `no entry '<key>'`.
 
 ## Standing rules for framework code
 

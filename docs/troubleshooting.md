@@ -366,6 +366,18 @@ The role's icon could not be drawn in the crew HUD or the lobby list. The role w
 A stock sprite the scroller's page indicator borrows is not loaded. The indicator draws
 without that layer.
 
+### Role wording
+
+| Line | Cause |
+| --- | --- |
+| `Ectype: role wording installed.` | Normal. A `(chained after <type>)` suffix means the game or another mod had its own table postprocessor; it still runs first. |
+| `Ectype: role wording: no entry '<key>' in <table> (<locale>) - the game shows its own text there (game update renamed the key?).` | A listed string-table key no longer exists. That one place keeps saying "Class". |
+| `Ectype: role wording: cannot list loaded string tables (Unity Localization update?) - tables already loaded keep the game's text until the language changes.` | Tables the game loaded before the framework were not rewritten. Changing language and back, or a restart, reloads them through the hook. |
+| `Ectype: role wording (<what>) failed, reported once: <exception>` | One step of the rewrite threw. The game's own text shows where that step would have changed it; nothing else is affected. |
+
+"Class" still shows after turning `[Presentation] RoleWording` on mid-session: the screen was
+built before the switch. Reopen it, or restart. Non-English languages are never changed.
+
 ### HUD ability bar
 
 | Line | Cause |

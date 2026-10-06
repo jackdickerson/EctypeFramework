@@ -4,6 +4,23 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.12
+
+- New `[Presentation] RoleWording`, default on: where the game's English text calls a playable
+  role a "Class", it says "Role". Display text only; no game identifier, asset, save or network
+  message changes, and other languages are untouched. Off restores the game's wording. The
+  strings changed:
+  - Settings -> Controls keybind name: "Class Ability" -> "Role Ability".
+  - Item and relic stat lines: "Class Ability Cooldown" -> "Role Ability Cooldown", "Class
+    Ability Duration" -> "Role Ability Duration".
+  - The eight stock hero-perk descriptions (Engineer, Gunner, Pilot, Scavenger; base and
+    Superior): "Gain the <ability> Class Ability." -> "Gain the <ability> Role Ability."
+  - The hub's player-projection headers: "Class: Engineer", "Class: Gunner", "Class: Pilot",
+    "Class: Scavenger" -> "Role: ...".
+- With the switch on, the vanilla tree dump (`vanilla-roles.json`) records the hero-perk
+  descriptions in the new wording, since it reads the displayed text.
+- The examples' hero-perk descriptions say "Role Ability".
+
 ## 0.19.11
 
 - Breaking: "class" is renamed "role" throughout, matching the game's own code (EPlayerRole). Manifest

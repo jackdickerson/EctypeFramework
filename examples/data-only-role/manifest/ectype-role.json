@@ -8,7 +8,7 @@
   "hero": {
     "key": "hero",
     "name": "Example Hero",
-    "desc": "<color=#FFD700>Class Ability</color>. Placeholder: no ability is wired, so this perk grants nothing.",
+    "desc": "<color=#FFD700>Role Ability</color>. Placeholder: no ability is wired, so this perk grants nothing.",
     "levels": 1,
     "emptyOk": true
   },
