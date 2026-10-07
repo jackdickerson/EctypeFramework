@@ -5,7 +5,7 @@ namespace Ectype
         public const string PLUGIN_GUID = "jack.voidcrew.ectype";
         public const string PLUGIN_NAME = "EctypeFramework";
         public const string USERS_PLUGIN_NAME = "Ectype Framework";
-        public const string PLUGIN_VERSION = "0.19.15";
+        public const string PLUGIN_VERSION = "0.19.16";
         public const string PLUGIN_DESCRIPTION =
             "Role framework and gameplay utilities for Void Crew mods: playable roles from a " +
             "JSON manifest, plus stats, statuses, loot and HUD helpers. Every player in the " +

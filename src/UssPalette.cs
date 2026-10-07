@@ -537,11 +537,11 @@ namespace Ectype
 
         private static Sprite RoleIconSprite(RoleRecord rec)
         {
-            Sprite s = IconStore.Get(rec.SourceAssembly, rec.Manifest.roleIcon);
+            Sprite s = IconStore.GetRoleIcon(rec.SourceAssembly, rec.Manifest.roleIcon);
             if (s != null) return s;
             Plugin.Log.LogInfo("Ectype: " + rec.Manifest.roleName + " ships no role icon - " +
                                "the crew HUD and lobby show the placeholder.");
-            return IconStore.Placeholder(false);
+            return IconStore.GetRoleIcon(typeof(IconStore).Assembly, "placeholder-square");
         }
 
         // ------------------------------------------------------------ selector plumbing

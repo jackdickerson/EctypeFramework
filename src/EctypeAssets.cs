@@ -218,7 +218,7 @@ namespace Ectype
                 rec.TreeDef = new PerkTreeDef();
                 rec.TreeDef.Ref = new PerkTreeRef(rec.TreeGuid, "") { IsRuntime = true };
                 ContextInfo treeCtx = ContextInfo.Create(
-                    IconStore.Get(rec.SourceAssembly, m.roleIcon)
+                    IconStore.GetRoleIcon(rec.SourceAssembly, m.roleIcon)
                         ?? IconFrom(m.roleIconDonor, m.roleId + " (role icon)")
                         ?? IconStore.Placeholder(false),
                     m.roleName, m.roleDesc ?? "");

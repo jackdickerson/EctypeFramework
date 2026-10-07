@@ -4,6 +4,15 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.16
+
+- A role icon's sprite rect is fitted to its glyph: a square centred on the PNG's alpha
+  bounds, sized so the glyph spans 70% of it, the top of the stock role icons' 61-71%. The
+  crew HUD, the lobby room list and the gene tree's `ContextInfo` icon all take the fitted
+  sprite, so a glyph authored small inside its canvas no longer draws smaller than the stock
+  role icons. A glyph already at 70% or more keeps the full canvas; the log names each icon
+  it fits.
+
 ## 0.19.15
 
 - `SystemModuleConstructionSpeed` displays as Construction Speed (was Installation Speed).
