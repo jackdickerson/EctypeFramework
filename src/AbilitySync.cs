@@ -130,6 +130,24 @@ namespace Ectype
     {
         private static readonly HashSet<string> ReportedOwnerMismatch = new HashSet<string>();
 
+        // A start that arrived before its character could run it, keyed "viewId/key". The
+        // driver retries it; any later message for the same view and key replaces or cancels it.
+        private sealed class HeldStart
+        {
+            internal int ViewId;
+            internal string Key;
+            internal object[] StartData;
+            internal object[] Extended;
+            internal bool LateJoin;
+            internal float Deadline;
+        }
+
+        private const float HoldSeconds = 5f;
+        private const float RetryInterval = 0.1f;
+        private static readonly Dictionary<string, HeldStart> Held =
+            new Dictionary<string, HeldStart>();
+        private static float _nextRetry;
+
         public override void Handle(object[] args, Player sender)
         {
             try
@@ -162,21 +180,88 @@ namespace Ectype
                 Ability ability = RuntimeAbilities.Find(loco, key);
                 if (ability == null) return;   // this client has no such ability: nothing to do
 
-                if (startData != null && startData.Length > 0)
-                    ability.SetNetworkStartData(startData);
-                IExtendedStartSyncAbility ext = ability as IExtendedStartSyncAbility;
-                if (ext != null && extended != null && extended.Length > 0)
-                    ext.StartData = extended;
-
-                // Same two lines the vanilla receivers execute; the late-join variant uses
-                // the flags the vanilla join-time sync uses.
-                if (!active) loco.TryStopAbility(ability, true);
-                else if (lateJoin) loco.TryStartAbility(ability, true, true);
-                else loco.TryStartAbility(ability);
+                string heldKey = viewId + "/" + key;
+                Held.Remove(heldKey);   // a newer message supersedes a held start; a stop cancels it
+                if (active && !IsReady(loco))
+                {
+                    Held[heldKey] = new HeldStart
+                    {
+                        ViewId = viewId, Key = key, StartData = startData, Extended = extended,
+                        LateJoin = lateJoin, Deadline = Time.unscaledTime + HoldSeconds
+                    };
+                    return;
+                }
+                Deliver(loco, ability, active, startData, extended, lateJoin);
             }
             catch (Exception e)
             {
                 Plugin.Log.LogError("Ectype: handling ability-sync message failed: " + e);
+            }
+        }
+
+        /// <summary>
+        /// A replica exists before it can run an ability: its locomotion's look source is
+        /// attached after spawn, and stock abilities read it unconditionally on start (the
+        /// grappling hook's projectile spawn position does).
+        /// </summary>
+        private static bool IsReady(UltimateCharacterLocomotion loco)
+        {
+            ILookSource look = loco.LookSource;
+            return look != null && !(look is UnityEngine.Object o && o == null);
+        }
+
+        private static void Deliver(UltimateCharacterLocomotion loco, Ability ability, bool active,
+                                    object[] startData, object[] extended, bool lateJoin)
+        {
+            if (startData != null && startData.Length > 0)
+                ability.SetNetworkStartData(startData);
+            IExtendedStartSyncAbility ext = ability as IExtendedStartSyncAbility;
+            if (ext != null && extended != null && extended.Length > 0)
+                ext.StartData = extended;
+
+            // Same two lines the vanilla receivers execute; the late-join variant uses
+            // the flags the vanilla join-time sync uses.
+            if (!active) loco.TryStopAbility(ability, true);
+            else if (lateJoin) loco.TryStartAbility(ability, true, true);
+            else loco.TryStartAbility(ability);
+        }
+
+        /// <summary>Driver step: delivers each held start whose character has become ready, and
+        /// drops one whose character is gone or that is still held after HoldSeconds.</summary>
+        internal static void PollHeld()
+        {
+            if (Held.Count == 0 || Time.unscaledTime < _nextRetry) return;
+            _nextRetry = Time.unscaledTime + RetryInterval;
+
+            foreach (string heldKey in new List<string>(Held.Keys))
+            {
+                HeldStart h = Held[heldKey];
+                try
+                {
+                    PhotonView view = PhotonView.Find(h.ViewId);
+                    UltimateCharacterLocomotion loco =
+                        view != null ? view.GetComponent<UltimateCharacterLocomotion>() : null;
+                    Ability ability = RuntimeAbilities.Find(loco, h.Key);
+                    if (ability == null) { Held.Remove(heldKey); continue; }   // character gone
+                    if (IsReady(loco))
+                    {
+                        Held.Remove(heldKey);
+                        Deliver(loco, ability, true, h.StartData, h.Extended, h.LateJoin);
+                    }
+                    else if (Time.unscaledTime >= h.Deadline)
+                    {
+                        Held.Remove(heldKey);
+                        Plugin.Log.LogWarning("Ectype: dropped ability-sync start '" + h.Key +
+                                              "' for view " + h.ViewId + ": the character had " +
+                                              "no look source after " + HoldSeconds + " s.");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Held.Remove(heldKey);
+                    Plugin.Log.LogError("Ectype: delivering held ability-sync start '" + h.Key +
+                                        "' failed: " + e);
+                }
             }
         }
     }

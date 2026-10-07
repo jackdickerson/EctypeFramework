@@ -589,6 +589,7 @@ mod does not throw when the host activates it.
 | --- | --- |
 | `Ectype: ignored ability-sync for view <id> from a player who does not own it.` | A message tried to drive a character it did not own. Logged once per sender and view. Another client is running something that sends ability messages for characters it does not own. |
 | `Ectype: CustomPunCharacter.<name> not found - <consequence> (game update?)` | A game method the replication patches is gone. The consequence names what stops working (late joiners not learning running abilities, for one). |
+| `Ectype: dropped ability-sync start '<key>' for view <id>: the character had no look source after 5 s.` | A start arrived for a character on this client that never became able to run an ability, so it was not started here. The owner's next start replicates normally. |
 | `Ectype: ability-sync send failed: <exception>`, `Ectype: handling ability-sync message failed: <exception>`, `Ectype: late-join ability-sync failed: <exception>`, `Ectype: resolving ability-sync recipients failed: <exception>` | A step of the keyed channel threw. A registered ability never falls back to the index RPC, so a failed send is a dropped state update. |
 
 A registered ability reaches only peers whose mod list carries the framework. A peer without it

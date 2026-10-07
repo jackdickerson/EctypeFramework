@@ -15,6 +15,9 @@ peer without the ability simply ignores the message.
 - A running registered ability is also synchronised to a late joiner. The message is sent to
   the joiner alone, and only when VoidManager reports that peer as running the framework
   (see `PeerHasMod` in [selection-gate.md](selection-gate.md)).
+- A start that reaches a character whose look source is not attached yet, as a late joiner's
+  copy of a crewmate is for a moment after spawning, is held and retried for up to 5 s; a
+  stop for the same character and key cancels it.
 - A prefab ability, one built into the character prefab, falls through to vanilla replication
   untouched.
 

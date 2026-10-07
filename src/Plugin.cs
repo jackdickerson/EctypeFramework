@@ -194,6 +194,7 @@ namespace Ectype
             Step("enemy abilities", EnemyAbilities.Poll);
             Step("character statuses", CharacterStatuses.Poll);
             Step("timed stats", TimedStatContributions.Poll);
+            Step("held ability starts", AbilityActiveMessage.PollHeld);
             Step("ability bar", HudAbilityBar.Tick);
             Step("loot warm-up", LootTables.PollWarmUp);
             Step("role wording", RoleWording.Poll);

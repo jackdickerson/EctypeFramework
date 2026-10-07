@@ -4,6 +4,15 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.17
+
+- A replicated start for a registered ability is held while the receiving client's copy of
+  the character has no look source yet, and delivered once it has one. A late joiner could
+  otherwise receive a crewmate's running ability before that character finished spawning
+  and start it there, where a stock ability that reads the look source on start (the
+  grappling hook) threw. A held start is retried every 0.1 s for up to 5 s, cancelled by a
+  later stop for the same character and key, and dropped with one warning at timeout.
+
 ## 0.19.16
 
 - A role icon's sprite rect is fitted to its glyph: a square centred on the PNG's alpha
