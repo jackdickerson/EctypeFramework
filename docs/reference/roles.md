@@ -115,6 +115,81 @@ character. Avoid the `*Pip` stat variants on role abilities unless you know the 
 The framework registers its role abilities for network replication under the key
 `ectype:<roleId>`; see [runtime-abilities.md](runtime-abilities.md).
 
+`EctypeRoleAbility` overrides `AbilityStarted`, `AbilityStopped`, `ActivationKeyPressed`,
+`Update`, `InactiveUpdate` and `OnDestroy` to run the two features below. A subclass override
+of any of them calls its base.
+
+### Usability
+
+Override `OwnerCanUse()` to make the ability unusable in some states. On the owning client,
+on every tick the ability is selected and idle (Opsive's `InactiveUpdate`), the framework
+evaluates it and writes the result to the game's `AbilityUsable`. The game's start check
+(`ClassAbility.CanStartAbility`) refuses an unusable ability, and the setter raises the HUD's
+usable-changed event, which toggles the slot's `ClassAbility__unusable` class. Selecting the
+ability republishes the current value, so a decision made while it was deselected reaches the
+HUD.
+
+A replica is held usable. The same start check runs on every client: a crewmate's copy of
+your character starts the ability when your start reaches it through the framework's ability
+replication. The decision was made on your machine, so a replica that decides again from its
+own copy of the character's state can only disagree, and a disagreement refuses the start
+and costs that crewmate the effect.
+
+Role code never writes `AbilityUsable`. The framework decides it again on the next idle tick,
+and the two writes alternate, each raising the HUD event.
+
+### Cancel policy
+
+By default a channel runs its full duration: `FiniteDurationClassAbility.CanStartAbility`
+refuses while a channel runs, so pressing the ability key again does nothing. Assign `Cancel`
+in the subclass constructor to let the channel end early:
+
+```csharp
+Cancel = new CancelPolicy
+{
+    On = CancelTriggers.AbilityKey | CancelTriggers.Collision | CancelTriggers.InertiaZoneEntry,
+    Cooldown = CancelCooldown.Partial,
+    CollisionSpeed = () => 3f,
+};
+```
+
+| Trigger | Fires when | Mechanism |
+| --- | --- | --- |
+| `AbilityKey` | The ability key is pressed while the channel runs. | `ClassAbility.ActivationKeyPressed`, overridden. The game binds the key on the owning client only. |
+| `Collision` | A contact's approach speed, the character's velocity against the surface normal, reaches `CollisionSpeed` (default 3 m/s, never below 0.1). | `CharacterLocomotion.OnCollision`, raised on the owning client for every contact of the movement sweep, grazing and ground contacts included. The speed filter is what separates a hit from a graze. |
+| `GrappleAttach` | A grappling hook on the character attaches to a surface. | `ChannelGrapplingHook.OnGrapplingStart`, raised at the end of the hook's attach-to-valid-surface handler. Every hook in the character's ability list at the channel's start is watched, whichever mod installed it. |
+| `InertiaZoneEntry` | The character enters a ship's inertia zone. | `CharacterAtmosphericDataTracker.OnInInertiaZoneChange` with `true`, raised from the tracker's zone setter. |
+| `JetpackFlightEnd` | EVA jetpack flight stops: landing, or entering gravity. | `FlyJetpack.IsActive`, polled each tick, because the jetpack raises no event when it stops. Armed once the jetpack has been seen flying during the channel, so a channel started on the ground does not end at once. |
+| `Requested` | The ability calls `RequestCancel(reason)`. | The ability's own code. Without `Requested` in `On` the call logs one warning and does nothing. |
+
+The policy's rules:
+
+- **Owner only.** The triggers are subscribed on the owning client when the channel starts and
+  unsubscribed when it stops. A replica's channel ends when the owner's stop reaches it
+  through the framework's ability replication.
+- **The stop waits for the ability's tick.** A trigger records the cancel; the ability stops
+  from its own `Update`, the tick from which the game's countdown stops a channel that has run
+  out. No stop runs inside the movement sweep, the grapple's attach handler, the tracker's
+  setter or the input callback.
+- **`LastEnd` says how the channel ended, before `OnRemoveEffect` runs.** `Cause` is the first
+  trigger that fired, `Fired` every trigger that fired before the stop landed, `Early` whether
+  the channel had time left, `Reason` the cause in words. An effect that has to end
+  differently for one trigger reads it there: one that snaps back on entering an inertia zone
+  checks `Fired` for `InertiaZoneEntry`, which also catches a zone entered in the same tick as
+  a collision. `Cause` is `None` for a channel that ran out and for a stop from outside the
+  policy: a deselect, a despawn, or the owner's stop arriving at a replica.
+- **Cooldown.** `Full` is the game's own. `Partial` scales the cooldown by the share of the
+  channel used: 3 s of a 4 s channel on an 8 s cooldown leaves 6 s. The game's stop path
+  removes the effect, sets `CurrentCooldown` to the full `CooldownSeconds`, and only then
+  zeroes the channel's remaining time. The remaining time is read before that path and the
+  cooldown rewritten after it through the game's `RefundCooldown`. The HUD draws
+  `CurrentCooldown / CooldownSeconds` every frame, so the shorter cooldown shows at once.
+  `Partial` applies to every end with time left, a deselect included, and never goes below
+  one physics step, so the cooldown still ends in the game's countdown, which raises
+  `ClassAbilityCooldownEnded`. A channel that runs out keeps the full cooldown.
+- **One log line per channel end.** With `[Debug] VerboseLogging` on, the owning client logs
+  how each channel ended and the cooldown it left.
+
 ## Suppression
 
 Three mechanisms remove a tree from the game while a role mod is installed. All three leave
