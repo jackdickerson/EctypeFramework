@@ -159,7 +159,7 @@ Cancel = new CancelPolicy
 | `Collision` | A contact's approach speed, the character's velocity against the surface normal, reaches `CollisionSpeed` (default 3 m/s, never below 0.1). | `CharacterLocomotion.OnCollision`, raised on the owning client for every contact of the movement sweep, grazing and ground contacts included. The speed filter is what separates a hit from a graze. |
 | `GrappleAttach` | A grappling hook on the character attaches to a surface. | `ChannelGrapplingHook.OnGrapplingStart`, raised at the end of the hook's attach-to-valid-surface handler. Every hook in the character's ability list at the channel's start is watched, whichever mod installed it. |
 | `InertiaZoneEntry` | The character enters a ship's inertia zone. | `CharacterAtmosphericDataTracker.OnInInertiaZoneChange` with `true`, raised from the tracker's zone setter. |
-| `JetpackFlightEnd` | EVA jetpack flight stops: landing, or entering gravity. | `FlyJetpack.IsActive`, polled each tick, because the jetpack raises no event when it stops. Armed once the jetpack has been seen flying during the channel, so a channel started on the ground does not end at once. |
+| `JetpackFlightEnd` | The character is not flying the EVA jetpack on a tick of the channel: it landed or entered gravity. A channel started out of flight ends on its first tick, so list it for an ability usable only in flight. | `FlyJetpack.IsActive`, polled each tick, because the jetpack raises no event when it stops. |
 | `Requested` | The ability calls `RequestCancel(reason)`. | The ability's own code. Without `Requested` in `On` the call logs one warning and does nothing. |
 
 The policy's rules:

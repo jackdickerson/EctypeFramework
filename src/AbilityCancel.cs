@@ -26,7 +26,8 @@ namespace Ectype
         /// <summary>The character entering a ship's inertia zone.</summary>
         InertiaZoneEntry = 1 << 3,
 
-        /// <summary>EVA jetpack flight ending while the channel runs: landing, or entering gravity.</summary>
+        /// <summary>The character not flying the EVA jetpack on a tick of the channel: it landed
+        /// or entered gravity. A channel started out of flight ends on its first tick.</summary>
         JetpackFlightEnd = 1 << 4,
 
         /// <summary>The ability's own <c>RequestCancel(reason)</c>.</summary>
@@ -164,7 +165,6 @@ namespace Ectype
         private readonly List<ChannelGrapplingHook> _hooks = new List<ChannelGrapplingHook>();
         private Action _grappleHandler;
         private FlyJetpack _jetpack;
-        private bool _jetpackSeenFlying;
 
         private bool _loggedCancelFail;
         private bool _loggedRequestRefused;
@@ -272,13 +272,9 @@ namespace Ectype
                 }
             }
 
-            // Polled from Update: FlyJetpack raises no event when it stops. The trigger is a
-            // transition, so a channel started on the ground is not cancelled until it has flown.
+            // Polled from Update: FlyJetpack raises no event when it stops.
             if ((p.On & CancelTriggers.JetpackFlightEnd) != 0)
-            {
                 _jetpack = loco.GetAbility<FlyJetpack>(-1);
-                _jetpackSeenFlying = _jetpack != null && _jetpack.IsActive;
-            }
         }
 
         // ------------------------------------------------------------------ triggers
@@ -319,9 +315,8 @@ namespace Ectype
 
         private void PollJetpack()
         {
-            if (_jetpack == null) return;
-            if (_jetpack.IsActive) _jetpackSeenFlying = true;
-            else if (_jetpackSeenFlying) Fire(CancelTriggers.JetpackFlightEnd, "jetpack flight ending");
+            if (_jetpack != null && !_jetpack.IsActive)
+                Fire(CancelTriggers.JetpackFlightEnd, "jetpack flight ending");
         }
 
         /// <summary>From Update, owner only: the jetpack poll, then the recorded cancel's stop.</summary>
@@ -395,7 +390,6 @@ namespace Ectype
                 _tracker = null;
             }
             _jetpack = null;
-            _jetpackSeenFlying = false;
         }
 
         private void CancelFailed(string what, Exception e)
