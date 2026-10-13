@@ -8,8 +8,7 @@ namespace Ectype
         public const string PLUGIN_VERSION = "0.20.0";
         public const string PLUGIN_DESCRIPTION =
             "Role framework and gameplay utilities for Void Crew mods: playable roles from a " +
-            "JSON manifest, plus stats, statuses, loot and HUD helpers. Every player in the " +
-            "room needs the same build.";
+            "JSON manifest, plus stats, statuses, loot and HUD helpers.";
         public const string PLUGIN_AUTHORS = "Jack";
         public const string PLUGIN_THUNDERSTORE_ID = "Jack_Modding/Ectype_Framework";
 
