@@ -4,6 +4,10 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.20.0
+
+- First Thunderstore release. Carries the changes of 0.19.16 to 0.19.20 below; nothing else.
+
 ## 0.19.20
 
 - `HowToHints.Build` takes a null icon: the toast draws text only, with the icon slot
