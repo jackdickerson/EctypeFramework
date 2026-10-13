@@ -5,6 +5,7 @@ using System.Reflection;
 
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 using CG.Profile;
 using Client.Player.Interactions;
@@ -298,6 +299,16 @@ namespace Ectype
                 "SetHintSeenPrefix", BindingFlags.Static | BindingFlags.NonPublic)));
             _patched = true;
 
+            MethodInfo veShow = typeof(UI.HUD.HintDisplayVE).GetMethod("Show", I, null,
+                                                                     new[] { typeof(ContextInfo) }, null);
+            if (veShow != null)
+                harmony.Patch(veShow, postfix: new HarmonyMethod(typeof(HowToHints).GetMethod(
+                    "HintDisplayShowPostfix", BindingFlags.Static | BindingFlags.NonPublic)));
+            else
+                Plugin.Log.LogWarning("Ectype: how-to hints: HintDisplayVE.Show(ContextInfo) not " +
+                                      "found (game update?); a hint built without an icon shows an " +
+                                      "empty icon slot.");
+
             _updateHintToShow = typeof(HintsController).GetMethod("UpdateHintToShow", I, null,
                                                                   Type.EmptyTypes, null);
             _shownHint = typeof(HintsController).GetField("shownHint", I);
@@ -334,6 +345,27 @@ namespace Ectype
             {
                 Plugin.Log.LogError("Ectype: how-to hints: SetHintSeen prefix failed: " + e);
                 return true;
+            }
+        }
+
+        /// <summary>
+        /// Collapses the icon slot of a hint that has no icon. The display sets the icon as a
+        /// background image and leaves its element in the layout, so a null icon would draw an
+        /// empty square. The display's hint elements are pooled and reused for every hint, stock
+        /// ones included, so the slot is restored whenever the hint has an icon.
+        /// </summary>
+        private static void HintDisplayShowPostfix(UI.HUD.HintDisplayVE __instance, ContextInfo info)
+        {
+            try
+            {
+                VisualElement icon = __instance != null ? __instance.Q<VisualElement>("Icon") : null;
+                if (icon == null || info == null) return;
+                icon.style.display = info.Icon == null ? new StyleEnum<DisplayStyle>(DisplayStyle.None)
+                                                       : new StyleEnum<DisplayStyle>(StyleKeyword.Null);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: how-to hints: HintDisplayVE.Show postfix failed: " + e);
             }
         }
 

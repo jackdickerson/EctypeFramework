@@ -4,6 +4,11 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.20
+
+- `HowToHints.Build` takes a null icon: the toast draws text only, with the icon slot
+  collapsed instead of left as an empty square.
+
 ## 0.19.19
 
 - `HowToHints`: how-to toasts through the game's own hint system, moved into the framework from
