@@ -8,7 +8,8 @@ A framework for Void Crew mods, in two halves that ship as one assembly.
   optionally a role ability.
 - **General utilities** for any mod: mutator safety, timed enemy and character statuses,
   field-backed stats, runtime ability replication, ship arrivals from the void, curve-driven
-  stat contributions, loot-table registration, a HUD ability bar and a room build check.
+  stat contributions, loot-table registration, a HUD ability bar, how-to toasts through the
+  game's hint system and a room build check.
 
 ## For players
 

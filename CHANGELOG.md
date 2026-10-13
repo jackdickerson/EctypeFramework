@@ -4,6 +4,18 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.19
+
+- `HowToHints`: how-to toasts through the game's own hint system, moved into the framework from
+  a helper each mod compiled for itself. `Build`, `Show` and `Owns` keep that helper's
+  behaviour, including keeping the hint out of the player's saved seen-hint list. `Show` now
+  refuses a hint at its per-session cap (the game's own check let one more through) and returns
+  false for a hint already showing or stacked, which the game counted as seen without showing.
+- `HowToHints.ShowForced` shows a hint with the player's "Show hints" setting off. Only the
+  setting is bypassed, and only for that one call; stock hints keep obeying it. With the
+  setting off the game runs no hint countdown, so the framework runs its own until the hint
+  closes, and stops it as soon as the game's own countdown is running.
+
 ## 0.19.18
 
 - `EctypeRoleAbility` takes a cancel policy. Assign `Cancel = new CancelPolicy { On, Cooldown,

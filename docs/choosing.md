@@ -59,7 +59,7 @@ minimum version in `[BepInDependency]` refuses to load under an older one.
 
 A utility-only mod has no manifest and no role. It calls the framework's utilities: enemy and
 character statuses, loot tables, ship arrivals, timed stat contributions, the HUD ability bar,
-framework-owned stats, runtime ability replication and the selection gate. [api.md](api.md)
+how-to toasts, framework-owned stats, runtime ability replication and the selection gate. [api.md](api.md)
 indexes them.
 
 It asks the author for C# against the framework, with the same rebuild rule as a role with
