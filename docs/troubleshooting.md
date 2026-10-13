@@ -449,6 +449,30 @@ The field the framework reads the locomotion from is gone. No framework ability 
 An override on an `EctypeRoleAbility` subclass threw. The base class catches the exception so
 Opsive's update loop keeps running, and logs it once per ability type. Fix the override.
 
+### `Ectype: <AbilityType> channel <how it ended>, cooldown <n> s.`
+
+Logged with `[Debug] VerboseLogging` on, by the owning client, once per channel end. `ran its
+full <n> s` is a channel that ran out. `cancelled after <used> of <n> s (<cause>)` is an end
+from the ability's cancel policy, and `stopped after ...` an end from outside it: a deselect,
+a despawn. `scaled to the share used` marks a partial cooldown.
+
+### `Ectype: <AbilityType> cancel policy: <step> threw (reported once): <exception>`
+
+One step of the cancel policy failed: a trigger's check, a subscription, the deferred stop or
+the early-end cooldown. A trigger that threw records nothing, so the channel runs on until
+another trigger or its own end stops it. A failed cooldown rewrite leaves the full cooldown.
+A `CollisionSpeed` callback that throws lands here, named as the collision check.
+
+### `Ectype: <AbilityType>.RequestCancel ignored: its CancelPolicy does not list CancelTriggers.Requested (reported once).`
+
+The ability called `RequestCancel` with no policy, or with a policy whose `On` lacks
+`Requested`. Add `CancelTriggers.Requested` to `On`.
+
+### `Ectype: <AbilityType>.OwnerCanUse threw (reported once; usability left as it was): <exception>`
+
+The ability's usability override threw. `AbilityUsable` keeps its last value until a later
+call returns. Fix the override.
+
 ### `Ectype: could not repoint <VanillaAbilityType> onto '<roleId>' (field rename? see warnings above) - that role has no active ability.`
 
 A role suppresses a stock tree and takes over the stock ability that tree owned. The repoint
@@ -466,6 +490,15 @@ A role that adopted a stock ability and authored its own capstone effects may re
 
 - **The ability key does nothing for the first seconds after selecting the perk.** Selecting
   the hero perk, and every respawn, starts the full cooldown, as for any role ability.
+- **Role code writes `AbilityUsable`.** The framework decides it again on the owning client's
+  next idle tick, so the two writes alternate and each raises the HUD's usable-changed event.
+  Override `OwnerCanUse()` instead.
+- **A subclass overrides `Update`, `InactiveUpdate`, `AbilityStarted`, `AbilityStopped`,
+  `ActivationKeyPressed` or `OnDestroy` without calling its base.** The cancel policy and the
+  usability check run from those methods. Without the base call, cancels are never stopped,
+  the triggers are never unsubscribed, or usability is never decided.
+- **The ability key does not cancel a channel.** `On` lacks `CancelTriggers.AbilityKey`.
+  Without it a press while the channel runs goes to the game's own start, which refuses.
 - **An ability added at runtime works in solo and breaks other players.** Opsive replicates
   ability start and stop by position in the character's ability array. A client whose array
   differs resolves the number against the wrong ability or past the end of the array, and the

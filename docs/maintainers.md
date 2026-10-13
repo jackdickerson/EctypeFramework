@@ -29,6 +29,7 @@ Paths are relative to the framework project folder.
 | HUD ability bar | `src/HudAbilityBar.cs` |
 | Hand attractor stats | `src/HandAttractorStats.cs` |
 | Runtime ability replication | `src/AbilitySync.cs` |
+| Role ability cancel policy and usability | `src/EctypeRoleAbility.cs`, `src/AbilityCancel.cs` |
 | Geometry watcher | `src/PresentationDiagnostics.cs` |
 | Gene-tree layout values | `src/LayoutSpec.cs` |
 | Dev tools (dev tools build only) | `src/dev/` |
@@ -62,6 +63,10 @@ column.
 | `UI.Token.TokenTerminal.UpdateLoadoutButtons` postfix | toggles `loadout-role__<role>` classes for framework roles, mirroring the game's own idiom; the rules those classes match come from `UssPalette` - per-role clones of the game's own stylesheet with the role selectors renamed and only the role-hue color entries rewritten, attached via `styleSheets.Add` |
 | `BasePlayerHUD.ChangeRole` prefix, `MatchmakingRoom.AddPlayerRoleIcons` prefix | the crew HUD and the lobby room list draw a role icon only through the USS class `coop-buddy-role-state__<role>`; for a framework role each attaches the `UssPalette` clones to its own panel first, since a sheet only styles the panel it is attached to. In those clones every image named for the gunner is repointed at the role's `roleIcon` |
 | `ClassAbility.Start` postfix | installs each registered role's factory-built ability into the local character's Opsive ability list, then repoints any vanilla ability whose perk tree is suppressed onto the role that suppressed it (both idempotent per spawn; `OnDestroy` postfix forgets the instance so a respawn reinstalls) |
+| `ClassAbility.ActivationKeyPressed`, `AbilityStarted`, `AbilityStopped`, `Update`, `InactiveUpdate`, `OnDestroy` (overridden by `EctypeRoleAbility`) | the cancel policy and owner-only usability. Relies on three facts of the stop and start paths: `ClassAbility.AbilityStopped` removes the effect, then `GoOnCooldown` sets `CurrentCooldown` to `CooldownSeconds.Value`; `FiniteDurationClassAbility.AbilityStopped` zeroes `CurrentActiveDuration` only after that; `FiniteDurationClassAbility.AbilityStarted` copies `FiniteTimeDuration` into `CurrentActiveDuration` after the effect applies. `FiniteDurationClassAbility.InactiveUpdate` calls the virtual `Update`, so `Update` also runs while idle |
+| `ClassAbility.RefundCooldown(float)` (called) | the partial cooldown of an early end; a plain `CurrentCooldown` write the HUD reads every frame |
+| `ClassAbility.AbilityUsable` setter (called) | owner-only usability; the setter raises `OnLocalPlayerClassAbilityUsableChanged` for the owner's selected ability, and `CanStartAbility` refuses an unusable ability on every client |
+| `CharacterLocomotion.OnCollision`, `ChannelGrapplingHook.OnGrapplingStart`, `CharacterAtmosphericDataTracker.OnInInertiaZoneChange` (subscribed per channel); `FlyJetpack.IsActive` (polled) | the cancel triggers `Collision`, `GrappleAttach`, `InertiaZoneEntry` and `JetpackFlightEnd` |
 | `ClassAbility.VerifyIfIsSelectedAbility` (called, not patched) | the game's own selection check, re-run after a repoint so selection, input binding and the HUD event all run through unmodified game code |
 | `UnlockContainer.GetItemsLockedBy(PlayerPerk)` (read) | the same enumeration the fabricator re-reads on every perk change, so an adopted unlock is by construction one the fabricator will see |
 | `ClassAbilityDisplay.OnLocalPlayerEnabledClassAbility` postfix | the HUD slot for framework abilities (vanilla resolves by hard type-check on the four stock ability classes), plus status-subscription normalization |

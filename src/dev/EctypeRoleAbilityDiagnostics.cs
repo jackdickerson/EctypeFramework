@@ -2,7 +2,6 @@ using System;
 using System.Text;
 
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Ectype
 {
@@ -20,8 +19,9 @@ namespace Ectype
     ///    (cooling down, or already running).
     ///
     /// Each line is an event a player causes, never a per-frame poll, and refusals are
-    /// rate-limited. Every override calls its base first or last as the game's own order
-    /// requires, and swallows only its own logging failure.
+    /// rate-limited. The overrides here call their base first; the stop and key-press lines
+    /// are partial methods the main class calls after the game's own path. Each swallows only
+    /// its own logging failure.
     /// </summary>
     public abstract partial class EctypeRoleAbility
     {
@@ -76,11 +76,9 @@ namespace Ectype
             catch (Exception e) { DiagFailed(e); }
         }
 
-        /// <summary>Handles the ability stopping, and logs a channel cut short with time remaining.</summary>
-        protected override void AbilityStopped(bool force)
+        /// <summary>After the stop path: logs a channel cut short with time remaining.</summary>
+        partial void DiagStopped(float remaining, bool force)
         {
-            float remaining = CurrentActiveDuration;
-            base.AbilityStopped(force);
             try
             {
                 if (remaining <= EARLY_STOP_SECONDS || !DiagMine) return;
@@ -90,11 +88,10 @@ namespace Ectype
             catch (Exception e) { DiagFailed(e); }
         }
 
-        /// <summary>Handles the activation key, and logs a press the ability refused for an unexpected reason.</summary>
-        protected override void ActivationKeyPressed(InputAction.CallbackContext obj)
+        /// <summary>After the game's start path ran for a key press: logs a press the ability
+        /// refused for an unexpected reason.</summary>
+        partial void DiagKeyPressed(bool wasActive)
         {
-            bool wasActive = IsActive;
-            base.ActivationKeyPressed(obj);
             if (wasActive || IsActive || !DiagMine) return;
             try
             {
@@ -141,11 +138,12 @@ namespace Ectype
             return n == 0 ? "nothing" : sb.ToString();
         }
 
+        /// <summary>The stack above AbilityStopped: skips this method, DiagStopped and AbilityStopped.</summary>
         private static string Caller()
         {
             try
             {
-                string[] lines = new System.Diagnostics.StackTrace(2, false).ToString()
+                string[] lines = new System.Diagnostics.StackTrace(3, false).ToString()
                     .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
                 StringBuilder sb = new StringBuilder();
                 for (int i = 0; i < lines.Length && i < 8; i++)

@@ -4,6 +4,28 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.19.18
+
+- `EctypeRoleAbility` takes a cancel policy. Assign `Cancel = new CancelPolicy { On, Cooldown,
+  CollisionSpeed }` in the subclass constructor and the channel ends early on any trigger in
+  `On`: the ability key pressed again, a collision at `CollisionSpeed` or more into the
+  surface, a grapple attaching, entering a ship's inertia zone, jetpack flight ending, or the
+  ability's own `RequestCancel(reason)`. Triggers are watched on the owning client for the
+  channel's duration, and the stop runs on the ability's next tick. `CancelCooldown.Partial`
+  scales the cooldown of any early end by the share of the channel used. `LastEnd` says how
+  the channel ended, and is set before `OnRemoveEffect` runs. An ability with no policy
+  behaves as before.
+- `EctypeRoleAbility.OwnerCanUse()`: override it to decide when the ability is usable. The
+  framework evaluates it on the owning client while the ability is selected and idle and
+  writes the game's `AbilityUsable`; a replica is held usable, so a crewmate's copy never
+  refuses the owner's replicated start. Role code does not write `AbilityUsable`.
+- `EctypeRoleAbility` overrides `AbilityStarted`, `AbilityStopped`, `ActivationKeyPressed`,
+  `Update`, `InactiveUpdate` and `OnDestroy`. A subclass override of any of them calls its
+  base. A role mod built against an earlier framework keeps its behaviour; rebuild it to use
+  the new API.
+- With `[Debug] VerboseLogging` on, the owning client logs one line per role-ability channel
+  end, naming how it ended and the cooldown it left.
+
 ## 0.19.17
 
 - A replicated start for a registered ability is held while the receiving client's copy of
