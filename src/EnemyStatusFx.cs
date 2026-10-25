@@ -61,6 +61,11 @@ namespace Ectype
         {
             if (!EctypeConfig.StatusMarkers.Value) return;
             if (!fx.Def.ShowMarker || fx.Target == null) return;
+            if (!EnemyStatusVisibility.Visible(fx))
+            {
+                Hide(fx);
+                return;
+            }
             if (!EnsureInstalled()) return;
 
             OrbitObject target = fx.Target;
@@ -159,13 +164,30 @@ namespace Ectype
             }
         }
 
-        /// <summary>Driven from EnemyStatuses.Poll: re-install after a scene swap and
-        /// keep the target-lock subscription pointed at the current player ship.</summary>
+        /// <summary>Driven from EnemyStatuses.Poll: re-install after a scene swap, keep the
+        /// target-lock subscription pointed at the current player ship, and redraw statuses
+        /// with a visibility rule when this client's side changes.</summary>
         internal static void Poll(bool anyLive)
         {
             if (!anyLive && Entries.Count == 0) return;
             EnsureInstalled();
             EnsureLockSubscription();
+            if (EnemyStatusVisibility.ViewerSideChanged()) RedrawRuled();
+        }
+
+        /// <summary>Shows or hides the marker and visual of every live status whose template
+        /// has a visibility rule; Show and Attach judge the rule.</summary>
+        private static void RedrawRuled()
+        {
+            Scratch.Clear();
+            EnemyStatuses.CollectLive(Scratch);
+            for (int i = 0; i < Scratch.Count; i++)
+            {
+                EnemyStatusEffect fx = Scratch[i];
+                if (fx.Def.Visibility == StatusVisibility.All) continue;
+                Show(fx);
+                EnemyStatusVfx.Attach(fx);
+            }
         }
 
         // ---------------------------------------------------------------- wiring
@@ -293,6 +315,76 @@ namespace Ectype
     }
 
     /// <summary>
+    /// Who draws a status (EnemyStatusDef.Visibility), judged on this client from three
+    /// sides: the viewer's (this client's player through Topology.ForceOf: the character's
+    /// faction, else the crew ship's or, under Void Crew Fleet, the team's), the applier's
+    /// (recorded when the status was created here) and the target's faction. A viewer whose
+    /// side is unknown sees only statuses ruled All. Presentation only: the status runs on
+    /// every client whatever this answers.
+    /// </summary>
+    internal static class EnemyStatusVisibility
+    {
+        private static int _viewerSide = int.MinValue;
+        private static float _nextSideCheck;
+
+        internal static bool Visible(EnemyStatusEffect fx)
+        {
+            StatusVisibility rule = fx.Def.Visibility;
+            if (rule == StatusVisibility.All || fx.Target == null)
+            {
+                fx.HiddenLogged = false;
+                return true;
+            }
+            int viewer = ViewerSide();
+            bool visible;
+            switch (rule)
+            {
+                case StatusVisibility.OwnForce:
+                    visible = viewer >= 0 && viewer == fx.ApplierForce;
+                    break;
+                case StatusVisibility.TargetForce:
+                    visible = viewer >= 0 && viewer == fx.Target.Faction;
+                    break;
+                case StatusVisibility.HostileToTarget:
+                    visible = viewer >= 0 && Topology.Hostile(PhotonNetwork.LocalPlayer, fx.Target);
+                    break;
+                default:
+                    visible = true;
+                    break;
+            }
+            if (visible) fx.HiddenLogged = false;
+            else if (!fx.HiddenLogged)
+            {
+                fx.HiddenLogged = true;
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status " + fx.Def.Key + " on " + fx.Target.name +
+                                       " hidden by visibility " + rule + " (viewer side " + viewer +
+                                       ", applier side " + fx.ApplierForce + ", target side " +
+                                       fx.Target.Faction + ").");
+            }
+            return visible;
+        }
+
+        private static int ViewerSide()
+        {
+            return Topology.ForceOf(PhotonNetwork.LocalPlayer);
+        }
+
+        /// <summary>True, at most twice a second, when this client's side differs from the
+        /// last check: a spawn, a death, a team change, a spectated ship.</summary>
+        internal static bool ViewerSideChanged()
+        {
+            if (Time.unscaledTime < _nextSideCheck) return false;
+            _nextSideCheck = Time.unscaledTime + 0.5f;
+            int now = ViewerSide();
+            if (now == _viewerSide) return false;
+            bool first = _viewerSide == int.MinValue;
+            _viewerSide = now;
+            return !first;
+        }
+    }
+
+    /// <summary>
     /// The optional looping visual on the affected object. Two routes, tried in order:
     /// the template's own factory (full control - it returns a fresh GameObject and this
     /// layer parents, offsets and destroys it), or a stock-donor clone by name - the
@@ -314,7 +406,13 @@ namespace Ectype
             EnemyStatusDef def = fx.Def;
             if (def.CreateVfx == null && string.IsNullOrEmpty(def.VfxDonorName)) return;
             if (!EctypeConfig.StatusVfx.Value) return;
-            if (Attached.ContainsKey(fx) || fx.Target == null) return;
+            if (fx.Target == null) return;
+            if (!EnemyStatusVisibility.Visible(fx))
+            {
+                Detach(fx);
+                return;
+            }
+            if (Attached.ContainsKey(fx)) return;
             if (EnemyStatuses.CapReached(Attached.Count, EctypeConfig.StatusVfxCap.Value,
                                          "vfx", "a visual", "VfxCap")) return;
             try

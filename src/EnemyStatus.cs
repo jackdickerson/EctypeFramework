@@ -130,6 +130,13 @@ namespace Ectype
         /// affected object.</summary>
         public bool MarkerRequiresTargetLock;
 
+        /// <summary>Which viewers draw the marker and the visual: All (the default), OwnForce
+        /// (players on the applier's side), TargetForce (players on the target's side) or
+        /// HostileToTarget (players on another side from the target). Presentation only: the
+        /// status, its stat changes and its callbacks run on every client, and IsActive
+        /// answers on every client, so this is not secrecy against a modified client.</summary>
+        public StatusVisibility Visibility = StatusVisibility.All;
+
         /// <summary>Marker label; defaults to DisplayName, then Key.</summary>
         public string MarkerText;
 
@@ -680,6 +687,21 @@ namespace Ectype
         Friendly = 2,
     }
 
+    /// <summary>Which viewers draw a status's marker and visual
+    /// (<see cref="EnemyStatusDef.Visibility"/>). Sides are game factions, as
+    /// <see cref="Topology.ForceOf(Photon.Realtime.Player)"/> gives them for players.</summary>
+    public enum StatusVisibility
+    {
+        /// <summary>Every viewer. The default.</summary>
+        All = 0,
+        /// <summary>Viewers on the side of the player who applied the status.</summary>
+        OwnForce = 1,
+        /// <summary>Viewers on the target's side: a warning to the afflicted crew.</summary>
+        TargetForce = 2,
+        /// <summary>Viewers on another side from the target, whoever applied it.</summary>
+        HostileToTarget = 3,
+    }
+
     /// <summary>Why <see cref="EnemyStatuses.TryApply"/> or <see cref="EnemyStatuses.TryRemove"/>
     /// did nothing.</summary>
     public enum StatusRefusal
@@ -796,6 +818,9 @@ namespace Ectype
         /// <summary>The applier's faction when the status was created, -1 when unknown. Stands
         /// in for the applier's side once that can no longer be resolved (the applier left).</summary>
         internal readonly int ApplierForce;
+
+        /// <summary>The hidden-by-visibility line was logged for the current hidden spell.</summary>
+        internal bool HiddenLogged;
 
         private bool _tickSkipLogged;
 
