@@ -34,6 +34,11 @@ namespace Ectype
     /// until it is not. Resolution is repeated four times a second, the frame after every topology
     /// change and every seat change, and only a holder whose ships changed is rebuilt.
     ///
+    /// A perk with conditions applies only while they hold on the holder's condition mask, which
+    /// the holder's own client decides and publishes (HolderConditions); a change of mask
+    /// rebuilds that holder. A character perk with conditions is routed here too, onto the
+    /// holder's own character collection.
+    ///
     /// Each applied StatMod gets its own source object, never the player. Standing up removes
     /// every ship modifier whose source is the player (SittingInChair.AbilityStopped and
     /// OnDestroy), so a player-sourced modifier would vanish on the first stand. Nothing but this
@@ -87,6 +92,11 @@ namespace Ectype
             public CG.Game.Player.Player Player;
             /// <summary>Held perks this route applies, at the last rebuild.</summary>
             public int Routed;
+            /// <summary>Held perks with conditions, and how many of them did not hold, at the
+            /// last rebuild.</summary>
+            public int Conditional, HeldOff;
+            /// <summary>The holder's condition mask the last rebuild gated on.</summary>
+            public int Mask = -1;
             public readonly List<Placement> Placed = new List<Placement>();
             /// <summary>What each ship set the held perks use named at the last rebuild.</summary>
             public readonly Dictionary<ShipSet, object[]> Resolved = new Dictionary<ShipSet, object[]>();
@@ -118,11 +128,22 @@ namespace Ectype
             }
             RemoveAll(h);
 
-            List<Entry> entries = Held(loader);
-            h.Routed = entries.Count;
+            List<Entry> held = Held(loader);
+            h.Routed = held.Count;
+            int actor = Topology.ActorOf(h.Player);
+            h.Mask = HolderConditions.MaskOf(actor);
+            h.Conditional = h.HeldOff = 0;
+            // A perk whose conditions do not hold on the holder's mask is held off; the mask
+            // changing rebuilds the holder.
+            List<Entry> entries = new List<Entry>(held.Count);
+            foreach (Entry e in held)
+            {
+                if (!e.Scope.When.Empty) h.Conditional++;
+                if (e.Scope.When.Holds(h.Mask)) entries.Add(e);
+                else h.HeldOff++;
+            }
             if (entries.Count > 0)
             {
-                int actor = Topology.ActorOf(h.Player);
                 foreach (Entry e in entries)
                     if (!h.Resolved.ContainsKey(e.Scope.Ships))
                         h.Resolved[e.Scope.Ships] = ResolveSet(h, e.Scope.Ships, actor);
@@ -140,7 +161,7 @@ namespace Ectype
             Holder h = Find(loader);
             if (h == null) return;
             RemoveAll(h);
-            h.Routed = 0;
+            h.Routed = h.Conditional = h.HeldOff = 0;
             LogState(h);
         }
 
@@ -351,6 +372,7 @@ namespace Ectype
             foreach (Placement p in h.Placed)
                 if (!ReferenceEquals(p.Owner, null) && p.Owner == null) return true;
             int actor = Topology.ActorOf(h.Player);
+            if (h.Conditional > 0 && HolderConditions.MaskOf(actor) != h.Mask) return true;
             foreach (KeyValuePair<ShipSet, object[]> kv in h.Resolved)
             {
                 object[] now = ResolveSet(h, kv.Key, actor);
@@ -444,8 +466,8 @@ namespace Ectype
                 if (p.Ship != null) ships++; else character = true;
                 detached += p.Detached.Count;
             }
-            bool pending = h.Routed > 0 && h.Placed.Count == 0;
-            string state = mods + "/" + ships + "/" + character + "/" + detached + "/" + pending;
+            bool pending = h.Routed > h.HeldOff && h.Placed.Count == 0;
+            string state = mods + "/" + ships + "/" + character + "/" + detached + "/" + pending + "/" + h.HeldOff;
             if (state == h.LoggedState) return;
             h.LoggedState = state;
             if (!Plugin.Verbose) return;
@@ -455,7 +477,9 @@ namespace Ectype
             string line = "Ectype: perk route - " + who + " contributes " + mods + " modifier(s) to " +
                           ships + " ship(s)" + (character ? " and the character" : "") +
                           (detached > 0 ? ", " + detached + " detached module tree(s)" : "") +
-                          (pending ? ", waiting for a ship" : "") + ".";
+                          (pending ? ", waiting for a ship" : "") +
+                          (h.HeldOff > 0 ? ", " + h.HeldOff + " perk(s) held off by conditions (" +
+                           HolderConditions.Describe(h.Mask) + ")" : "") + ".";
             Plugin.Log.LogInfo(line);
         }
 
@@ -507,7 +531,7 @@ namespace Ectype
                     Holder h = _holders[i];
                     if (!ReferenceEquals(h.Player, player) && h.Loader != null) continue;
                     RemoveAll(h);
-                    h.Routed = 0;
+                    h.Routed = h.Conditional = h.HeldOff = 0;
                     LogState(h);
                     _holders.RemoveAt(i);
                 }

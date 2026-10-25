@@ -44,13 +44,17 @@ namespace Ectype
         internal readonly PerkBuffTarget GameTarget;
         internal readonly ShipSet Ships;
         internal readonly Share Share;
+        /// <summary>Owner-evaluated conditions the holder must meet for the effects to apply.</summary>
+        internal readonly ConditionSet When;
 
-        internal PerkScope(string target, PerkBuffTarget gameTarget, ShipSet ships, Share share)
+        internal PerkScope(string target, PerkBuffTarget gameTarget, ShipSet ships, Share share,
+                           ConditionSet when = default(ConditionSet))
         {
             Target = target;
             GameTarget = gameTarget;
             Ships = ships;
             Share = share;
+            When = when;
         }
 
         /// <summary>The framework applies this perk, not the game's perk loader.</summary>
@@ -156,8 +160,9 @@ namespace Ectype
         /// <summary>
         /// A perk entry's scope, or the problem that refuses it, phrased to follow "has" (the
         /// hero's rejection) or "skipped:" (any other perk). Checks the target, the distribution,
-        /// and that a split lands on a set of several ships and divides only flat and percent
-        /// float effects.
+        /// that a split lands on a set of several ships and divides only flat and percent float
+        /// effects, and the conditions. A character perk with conditions becomes routed: the
+        /// framework applies it to the character while they hold.
         /// </summary>
         internal static string Parse(PerkSpec p, out PerkScope scope)
         {
@@ -179,7 +184,20 @@ namespace Ectype
                 string effect = UnsplittableEffect(p);
                 if (effect != null) return "distribution split with " + effect;
             }
-            scope = new PerkScope(name, target, ships, share);
+            ConditionSet when;
+            string conditionProblem = HolderConditions.Parse(p.when, out when);
+            if (conditionProblem != null) return conditionProblem;
+            if (!when.Empty)
+            {
+                // The game's loader applies seat and seatShip itself, sourced from the player, on
+                // sit and stand; only a perk this route applies can be switched by a condition.
+                if (target == PerkBuffTarget.Seat || target == PerkBuffTarget.SeatShip)
+                    return "conditions on target '" + name + "' (conditions need a target the framework " +
+                           "applies: character, characterShip, characterAboard, characterFleet, seatFleet)";
+                if (target == PerkBuffTarget.Character) target = CharacterShipRoute.CharacterShip;
+                HolderConditions.Declare();
+            }
+            scope = new PerkScope(name, target, ships, share, when);
             return null;
         }
 

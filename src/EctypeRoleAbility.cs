@@ -29,6 +29,10 @@ namespace Ectype
         private bool _removeFailed;
         private bool _loggedUsableFail;
 
+        /// <summary>The role manifest's abilityWhen, set at install. Checked on the owning client
+        /// before <see cref="OwnerCanUse"/>.</summary>
+        internal ConditionSet ManifestWhen;
+
         /// <summary>Sets the ability's base cooldown and active duration in seconds, and makes it start and stop only when told to.</summary>
         protected EctypeRoleAbility(float cooldownSeconds, float durationSeconds)
         {
@@ -98,7 +102,8 @@ namespace Ectype
         /// ability is selected and idle; the result goes to the game's AbilityUsable, which
         /// gates the key and drives the HUD's unusable styling. A replica is always usable:
         /// its start is the owner's replicated start, and its own copy of the character's
-        /// state can be stale. Default true. Role code never writes AbilityUsable itself.
+        /// state can be stale. Default true. Role code never writes AbilityUsable itself. The role
+        /// manifest's abilityWhen conditions are checked first; this runs only while they hold.
         /// </summary>
         protected virtual bool OwnerCanUse()
         {
@@ -188,7 +193,8 @@ namespace Ectype
             try
             {
                 if (LocalPlayer == null) return;
-                bool usable = !LocalPlayer.IsMine || OwnerCanUse();
+                bool usable = !LocalPlayer.IsMine ||
+                              (ManifestWhen.Holds(HolderConditions.LocalMask) && OwnerCanUse());
                 if (usable != AbilityUsable) AbilityUsable = usable;
             }
             catch (Exception e)

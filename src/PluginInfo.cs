@@ -27,7 +27,7 @@ namespace Ectype
         /// renumbered or a message's fields change, and name the new value in the changelog.
         /// Independent of <see cref="CONTRACT_VERSION"/>, which gates role manifests.
         /// </summary>
-        public const int NET_CONTRACT_VERSION = 4;
+        public const int NET_CONTRACT_VERSION = 5;
 
         /// <summary>
         /// A role mod self-identifies by embedding a JSON manifest whose resource name ends

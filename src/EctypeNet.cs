@@ -69,6 +69,11 @@ namespace Ectype
         /// [int requestId, int refusal] (0 for applied).</summary>
         internal const byte CharacterStatusResult = 6;
 
+        /// <summary>A holder's own client publishing that holder's condition mask: [int mask],
+        /// one bit per owner-evaluated condition (HolderCondition). Sent on a change, and once to
+        /// each peer that has not had the current value.</summary>
+        internal const byte ConditionMask = 7;
+
         /// <summary>
         /// Every message's field types, in order: the network contract in data. A subtype may
         /// have several layouts (enemy status remove and apply). The sender refuses to send,
@@ -108,6 +113,10 @@ namespace Ectype
             { CharacterStatusResult, new[]
                 {
                     new[] { typeof(int), typeof(int) },
+                } },
+            { ConditionMask, new[]
+                {
+                    new[] { typeof(int) },
                 } },
         };
 

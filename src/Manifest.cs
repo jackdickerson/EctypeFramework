@@ -64,6 +64,14 @@ namespace Ectype
         /// and stable identity; roleName is display text. Resolution lives in
         /// Suppression.</summary>
         public List<string> suppressRoles = new List<string>();
+
+        /// <summary>Conditions, in the same form as a perk's "when", that must hold on the owning
+        /// client for the role's ability to start. An unrecognised condition rejects the
+        /// role.</summary>
+        public object abilityWhen;
+
+        /// <summary>The parsed ability conditions, set by validation.</summary>
+        internal ConditionSet AbilityWhen;
     }
 
     public class PerkSpec
@@ -102,6 +110,12 @@ namespace Ectype
         /// evenly; flat and percent float effects only). An unrecognised value skips the
         /// perk with a named error.</summary>
         public string distribution;
+
+        /// <summary>Conditions on the holder's own situation that must hold for the effects to
+        /// apply: a name or a list of names (onOwnShip, onAllyShip, onEnemyShip, inOpenSpace,
+        /// teamMatch, ownShipAlive, spectating), each optionally prefixed with '!' to require it
+        /// false. Not allowed on seat or seatShip. An unrecognised condition skips the perk.</summary>
+        public object when;
 
         /// <summary>The parsed routing, set by validation.</summary>
         internal PerkScope Scope;
@@ -271,6 +285,9 @@ namespace Ectype
                                     "' skipped: " + problem + ".");
                 return true;
             });
+            string abilityProblem = HolderConditions.Parse(m.abilityWhen, out m.AbilityWhen);
+            if (abilityProblem != null) return "abilityWhen has " + abilityProblem;
+            if (!m.AbilityWhen.Empty) HolderConditions.Declare();
             string heroUnlocksProblem = NormalizeGuidList(m.hero.unlocks);
             if (heroUnlocksProblem != null) return "hero unlocks entry " + heroUnlocksProblem;
             foreach (CustomStatSpec s in m.customStats)
