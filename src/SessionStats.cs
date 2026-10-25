@@ -167,7 +167,16 @@ namespace Ectype
         /// composed values. Runs as session data produces the host's values for a new session.</summary>
         private static Dictionary<string, float> Produce()
         {
-            return Produce(Opening);
+            return Produce(HostHandlers());
+        }
+
+        /// <summary>What the host runs while it opens the collection, in order: the contributions
+        /// of the mutators the session is about to activate, then every <see cref="Opening"/>
+        /// subscriber.</summary>
+        internal static Action HostHandlers()
+        {
+            Action mutators = SessionStatMutators.ContributeAtOpening;
+            return mutators + Opening;
         }
 
         /// <summary>

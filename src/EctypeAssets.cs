@@ -77,6 +77,10 @@ namespace Ectype
             { Plugin.Log.LogError("Ectype: content: publication pass failed: " + e); }
 
             RoleRegistry.DiscoverOnce();
+            // After role discovery and the stats files: every mutator's stats resolve against
+            // the stats read above.
+            try { SessionStatMutators.Pump(); }
+            catch (Exception e) { Plugin.Log.LogError("Ectype: mutators: registration pass failed: " + e); }
 #if ECTYPE_DEV
             DevTools.AfterDiscovery();
 #endif
