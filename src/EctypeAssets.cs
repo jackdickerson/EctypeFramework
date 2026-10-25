@@ -63,6 +63,11 @@ namespace Ectype
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: framework-owned stat registration failed: " + e); }
 
+            // Mod content queued before the containers existed. Independent of roles.
+            try { RuntimeContent.Pump(); }
+            catch (Exception e)
+            { Plugin.Log.LogError("Ectype: content: publication pass failed: " + e); }
+
             RoleRegistry.DiscoverOnce();
 #if ECTYPE_DEV
             DevTools.AfterDiscovery();
@@ -100,7 +105,7 @@ namespace Ectype
 
         /// <summary>DontDestroyOnLoad alone does not survive Resources.UnloadUnusedAssets on
         /// a scene transition; HideAndDontSave does.</summary>
-        private static void Keep(UnityEngine.Object o)
+        internal static void Keep(UnityEngine.Object o)
         {
             if (o == null) return;
             o.hideFlags = HideFlags.HideAndDontSave;
@@ -239,9 +244,21 @@ namespace Ectype
                 treeContainer.RegisterRuntimeAsset(rec.TreeGuid, rec.TreeDef);
             List<PerkTreeDef> authoredTrees =
                 Refl.GetField<List<PerkTreeDef>>(treeContainer, "AssetDescriptions", null);
-            if (authoredTrees != null && !authoredTrees.Contains(rec.TreeDef))
-                authoredTrees.Add(rec.TreeDef);
+            // Keyed on the tree ordinal, not the GUID: the role argmax breaks ties in this
+            // list's order, and ordinals follow roleId order, which is the order a single
+            // registration pass appends in. The key keeps that order when a role registers
+            // on a later retry.
+            AssetDescriptionOrder.Insert(authoredTrees, rec.TreeDef, TreeOrderKey,
+                                         d => (object)d.Ref != null && d.Ref.IsRuntime);
             rec.TreeDefPublished = true;
+        }
+
+        /// <summary>A tree def's tree ordinal, zero-padded so ordinal string order is numeric
+        /// order, then its GUID, so two keys never tie even if the ordinal read fails.</summary>
+        private static string TreeOrderKey(PerkTreeDef def)
+        {
+            return ((int)Refl.GetField(def, "perkTree", (EPerkTree)0)).ToString("D10") +
+                   def.AssetGuid.AsHex();
         }
 
         private static bool? _injectionPatchVerified;
@@ -436,9 +453,9 @@ namespace Ectype
             // PurchasableResourceAssetDef.set_ContextInfo trap.
             def.ContextInfo = ctx;
             container.RegisterRuntimeAsset(guid, def);
-            // GetAssetDefBySelfRef scans only AssetDescriptions, so append there too
-            // (in-memory only).
-            if (authored != null && !authored.Contains(def)) authored.Add(def);
+            // GetAssetDefBySelfRef scans only AssetDescriptions, so list it there too
+            // (in-memory only), in GUID order like any other runtime def.
+            AssetDescriptionOrder.InsertDef(authored, def, d => d.Ref);
         }
 
         // hex item guid -> "role / perk" that first listed it this session, so a retry into

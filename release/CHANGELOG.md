@@ -1,3 +1,7 @@
+## 0.27.0
+
+Mods can publish new weapons, modules and items through the framework. Item catalogs such as ship customizers list published items with no change of their own, every player in a room holds them in the same order, and an item without a recycle value is refused instead of breaking the end-of-run alloy count.
+
 ## 0.23.0
 
 Status effects that mods put on ships can be limited to enemies or to allies, and for those every player's game checks who applied or removed one, so a modified client cannot place or strip them on the wrong side. Effects a mod leaves open to everyone stay open. Rapid-fire weapons that apply a status on every hit send far fewer network messages in large rooms. When too many status markers are on screen, the ones nearest your ship are kept. Players need this version to join a host running it.

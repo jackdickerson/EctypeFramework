@@ -38,6 +38,7 @@ it; a mismatched version bounces the joiner.
 - [Session data and host-synced settings](docs/reference/session-data.md)
 - [Mutator safety](docs/reference/mutator-safety.md)
 - [Loot tables](docs/reference/loot-tables.md)
+- [Content registry](docs/reference/content-registry.md)
 - [Enemy statuses](docs/reference/enemy-statuses.md)
 - [Enemy abilities](docs/reference/enemy-abilities.md)
 - [Character statuses](docs/reference/character-statuses.md)

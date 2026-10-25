@@ -90,6 +90,7 @@ namespace Ectype
         private static readonly HashSet<string> _loggedNotCopies = new HashSet<string>();
         private static readonly HashSet<string> _loggedRarityMisses = new HashSet<string>();
         private static readonly HashSet<string> _loggedTagMisses = new HashSet<string>();
+        private static readonly HashSet<string> _loggedContentHolds = new HashSet<string>();
         private static bool _patched;
         private static bool _postfixFailedLogged;
         private static string _patchStatus = "not patched yet";
@@ -118,6 +119,14 @@ namespace Ectype
                     return false;
                 }
                 string owner = string.IsNullOrEmpty(drop.Owner) ? "unnamed" : drop.Owner;
+                // Publications still pending count too: a mod may publish and register loot in
+                // the same Awake, before the containers exist.
+                if (RuntimeContent.IsComponent(drop.Item))
+                {
+                    Plugin.Log.LogError("Ectype: loot: " + Describe(drop) + " is published as a " +
+                                        "component, which never drops on its own; ignored.");
+                    return false;
+                }
                 foreach (Record r in _records)
                 {
                     if (r.Drop.Item != drop.Item) continue;
@@ -365,6 +374,7 @@ namespace Ectype
                     LootDrop d = r.Drop;
                     if (present.Contains(d.Item)) continue;
                     if (d.ExcludeTables != null && Array.IndexOf(d.ExcludeTables, table) >= 0) continue;
+                    if (HeldByContent(d)) continue;
 
                     if (baselines == null) baselines = new Dictionary<Func<GUIDUnion, bool>, Baseline>();
                     Baseline b;
@@ -469,6 +479,24 @@ namespace Ectype
             foreach (LootTableEntry e in loot)
                 if (e != null && e.ItemRef != null && !e.ItemRef.IsRuntime) r |= e.LootRarity;
             return r;
+        }
+
+        /// <summary>
+        /// The item's published content entry, when it has one, also decides: a component never
+        /// joins a roll, and an entry that is not available in this room keeps the item out of
+        /// the roll as a closed gate does. Each answer is logged once per item.
+        /// </summary>
+        private static bool HeldByContent(LootDrop d)
+        {
+            ModContentEntry e = ModContent.Find(d.Item);
+            string why = RuntimeContent.IsComponent(d.Item) ? "it is published as a component"
+                       : e != null && !ModContent.Available(e) ? "its content entry is not available in this room"
+                       : null;
+            if (why == null) return false;
+            if (_loggedContentHolds.Add(d.Item.AsHex() + "|" + why))
+                Plugin.Log.LogInfo("Ectype: loot: " + Describe(d) + " left out of rolls: " + why +
+                                   ". Logged once.");
+            return true;
         }
 
         /// <summary>A gate that throws counts as closed: an item must never drop on a check

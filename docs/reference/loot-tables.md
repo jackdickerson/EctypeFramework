@@ -46,6 +46,11 @@ The two carryable anchors resolve each GUID's prefab once and keep the answer. A
 returns false or throws leaves the item out of that roll. The first change of answer is
 logged.
 
+An item published through `RuntimeContent.Publish` is also held to its content entry. A
+component is never registered for loot and never added to a roll, and an entry whose
+`AvailableInRoom` returns false keeps the item out of the roll as a closed gate does. See
+[content-registry.md](content-registry.md).
+
 ## Rarity match
 
 A roll asks its table for a rarity and takes the next entry of it. An item alone in its

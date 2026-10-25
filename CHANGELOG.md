@@ -4,6 +4,35 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.27.0
+
+- `RuntimeContent.Publish(kind, guid, assets, entry)`: publishes a weapon module, module or
+  carryable a mod built at runtime. It registers the item in every container its kind needs
+  (a carryable through the game's own runtime carryable registration), lists it in its
+  container's authored list so catalogs and the game's asset-to-def lookup see it, and writes
+  its unlock def. A carryable or weapon module without crafting data is refused with one
+  error naming the GUID. A GUID another registration already holds in one of those
+  containers is refused. A publication made before the containers exist is queued and
+  completed by the registration driver; the returned `ContentHandle` reports `Pending`,
+  `Registered` or `Failed` with a `Reason`.
+- Runtime entries in a container's authored list are inserted in GUID order after the
+  authored ones, so every client holds the same list whatever order mods registered in. Role
+  perk defs now list in GUID order, and role tree defs in tree-ordinal order, which is the
+  order a single registration pass already produced.
+- `ModContent` (`ApiVersion` 1): the published items for catalogs. `TryGet`, `All`,
+  `IsAvailable` and a `Changed` event. `ModContentEntry` carries `DisplayName`, `Owner`,
+  `Category`, `Tier`, `IsComponent`, `PvpLegal`, `AvailableInRoom` and `IconHint`, all
+  readable by reflection.
+- A component (`IsComponent`, carryables only) is registered but not listed as a loose item,
+  and needs crafting data like any carryable. `LootTables.Register` refuses a component from
+  the moment its publication is accepted, Publish refuses a component already registered for
+  loot, and a roll leaves out an item whose content entry is not available in the room.
+- A refused publication is logged once and returned again to a caller that retries it.
+  `ContentAssets.ModFlag` defaults to the framework build's network-spawned effect.
+- The crafting-data warning names the publication when a carryable came from a
+  `RuntimeContent.Publish` that failed part-way.
+- The F5 page shows publication counts.
+
 ## 0.26.0
 
 - Mod-declared stats: a mod ships a JSON file whose resource or file name ends in

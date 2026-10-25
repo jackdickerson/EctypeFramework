@@ -116,6 +116,7 @@ namespace Ectype
                             "framework-owned " + FrameworkStats.Status + ", " + ModStats.Status);
             GUILayout.Label("Session stats: " + SessionStats.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
+            GUILayout.Label("Content : " + RuntimeContent.Status);
             GUILayout.Label("Network : event " + EctypeNet.EventCode + ", contract " +
                             EctypePluginInfo.NET_CONTRACT_VERSION + ", " +
                             ContractMarker.Status);
