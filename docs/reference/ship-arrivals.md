@@ -47,8 +47,9 @@ Every player ship has its own void-jump state machine. In a room with several sh
   `Ship` is the last ship to arrive, `Kind` the worst kind any ship had (`Interdiction`, then
   `Unknown`, then `Normal`), and `ServerMs` the latest stamp. With one ship it fires right after
   that ship's `Arrived`, with the same value. Each machine raises it when its own copy of the
-  last ship's state arrives, so the moment differs between machines by the replication delay;
-  `ServerMs` is the same everywhere.
+  last ship's state arrives, so the moment differs between machines by the replication delay.
+  `ServerMs` is the same on every machine that saw each ship's exit state; a machine whose
+  stream skipped a ship's spin-down stamps that ship with its own clock, as for `Arrived`.
 - Each subscriber runs in its own try/catch. The process's first arrival and first fleet
   arrival log at `[Info]`; later ones log under `VerboseLogging`:
 

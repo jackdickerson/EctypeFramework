@@ -41,19 +41,29 @@ the multi-ship mod's own crew list when one is installed.
 | `ForceOf(Photon.Realtime.Player)`, `ForceOf(Player character)` | The character's faction. A player without a character (a spectator) takes their crew ship's faction, or under a team match the faction of a living ship of their team; -1 when none is known. |
 | `Hostile(a, b)` | True when a and b are on different sides. Each may be a ship, a character, a Photon player, any space object or a ship's part. Two space objects are compared with the game's own different-faction check. False when either side is unknown. |
 | `Changed`, `Stamp` | `Changed` is raised on the main thread the frame after a ship spawns, starts dying or is destroyed, and when the multi-ship mod reports a change of ships or teams. `Stamp` advances with it; store it and compare to re-resolve only on change. Crew moves inside one side raise nothing, so poll `CrewShipOf` where they matter. |
-| `Provider` | `"fleet"` when Void Crew Fleet's API is bound, `"single"` otherwise. |
+| `Provider` | `"fleet"` while Void Crew Fleet's API is bound and the Fleet plugin is enabled, `"single"` otherwise. |
+| `FleetPluginGuid` | `"com.captainchunck.voidcrew.fleet"`, the plugin GUID the binding looks for. |
 
 ### The crew ship
 
-The first rule that answers wins:
+The first rule that applies decides; a rule that applies and refuses gives none:
 
-1. One ship object in the room: that ship.
-2. One living ship: that ship.
-3. The multi-ship mod names a ship for the player: that ship.
-4. The ship the character is aboard, when its faction equals the character's. A boarder on an
-   enemy ship never resolves to that ship.
-5. Otherwise none: a spectator, a player not yet placed, a crew whose ship is dying. Treat it
-   as pending and ask again on `Changed` or on a timer.
+1. One ship object in the room: that ship, if it is on the player's side, else none.
+2. One living ship: that ship, if it is on the player's side, else none.
+3. Fleet active: the living ship Fleet names for the player. Fleet naming none (a player
+   waiting to be placed, dead with a lost ship, or spectating), or naming a ship that is dying,
+   gives none, whatever ship the character stands on.
+4. Fleet not active: the living ship the character is aboard, when its faction equals the
+   character's. A boarder on an enemy ship never resolves to that ship.
+5. Otherwise none.
+
+"On the player's side": under a Fleet team match, the ship's team is the player's team.
+Otherwise, once ships of more than one faction have been seen this mission, the ship's faction
+is the character's. In a room where every ship has had one faction, every player is on every
+ship's side, so a one-ship or co-op room never refuses. The last ship of a team match therefore
+never resolves for the other team's players.
+
+None means pending: ask again on `Changed` or on a timer.
 
 A player's crew ship can change without any game event, when the multi-ship mod moves a player
 between ships. Clients learn the move when the mod's room data reaches them, so for a moment
@@ -62,19 +72,24 @@ after a move two clients can disagree.
 ### Ship numbers
 
 With Void Crew Fleet, a ship's number is its index in the ship list the host publishes when the
-ships spawn, plus one. A lost ship keeps its index, so the others keep their numbers. Without
-that list, a ship's number is its rank by root PhotonView id among every ship seen this
+ships spawn, plus one. A lost ship keeps its index, so the others keep their numbers; an entry
+whose id now names no player ship (a lost ship, or an id the room has since handed to another
+object) is read as a lost ship. A list with the same id twice is not used. Without that list,
+a ship's number is its rank by root PhotonView id among every ship seen this
 mission. The room allocates those ids in sequence, so the rank is the same on every client
 that saw every ship spawn. A lost ship keeps its place in the ranking.
 
 ### Binding to Void Crew Fleet
 
 When the plugin `com.captainchunck.voidcrew.fleet` is loaded, the framework finds the static
-class `VoidCrewFleet.FleetApi` in its assembly by reflection, reads `ApiVersion`, and probes
-each member it uses by name and signature: `int ShipOfPlayer(int)`, `int TeamOf(int)`,
-`int TeamOfShip(int)`, `event Action ShipsChanged`, `event Action TeamsChanged`. A missing
-member is named once in the log and its answer falls back to game data. Nothing references
-Fleet at compile time.
+class `VoidCrewFleet.FleetApi` in its assembly by reflection and reads `ApiVersion`. Fleet
+raises that number when a member's meaning changes, so any value other than 1 leaves Fleet
+unbound and every answer comes from game data. Otherwise it probes each member it uses by name
+and signature: `int ShipOfPlayer(int)`, `int TeamOf(int)`, `int TeamOfShip(int)`,
+`event Action ShipsChanged`, `event Action TeamsChanged`. A missing member is named once in the
+log and its answer falls back to game data. Fleet's answers are used only while its plugin
+component is enabled and its own `[General] Enabled` setting is on. Nothing references Fleet at
+compile time.
 
 ## Rules for code in a room with several ships
 
@@ -117,6 +132,7 @@ Each rule names the mechanism that makes it hold and the check that catches a vi
 Ectype: topology: <n> ship(s), provider=<single|fleet>[, <k> dying][, numbers from <VCF_Ships|view-id rank>].
 Ectype: topology: Void Crew Fleet <version> bound, API v<n>[; missing <members>, answered from game data instead].
 Ectype: topology: Fleet's VCF_Ships room property failed its shape check (<why>); ship numbers come from view-id rank instead.
+Ectype: topology: Void Crew Fleet <version> has API v<n>; this framework reads v1, so answers come from game data alone.
 ```
 
 The first line is written about two seconds after the ship count settles, at every mission

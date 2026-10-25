@@ -8,13 +8,17 @@ build.
 
 - `Topology`: which player ships exist and which is whose, answered the same on every client.
   `Ships`, `Multi`, `CrewShipOf`, `AboardShipOf`, `ShipOfPart`, `ShipNumberOf`,
-  `ShipByNumber`, `ForceOf`, `Hostile`, `Changed`, `Stamp`, `Provider`. With Void Crew Fleet
-  installed it binds Fleet's public API by reflection for crew membership; without it every
-  answer comes from game data. In a room with one ship every answer is that ship.
+  `ShipByNumber`, `ForceOf`, `Hostile`, `Changed`, `Stamp`, `Provider`, `FleetPluginGuid`.
+  With Void Crew Fleet installed and enabled it binds Fleet's public API (version 1) by
+  reflection for crew membership and teams; without it every answer comes from game data. In a
+  room with one ship every answer is that ship, unless ships of two sides have been seen this
+  mission and the player is on the other side.
 - `characterShip` perks land on each holder's own crew ship in a room with several ships,
   instead of on whichever ship each client was viewing. A holder with no crew ship yet
-  contributes nothing until one exists, and a holder whose ship changes is moved within half a
-  second. One-ship rooms are unchanged.
+  (Fleet places nobody, the player spectates, or their ship was lost) contributes nothing until
+  one exists, and a holder whose ship changes is moved within half a second. When one side's
+  ship is the last one left, the other side's players contribute nothing to it. One-ship co-op
+  rooms are unchanged.
 - `IncomingProjectileSpeed` is per ship. Each hostile shot takes the factor of one ship, chosen
   as it registers: the guided target's ship, else the hostile ship nearest the shot's line.
   Shots fired by a player ship are never slowed. One-ship rooms are unchanged.
@@ -33,12 +37,15 @@ build.
   source hold an integer handle, not the contribution. The modifier's `Source` is no longer the
   `TimedStatContribution` itself: `collection.RemoveModifier(contribution)` no longer removes
   it, and a modifier's source no longer compares equal to the contribution. End one with
-  `TimedStatContributions.End`.
+  `TimedStatContributions.End`. A copy of the modifier that a stat collection applies follows
+  the same curve and reads neutral once the contribution ends.
 - A carryable registered at runtime with no crafting data logs one warning naming it, because
   the game's end-of-run alloy tally throws on it.
 - Fewer stalls at spawn: the ability install sweep rebuilds each character's ability array
-  once, and the role lookup the host runs for every member caches its reflection. A build
-  process whose requester has no live character no longer logs an error every frame.
+  once (a role whose ability throws there is skipped alone), and the role lookup the host runs
+  for every member caches its reflection. A build process whose requester has no live
+  character no longer logs an error every frame, and picks the requester up once the character
+  exists.
 
 ## 0.20.1
 

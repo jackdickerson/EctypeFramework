@@ -258,6 +258,9 @@ asset; the mod that registers it needs to register crafting data for it. The fra
 each runtime asset once, after its own roles have settled, and logs nothing in an install with
 no such carryable.
 
+`Ectype: crafting-data audit failed and is off for this session: <exception>` means the check
+itself threw; a carryable without crafting data registered from then on is not reported.
+
 ### `Ectype: perk '<name>' (target <t>) has an effect on <stat> that matches no stat in <where> collection tree - it stays registered and changes nothing there.`
 
 A perk's effect names a stat that the perk's `target` does not hold. A stat's category never
@@ -441,7 +444,13 @@ update renamed it.
 ### `Ectype: installing '<roleId>' ability into the locomotion failed: <exception>`, `Ectype: ability install sweep failed: <exception>`
 
 Installing the ability into the character failed. That character has no ability from the role
-until it respawns. Other characters are unaffected.
+until it respawns. Other characters are unaffected, and so are the other roles: every role's
+ability is installed on its own, and when the shared array rebuild throws, the new abilities
+are added back one at a time so only the role whose ability throws is skipped. With
+`VerboseLogging` on, that retry logs `Ectype: one rebuild for <n> role ability(ies) threw;
+retrying one role at a time: <message>`. `Ectype: rebuilding the ability array after a failed
+install failed: <exception>` means the final rebuild without the failed ability threw too; the
+character's ability array may still hold it until the next spawn.
 
 ### `Ectype: could not read m_CharacterLocomotion off a ClassAbility - game/Opsive update? Modded abilities will not install.`
 
@@ -585,16 +594,23 @@ VerboseLogging` on, on every client compared.
 
 | Line | What it shows | Check |
 | --- | --- | --- |
-| `Ectype: topology: <n> ship(s), provider=<single\|fleet>.` | The settled ship count, about two seconds after each mission start and each ship loss. `provider=fleet` means Void Crew Fleet's API is bound. | A vanilla mission logs `1 ship(s), provider=single`. A three-ship Fleet mission logs `3 ship(s), provider=fleet` on every client. |
-| `Ectype: topology: Void Crew Fleet <version> bound, API v<n>.` | Fleet was found at start-up. A `; missing <members>` tail names API members this Fleet lacks; those answers come from game data. | Logged once per launch with Fleet installed. |
-| `Ectype: topology: Fleet's VCF_Ships room property failed its shape check (<why>); ship numbers come from view-id rank instead.` | Fleet's published ship list was not the expected shape, so ship numbers come from spawn order. | Numbers can then differ on a client that joined after a ship was lost. |
-| `Ectype: characterShip - actor <n> → ship <k> (<source>).` (verbose) | Where one holder's `characterShip` contribution sits, and which rule chose it: `single`, `only living ship`, `fleet crew`, `aboard, same faction`, `pending`. | With holders on two ships, every client, the host included, logs the same `<k>` for each actor. A PvP boarder never resolves to the enemy's ship. |
+| `Ectype: topology: <n> ship(s), provider=<single\|fleet>[, <k> dying][, numbers from <VCF_Ships\|view-id rank>].` | The settled count of living ships, about two seconds after each mission start and each ship loss. `provider=fleet` means Void Crew Fleet's API is bound and the Fleet plugin is enabled; the `numbers from` tail then says whether ship numbers come from Fleet's published list or from spawn order. | A vanilla mission logs `1 ship(s), provider=single.` A three-ship Fleet mission logs `3 ship(s), provider=fleet, numbers from VCF_Ships.` on every client. |
+| `Ectype: topology: Void Crew Fleet <version> bound, API v<n>[; missing <members>, answered from game data instead].` | Fleet was found at start-up. The tail names API members this Fleet lacks; those answers come from game data. | Logged once per launch with Fleet installed. |
+| `Ectype: topology: Void Crew Fleet <version> has API v<n>; this framework reads v1, so answers come from game data alone.` | Fleet's API version is one whose members this framework was not written against, so it is not bound. | Update the framework to one that reads that version. |
+| `Ectype: topology: Void Crew Fleet <version> is loaded but has no VoidCrewFleet.FleetApi; answers come from game data alone.` and `Ectype: topology: binding Void Crew Fleet's API failed; answers come from game data alone: <message>` | Fleet is installed but its API could not be found or bound. | Crew ships then come from the aboard rule, so a player standing on another ship resolves to it. |
+| `Ectype: topology: Fleet's VCF_Ships room property failed its shape check (<why>); ship numbers come from view-id rank instead.` | Fleet's published ship list was not an array of one to six view ids, or named one id twice, so ship numbers come from spawn order. | Numbers can then differ on a client that joined after a ship was lost. |
+| `Ectype: characterShip - actor <n> → ship <k> (<source>).` or `... → no ship (<source>).` (verbose) | Where one holder's `characterShip` contribution sits, and which rule decided: `single`, `only living ship`, `fleet crew`, `aboard, same faction`; or why it is pending: `single, other side's ship`, `only living ship, other side's ship`, `single, no ship`, `no living ship`, `fleet: not playing`, `fleet ship <n> not alive`, `pending`. | With holders on two ships, every client, the host included, logs the same `<k>` for each actor. A PvP boarder never resolves to the enemy's ship, and when one team's ship is the last one left, the other team's players log `other side's ship`. |
 | `Ectype: IncomingProjectileSpeed: shot <id> → ship <k>, factor <f>.` (verbose; with one ship, only when the factor is not 1) | The ship a hostile shot was bound to as it registered, and the factor it carries. | Two ships with different factors: a shot aimed at each carries its own ship's factor, and the same `<id>` logs the same `<k>` on both clients. |
 | `Ectype: IncomingProjectileSpeed on ship <k> now <f>.` (verbose) | One ship's factor changed; its shots in flight take the new value. | Only that ship's shots change speed. |
 | `Ectype: status marker lock gate bound to ship <k>.` (verbose) | The ship whose target locks gate lock-only status markers on this client. | In co-op, walking from one ship into another logs the new ship. |
-| `Ectype: fleet arrived from the void (<n> ship(s), <kind>, server <ms>, <k> subscribers).` | `ShipArrivals.FleetArrived` fired. | A three-ship jump logs three `ship arrived from the void` lines and one of these on each client. |
-| `Ectype: topology: ship <k> started dying.` (verbose) | The death-start broadcast reached this client. Holders on that ship go pending at the next pass. | Logged once per lost ship on every client. |
-| `Ectype: dev self-test: timed stat copy passed - DeepCopy returned; <n> objects walked, no StatCollection, no Unity object other than a ScriptableObject.` (dev tools build only) | A stat modifier carrying a live timed-stat value survives the game's deep copy without dragging in the target collection. A `FAILED` line names what the copy reached. | Logged once per launch, a few seconds after a ship or character exists. |
+| `Ectype: fleet arrived from the void (<n> ship(s), <kind>, server <ms>, <k> subscribers).` (the process's first at `[Info]`, later ones verbose) | `ShipArrivals.FleetArrived` fired. | With `VerboseLogging` on, a three-ship jump logs three `ship arrived from the void` lines and one of these on each client. |
+| `Ectype: topology: ship <k> started dying.` (verbose) | The death-start broadcast reached this client. At the next pass every holder on that ship resolves again by the crew-ship rules: with Fleet active they go pending; without it, to a single living ship on their side, or to the same-faction ship they stand on. | Logged once per lost ship on every client. |
+| `Ectype: Topology.Changed subscriber <Type>.<method> threw: <exception>` | A subscriber to `Topology.Changed` threw. Each runs in its own `try` block, so the others still ran. | |
+| `Ectype: topology ship registration failed: <exception>`, `Ectype: topology ship removal failed: <exception>`, `Ectype: topology ship death handling failed: <exception>` | A ship lifecycle patch threw. The registry can then miss a ship or keep a destroyed one until its next prune. | |
+| `Ectype: characterShip rebuild for a ship change failed: <exception>` | Moving one holder's contribution to its newly resolved ship threw. That holder is retried at the next pass. | |
+| `Ectype: dev self-test: timed stat copy passed - DeepCopy returned; <n> objects walked, no StatCollection, no Unity object other than a ScriptableObject; copy of applied value 0.25 then 0, copy of template 0.25 then 0 (expected 0.25 then 0).` (dev tools build only) | A stat modifier carrying a live timed-stat value survives the game's deep copy without dragging in the target collection, and both kinds of copy follow the curve and go neutral at the end. A `FAILED` line names what the copy reached or which amount was wrong. | Logged once per launch, a few seconds after a character exists. The test names a ship-only stat on a character, so it also logs one `has no effect there` warning. |
+| `Ectype: timed stat copy check on apply failed (reported once): <exception>` | The check that finds copies of a timed-stat modifier as a collection applies them threw. Copies of applied values may then keep the amount they had when copied. | |
+| `Ectype: timed stat '<label>': refreshing a copy threw; the copy is no longer refreshed: <message>` (verbose) | A copy of a timed-stat modifier could not be recalculated, usually because its collection went away. | |
 
 ## Utility APIs
 
@@ -652,3 +668,4 @@ item that never drops usually has an anchor no table matches.
 | `Ectype: wiring <label> as a stat failed - the field keeps its authored number: <exception>` | The stat could not be attached. Perks that name it do nothing. |
 | `Ectype: ChannelGrapplingHook.<name> not found (game update?) - that grapple stat is registered nowhere and perks written against it do nothing.` | A field the framework wraps no longer exists. |
 | `Ectype: BuildProcess.StateTimer is not reachable - SystemModuleConstructionSpeed is inert: <exception>` | The module install-speed stat has no effect. |
+| `Ectype: applying SystemModuleConstructionSpeed failed (suppressing further reports): <exception>` | Advancing a build process threw. Reported once per session, since it runs every frame for every process. That process keeps the game's own speed. |

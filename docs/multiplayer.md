@@ -2,7 +2,8 @@
 
 What every player in a room needs when a mod depends on EctypeFramework, how a room's mod set
 is matched, how the game and VoidManager refuse a join, what a dependent mod has to tell its
-players, and what changes in a room with more than one player ship. The VoidManager behaviour described here is that of VoidManager 1.2.11.
+players, and what changes in a room with more than one player ship. The VoidManager behaviour
+described here is that of VoidManager 1.2.11.
 
 ## The short version
 
@@ -181,7 +182,8 @@ What the framework's own features do with several ships:
   client. A holder with no crew ship yet (spectating, not placed, ship dying) contributes
   nothing until one exists. Twice a second, and whenever a ship spawns or dies, each holder is
   resolved again, and only a holder whose ship changed is rebuilt. A player boarding an enemy
-  ship never buffs it.
+  ship never buffs it, and when one side's ship is the last one left, the other side's players
+  contribute nothing to it.
 - **`seatShip` perks** land on the ship of the chair the player sits in. The game applies them
   from the chair's own events.
 - **`IncomingProjectileSpeed`** is per ship. Each hostile shot takes the factor of one ship,
