@@ -1,3 +1,7 @@
+## 0.27.0
+
+Mods can publish new weapons, modules and items through the framework. Item catalogs such as ship customizers list published items with no change of their own, every player in a room holds them in the same order, and an item without a recycle value is refused instead of breaking the end-of-run alloy count.
+
 ## 0.22.0
 
 Rooms with more than one player ship, such as Void Crew Fleet's: perks that buff "the ship" now buff each player's own ship on every client, enemy-shot slowing works per ship, and a new event fires once when a whole fleet arrives from a jump. Timed stat effects survive being copied by other mods, a jump from one ship's inertia zone into another's ends channelled abilities, and spawns are lighter in large rooms.

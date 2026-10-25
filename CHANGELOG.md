@@ -23,12 +23,17 @@ build.
   `IsAvailable` and a `Changed` event. `ModContentEntry` carries `DisplayName`, `Owner`,
   `Category`, `Tier`, `IsComponent`, `PvpLegal`, `AvailableInRoom` and `IconHint`, all
   readable by reflection.
-- A component (`IsComponent`) is registered but not listed as a loose item, and needs
-  crafting data like any carryable. `LootTables.Register` refuses a published component, and a
-  roll leaves out an item whose content entry is a component or not available in the room.
+- A component (`IsComponent`, carryables only) is registered but not listed as a loose item,
+  and needs crafting data like any carryable. `LootTables.Register` refuses a component from
+  the moment its publication is accepted, Publish refuses a component already registered for
+  loot, and a roll leaves out an item whose content entry is not available in the room.
+- A refused publication is logged once and returned again to a caller that retries it.
+  `ContentAssets.ModFlag` defaults to the framework build's network-spawned effect.
 - The crafting-data warning names the publication when a carryable came from a
   `RuntimeContent.Publish` that failed part-way.
 - The F5 page shows publication counts.
+
+## 0.22.0
 
 - `Topology`: which player ships exist and which is whose, answered the same on every client.
   `Ships`, `Multi`, `CrewShipOf`, `AboardShipOf`, `ShipOfPart`, `ShipNumberOf`,
