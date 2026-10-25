@@ -31,14 +31,15 @@ namespace Ectype
     /// objects that own them register them as they start, through postfixes patched here.
     /// Everything else is read from the component's type or the types above it.
     ///
-    /// A switch is judged by what it switches: a module's power switch when a module mediator
-    /// above it names it (the ship's power switch when that mediator is the central computer's),
-    /// else the full classification of the component that holds the value it controls (the same
-    /// component, through the same computation, as the owner side when the switch's request
-    /// arrives). A switch with no module above it and no value holder is a breaker when it sits on
+    /// A switch is judged by what it switches: the full classification of the component that
+    /// holds the value it controls (the same component, through the same computation, as the
+    /// owner side when the switch's request arrives), else a module's power switch when a module
+    /// mediator above it names it (the ship's power switch when that mediator is the central
+    /// computer's). A switch with no module above it and no value holder is a breaker when it sits on
     /// or under one, else <see cref="InteractionKind.OtherPowerSwitch"/>; one met while its module
-    /// is still being assembled keeps that answer, re-read after <see cref="RetrySeconds"/>,
-    /// computed <see cref="MaxRetries"/> times in all.
+    /// is still being assembled gets that answer as provisional: it is never cached, and is read
+    /// again once <see cref="RetrySeconds"/> have passed, until a module above the switch or a
+    /// value holder settles it.
     ///
     /// Every query starts from <see cref="Canonical"/>, so an item or a socket reaches a gate as
     /// the same component from every chokepoint.
@@ -46,7 +47,6 @@ namespace Ectype
     internal static class InteractionClassifier
     {
         private const float RetrySeconds = 2f;
-        private const int MaxRetries = 3;
         private const int CacheLimit = 8192;
         private const float PruneSeconds = 30f;
 
@@ -60,7 +60,6 @@ namespace Ectype
         {
             internal InteractionKind Kind;
             internal float RetryAt;
-            internal int Tries;
         }
 
         /// <summary>Controls registered by their owners as they start. Never cleared wholesale:
@@ -131,8 +130,7 @@ namespace Ectype
 
             bool settled;
             kind = Compute(c, out settled);
-            int tries = wasPending ? pending.Tries + 1 : 1;
-            if (settled || tries >= MaxRetries)
+            if (settled)
             {
                 if (Cache.Count > CacheLimit) Cache.Clear();
                 Cache[id] = kind;
@@ -141,7 +139,7 @@ namespace Ectype
             else
             {
                 if (Unsettled.Count > CacheLimit) Unsettled.Clear();
-                Unsettled[id] = new Pending { Kind = kind, RetryAt = Time.unscaledTime + RetrySeconds, Tries = tries };
+                Unsettled[id] = new Pending { Kind = kind, RetryAt = Time.unscaledTime + RetrySeconds };
             }
             return kind;
         }
@@ -222,13 +220,28 @@ namespace Ectype
                 // module's own power switch. The central computer's power switch is the whole
                 // ship's: its mediator hands it the power system's state.
                 IShipModuleMediator[] mediators = sw.GetComponentsInParent<IShipModuleMediator>(true);
-                foreach (IShipModuleMediator m in mediators)
-                    if (ReferenceEquals(PowerSwitchOf(m), sw))
-                        return IsCentralComputer(m) ? InteractionKind.ShipPowerSwitch : InteractionKind.ModulePowerSwitch;
                 // The component the owner judges when this switch's request arrives: the same
-                // computation from the same component, so both sides read the same kind.
+                // computation from the same component, so both sides read the same kind. A
+                // mediator names the kind only where the switch holds nothing the classifier
+                // can place.
                 Component holder = HolderOf(sw);
-                if (holder != null && holder != sw && !(holder is SwitchClicker)) return Compute(holder, out settled);
+                bool held = holder != null && holder != sw && !(holder is SwitchClicker);
+                foreach (IShipModuleMediator m in mediators)
+                {
+                    if (!ReferenceEquals(PowerSwitchOf(m), sw)) continue;
+                    if (held)
+                    {
+                        bool heldSettled;
+                        InteractionKind heldKind = Compute(holder, out heldSettled);
+                        if (heldKind != InteractionKind.Other)
+                        {
+                            settled = heldSettled;
+                            return heldKind;
+                        }
+                    }
+                    return IsCentralComputer(m) ? InteractionKind.ShipPowerSwitch : InteractionKind.ModulePowerSwitch;
+                }
+                if (held) return Compute(holder, out settled);
                 if (mediators.Length == 0)
                 {
                     // Outside any module, holding no value the classifier can see. A switch on or
@@ -288,6 +301,13 @@ namespace Ectype
         {
             if (control == null) return;
             Registered[control.GetInstanceID()] = new Registration { Control = control, Kind = kind };
+        }
+
+        /// <summary>Whether a component's kind is cached for good (dev self-test): false while its
+        /// answer is provisional.</summary>
+        internal static bool IsCached(Component control)
+        {
+            return control != null && Cache.ContainsKey(control.GetInstanceID());
         }
 
         /// <summary>Drops a control registration and its cached kind (dev self-test).</summary>

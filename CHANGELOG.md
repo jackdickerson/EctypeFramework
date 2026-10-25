@@ -55,7 +55,11 @@ build.
 - **Breaking for interaction gates.** `InteractionKind.PowerSwitch` is split into
   `ModulePowerSwitch` (a module's own power switch, a power drain), `ShipPowerSwitch` (the
   central computer's switch, the power system), `PowerLineSwitch` (a power propagator), `Breaker`
-  and `OtherPowerSwitch` (a switch outside any module controlling no value the classifier sees).
+  and `OtherPowerSwitch` (a switch outside any module controlling no value the classifier sees;
+  provisional while its module is still being assembled, so it is never cached and the switch is
+  classified again two seconds after each query). A switch is judged as the component holding the
+  value it controls, a module mediator's power switch kind applying only where it holds nothing
+  placeable.
   `InteractionKind.AirlockControl` is split into `AirlockPressurize` (the pressurise lever and
   the cycle request) and `AirlockSafety` (the safety override and its request). The owner side
   names a power request's kind from the component asked and an airlock request's from the RPC.
@@ -63,7 +67,9 @@ build.
   `kind.IsPowerSwitch()`, ask the coarse question. The gate has not been in a release.
 - `RpcContext` reports the sender of the Photon RPC or event being dispatched: `Sender`,
   `SenderActor`, `Source`, `ViewId`, `EventCode`, `TryGetSender(view, out sender)` and
-  `FromAbsentPlayer(view)`. A mod calls `RpcContext.Enable()` from `Awake`; the hooks go on once
+  `FromAbsentPlayer(view)` (true only for an RPC whose sender left, not for a message the server
+  sent). The hooks run first among the patches on their methods and restore the outer message
+  only when their own prefix ran. A mod calls `RpcContext.Enable()` from `Awake`; the hooks go on once
   the game has loaded, with or without an interaction gate, never at plugin load. The interaction
   gate reads its owner-side senders from it. See `docs/reference/rpc-context.md`.
 - `StatContributions.Register(StatContribution)` puts a modifier on one stat of every player

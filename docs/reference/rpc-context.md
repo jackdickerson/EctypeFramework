@@ -30,7 +30,7 @@ static bool Prefix(PowerDrain __instance)
 | `ViewId` | The view id the RPC targets; 0 for an event. |
 | `EventCode` | The event's code; 0 for an RPC. Test `Source` before trusting a 0. |
 | `TryGetSender(view, out sender)` | The sender of the RPC running now **on this view**. False outside an RPC, for an RPC on another view, for a sender no longer in the room, and before the hooks are in. |
-| `FromAbsentPlayer(view)` | True when the RPC running now on this view has no sender in the room: a buffered RPC PUN replays to a later joiner after its sender left. |
+| `FromAbsentPlayer(view)` | True when the RPC running now on this view has no sender in the room but carries the actor number Photon stamped: a buffered RPC PUN replays to a later joiner after its sender left. False for a message the server sent (actor 0). |
 
 ## How it knows
 
@@ -45,6 +45,12 @@ static bool Prefix(PowerDrain __instance)
   restore the outer one afterwards, so the innermost message is the one reported: an RPC that
   arrived over the network reports the RPC, not the event that carried it. A network RPC whose
   sender has left keeps the actor number of the event that carried it in `SenderActor`.
+- The prefixes run first among the patches on each method, and a finalizer restores the outer
+  message only when its own prefix ran: another patch's prefix that skips the original makes
+  every finalizer run, and one whose prefix did not run must not clear the message of the
+  dispatch it is nested in.
+- The event being dispatched stays known inside an RPC dispatched within it, so a check that
+  needs the event (a socket request) finds it under the RPC.
 
 ## When it is valid
 

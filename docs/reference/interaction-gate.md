@@ -99,16 +99,19 @@ a seat's clicker, a module terminal's clicker, a repair's and a defect's clicker
 
 A switch is judged by what it switches:
 
-1. A module above it names it as the module's power switch: `ModulePowerSwitch`, or
-   `ShipPowerSwitch` when that module is the central computer, whose switch the game wires to
-   the ship's power system.
-2. Otherwise exactly as the component holding the value it controls is judged, the component the
-   owner side judges when the switch's request arrives. Each power component names its kind: the
+1. Exactly as the component holding the value it controls is judged, the component the owner
+   side judges when the switch's request arrives. Each power component names its kind: the
    power system `ShipPowerSwitch`, a propagator `PowerLineSwitch`, a drain `ModulePowerSwitch`, a
    breaker `Breaker`.
+2. Where the switch holds nothing the classifier can place, and a module above it names it as the
+   module's power switch: `ModulePowerSwitch`, or `ShipPowerSwitch` when that module is the
+   central computer, whose switch the game wires to the ship's power system.
 3. A switch with no module above it and no value holder is `Breaker` when it sits on or under a
-   breaker, else `OtherPowerSwitch`. One met while its module is still being assembled keeps that
-   answer and is computed again two seconds later, three computations in all.
+   breaker, else `OtherPowerSwitch`. `OtherPowerSwitch` is provisional on the client side: a
+   module still being assembled has no mediator yet, so the answer is not kept and the switch is
+   classified again two seconds after each query until a module or a holder settles it. A gate
+   that must refuse a module's power switch tests `IsPowerSwitch` rather than
+   `ModulePowerSwitch` alone.
 
 Where the chokepoint itself says what is happening, the chokepoint names the kind: a socket
 request, a door or airlock request, a power request (from the component asked: power system,
@@ -174,7 +177,10 @@ in the game's own failure reply. Nothing else is sent.
 - **The owner's own requests.** A request the owner's game sends itself runs through the same
   RPC path with the owner as sender.
 - **A request whose sender is unknown.** Outside an RPC, or before the RPC sender hook is in, a
-  request is game logic calling the method directly, and it passes.
+  request is game logic calling the method directly, and it passes. The request RPCs the gate
+  judges (power, panel, synced switch, door, airlock and seat requests) are sent to one player,
+  the owner or the master client, never to a buffered target, so PUN never replays one after its
+  sender left.
 - **A hand-off by the host or by the object's owner**, such as the game passing a socket's item
   to the socket's new owner. **An object following its holder**: a socket's item going to whoever
   owns the socket, a seat's connected object going to whoever owns the seat. **An item a player

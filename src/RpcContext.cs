@@ -53,7 +53,18 @@ namespace Ectype
             internal int Actor;
             internal int View;
             internal byte Code;
+            /// <summary>The nearest event being dispatched at or below this frame: the frame's
+            /// own for an event, the enclosing one for an RPC.</summary>
             internal EventData Event;
+        }
+
+        /// <summary>What a prefix saved for its finalizer. <c>Ran</c> is false when the prefix
+        /// did not run (another patch's prefix skipped the original first), so the finalizer
+        /// leaves the current frame alone.</summary>
+        internal struct Saved
+        {
+            internal Frame Outer;
+            internal bool Ran;
         }
 
         private static Frame _current;
@@ -138,20 +149,48 @@ namespace Ectype
         /// <summary>
         /// Whether the RPC running now on this view came from a player who is no longer in the
         /// room: a buffered RPC PUN replays to a later joiner after its sender left. False outside
-        /// such an RPC, and before the hooks are in.
+        /// such an RPC, for a message the server sent or one with no actor number, and before the
+        /// hooks are in.
         /// </summary>
         public static bool FromAbsentPlayer(PhotonView view)
         {
             Touch();
-            Frame f = _current;
-            return f.Source == RpcSource.Rpc && f.Sender == null && view != null && f.View != 0 &&
-                   f.View == view.ViewID;
+            return view != null && IsAbsent(_current, view.ViewID);
         }
 
-        /// <summary>The event being dispatched now, or null (the gate's socket requests).</summary>
+        /// <summary>The test behind <see cref="FromAbsentPlayer"/>: an RPC frame on this view whose
+        /// sender is not in the room but whose actor number Photon stamped.</summary>
+        internal static bool IsAbsent(Frame f, int viewId)
+        {
+            return f.Source == RpcSource.Rpc && f.Sender == null && f.Actor > 0 && f.View != 0 && f.View == viewId;
+        }
+
+        /// <summary>Makes a frame current and returns what restores the one it replaced (dev
+        /// self-test).</summary>
+        internal static Saved Push(Frame f)
+        {
+            Saved saved = new Saved { Outer = _current, Ran = true };
+            _current = f;
+            return saved;
+        }
+
+        /// <summary>A finalizer's step: puts the saved frame back, only when its own prefix ran.</summary>
+        internal static void Restore(Saved saved)
+        {
+            if (saved.Ran) _current = saved.Outer;
+        }
+
+        /// <summary>The innermost frame (dev self-test).</summary>
+        internal static Frame CurrentFrame
+        {
+            get { return _current; }
+        }
+
+        /// <summary>The nearest event being dispatched now, an RPC dispatched inside it
+        /// included, or null (the gate's socket requests).</summary>
         internal static EventData CurrentEvent
         {
-            get { return _current.Source == RpcSource.Event ? _current.Event : null; }
+            get { return _current.Event; }
         }
 
         private static void Touch()
@@ -221,7 +260,9 @@ namespace Ectype
                                           " not found (Photon update?); " + consequence + ".");
                     return false;
                 }
-                _harmony.Patch(target, prefix: new HarmonyMethod(typeof(RpcContext), prefix),
+                // First, so the frame is recorded before another patch's prefix can skip the original.
+                HarmonyMethod first = new HarmonyMethod(typeof(RpcContext), prefix) { priority = Priority.First };
+                _harmony.Patch(target, prefix: first,
                                finalizer: new HarmonyMethod(typeof(RpcContext), finalizer));
                 return true;
             }
@@ -233,9 +274,9 @@ namespace Ectype
             }
         }
 
-        private static void RpcPrefix(Hashtable rpcData, Photon.Realtime.Player sender, out Frame __state)
+        private static void RpcPrefix(Hashtable rpcData, Photon.Realtime.Player sender, out Saved __state)
         {
-            __state = _current;
+            __state = new Saved { Outer = _current, Ran = true };
             try
             {
                 object view = null;
@@ -243,10 +284,10 @@ namespace Ectype
                 // A network RPC arrives inside PUN's RPC event, which carries the actor number
                 // even when the sender has left the room.
                 int actor = sender != null ? sender.ActorNumber
-                    : __state.Source == RpcSource.Event && __state.Code == RpcEvent ? __state.Actor : 0;
+                    : __state.Outer.Source == RpcSource.Event && __state.Outer.Code == RpcEvent ? __state.Outer.Actor : 0;
                 _current = new Frame
                 {
-                    Source = RpcSource.Rpc, Sender = sender, Actor = actor, View = view is int ? (int)view : 0,
+                    Source = RpcSource.Rpc, Sender = sender, Actor = actor, View = view is int ? (int)view : 0, Event = __state.Outer.Event,
                 };
             }
             catch (Exception e)
@@ -256,14 +297,14 @@ namespace Ectype
             }
         }
 
-        private static void RpcFinalizer(Frame __state)
+        private static void RpcFinalizer(Saved __state)
         {
-            _current = __state;
+            Restore(__state);
         }
 
-        private static void EventPrefix(EventData photonEvent, out Frame __state)
+        private static void EventPrefix(EventData photonEvent, out Saved __state)
         {
-            __state = _current;
+            __state = new Saved { Outer = _current, Ran = true };
             try
             {
                 if (photonEvent == null)
@@ -289,9 +330,9 @@ namespace Ectype
             }
         }
 
-        private static void EventFinalizer(Frame __state)
+        private static void EventFinalizer(Saved __state)
         {
-            _current = __state;
+            Restore(__state);
         }
 
         private static bool _hookFailed;
