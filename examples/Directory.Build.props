@@ -29,7 +29,8 @@
     <ManagedDir>$(VoidCrewDir)\Void Crew_Data\Managed</ManagedDir>
     <BepInExCoreDir>$(VoidCrewDir)\BepInEx\core</BepInExCoreDir>
     <PluginsDir>$(VoidCrewDir)\BepInEx\plugins</PluginsDir>
-    <!-- VoidManager installs either flat in plugins\ or in a VoidManager\ subfolder. -->
+    <!-- Read only by an example that sets UseVoidManager (below). VoidManager installs
+         either flat in plugins\ or in a VoidManager\ subfolder. -->
     <VoidManagerDll Condition="'$(VoidManagerDll)' == '' and Exists('$(PluginsDir)\VoidManager.dll')">$(PluginsDir)\VoidManager.dll</VoidManagerDll>
     <VoidManagerDll Condition="'$(VoidManagerDll)' == ''">$(PluginsDir)\VoidManager\VoidManager.dll</VoidManagerDll>
   </PropertyGroup>
@@ -53,9 +54,16 @@
   <!-- References every example needs. An example adds its own in its csproj. -->
   <ItemGroup>
     <Reference Include="BepInEx" HintPath="$(BepInExCoreDir)\BepInEx.dll" Private="false" />
-    <Reference Include="VoidManager" HintPath="$(VoidManagerDll)" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- VoidManager is optional. An example that names a VoidManager type sets
+       <UseVoidManager>true</UseVoidManager> in its csproj. MSBuild evaluates every property,
+       the csproj's included, before any item, so this condition sees the csproj's value even
+       though this file is imported first. A property condition here would not. -->
+  <ItemGroup Condition="'$(UseVoidManager)' == 'true'">
+    <Reference Include="VoidManager" HintPath="$(VoidManagerDll)" Private="false" />
   </ItemGroup>
 
   <!-- A wrong game folder otherwise surfaces as one MSB3245 per reference followed by a
@@ -65,7 +73,7 @@
            Text="Void Crew not found at '$(VoidCrewDir)'. Set the folder that holds Void Crew.exe with -p:VoidCrewDir=&quot;&lt;path&gt;&quot;, a VoidCrewDir in Local.props beside this Directory.Build.props (copy Local.props.example), or the VOID_CREW_DIR environment variable." />
     <Error Condition="!Exists('$(BepInExCoreDir)\BepInEx.dll')"
            Text="BepInEx not found at '$(BepInExCoreDir)'. Install BepInEx 5 into the game folder." />
-    <Error Condition="!Exists('$(VoidManagerDll)')"
-           Text="VoidManager.dll not found in '$(PluginsDir)' or its VoidManager subfolder. Install VoidManager, or set VoidManagerDll to its path." />
+    <Error Condition="'$(UseVoidManager)' == 'true' and !Exists('$(VoidManagerDll)')"
+           Text="This project sets UseVoidManager, and VoidManager.dll is not at '$(VoidManagerDll)'. Install VoidManager into BepInEx\plugins (flat or in a VoidManager subfolder), or set VoidManagerDll to its path." />
   </Target>
 </Project>

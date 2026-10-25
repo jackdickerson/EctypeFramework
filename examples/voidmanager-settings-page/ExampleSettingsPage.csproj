@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ExampleSettingsPage</AssemblyName>
+    <RootNamespace>ExampleSettingsPage</RootNamespace>
+    <!-- Adds the VoidManager.dll reference from Directory.Build.props. The build needs
+         VoidManager installed; the built mod does not. -->
+    <UseVoidManager>true</UseVoidManager>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="EctypeFramework" HintPath="$(PluginsDir)\EctypeFramework.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(BepInExCoreDir)\0Harmony.dll" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(ManagedDir)\UnityEngine.IMGUIModule.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\*.cs" />
+  </ItemGroup>
+
+</Project>
