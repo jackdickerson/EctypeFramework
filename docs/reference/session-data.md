@@ -128,10 +128,7 @@ So the host also keeps the values in a sidecar file:
 - Sidecars last written more than 30 days ago are deleted, then all but the newest 64, each
   time one is written.
 
-A run resumed on another machine has no sidecar there, and its values are produced fresh. In a
-modded session the framework's progression guard keeps the saved run out of the cloud profile,
-so such a run resumes only within the game process that saved it. The sidecar is on disk either
-way.
+A run resumed on another machine has no sidecar there, and its values are produced fresh.
 
 ## Host-synced settings
 
