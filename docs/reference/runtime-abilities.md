@@ -13,8 +13,7 @@ peer without the ability simply ignores the message.
 - Register with a literal key. A key derived from runtime state can differ between clients.
 - The framework registers its own role abilities as `ectype:<roleId>`.
 - A running registered ability is also synchronised to a late joiner. The message is sent to
-  the joiner alone, and only when VoidManager reports that peer as running the framework
-  (see `PeerHasMod` in [selection-gate.md](selection-gate.md)).
+  the joiner alone, and only when VoidManager reports that peer as running the framework.
 - A start that reaches a character whose look source is not attached yet, as a late joiner's
   copy of a crewmate is for a moment after spawning, is held and retried for up to 5 s; a
   stop for the same character and key cancels it.

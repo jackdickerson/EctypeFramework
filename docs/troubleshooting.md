@@ -18,8 +18,7 @@ per-open event appear only with `[Debug] VerboseLogging = true` in
 | | `no role manifests found` | No installed mod carries a manifest. See "No role appears". |
 | | `<n>/<m> roles registered` | `n` of `m` discovered roles finished registering. `(<k> failed)` is appended when `k` gave up. |
 | `Stats:` | `<n> vanilla aliases, framework-owned <status>` | The stat names a manifest can use. `not registered` means the stat table has not loaded; `<n> registered` is the normal state. |
-| `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, or `<n> tree(s) suppressed: <names>` | Which stock gene trees role mods have removed. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
-| `Host suppress:` | `nothing host-suppressed` or `<n> role(s) host-suppressed: <roleIds>` | Roles the host has switched off for the room. |
+| `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, `<n> tree(s) suppressed: <names>`, or `<k> suppressed role(s)` | Which stock gene trees role mods have removed through `suppress`, and how many framework roles other role mods have removed through `suppressRoles`; both parts appear joined by `+` when both apply. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
 | One line per role | `registered (stage limit 9); tree def published as EPerkTree <n>` | The role is registered and its tree is published. |
 | | `waiting for asset containers` | Same as the pipeline line, for this role. |
 | | `attempt <n> failed at [<stage>]: <message>` | Registration threw. See "Registration attempt failed". |
@@ -48,12 +47,6 @@ entry point refuses to run. The F5 pipeline line reads `inert: patching did not 
 The usual cause is a game update that renamed or reshaped a patched method. The exception names
 it. Install a framework build made for the installed game version. If one does not exist, report
 the exception text.
-
-### `Ectype: binding the selection gate failed: <exception>`
-
-The framework could not subscribe to VoidManager's room events. `SelectionGate` will not
-re-evaluate on its own. The usual cause is a VoidManager version with a different event surface.
-Install the VoidManager version the framework was built against.
 
 ### `Ectype: enemy ability gates failed: <exception>` and `Ectype: loot table patch failed: <exception>`
 
@@ -525,85 +518,32 @@ Which screen says what the problem is:
 | A screen that lists individual assets | The game's asset check | One side registered required content (a role's tree or perks, for example) that the other did not. |
 | Removed from the room after arriving, with no message from the framework | VoidManager, on the host | Same version, different DLL bytes. Only the host compares hashes. |
 
-Fix every case the same way: give everyone the same files. Raise the version of any mod whose
-bytes changed.
+Fix every case the same way: install the host's exact versions. The Void Crew Mod Launcher
+does this for a joiner when the host enabled the mods in it; without the launcher, match each
+version by hand. Raise the version of any mod whose bytes changed.
 
 ### Everyone has the same version and one player is still refused
 
 The two DLLs differ. A dependent records the framework assembly version it was compiled
 against, so a locally rebuilt dependent differs from a downloaded one at the same version
-number. Reship from one set of files.
+number. Publish the build to Thunderstore under a new version and have everyone install that
+version.
 
 ### A player lacks a role mod and the room runs
 
 It does not. The asset check refuses the join in both directions. See `multiplayer.md`.
 
-### `Ectype: selection gate for <guid> FAILS (<why>): <names>`
-
-The host's gate found members who lack the mod or run a different build. `<names>` reads
-`<player> (missing)`, `<player> (version <v>)` or `<player> (different build of <v>)`. `<why>`
-is the event that triggered the evaluation: `registered <guid>`, `mod list received`,
-`player left`, `host switched`, `player entered`, `joined room`, `left room` or `requested`.
-The warning is logged when the result changes, once per change. The dependent decides what to
-do with it. Give the named players the host's files.
-
-### `Ectype: selection gate for <guid> unavailable (<why>): <reason>`
-
-The gate could not evaluate. `<reason>` is one of:
-
-| Reason | Cause |
-| --- | --- |
-| `VoidManager's own mod list is not readable` | The framework reads VoidManager's private list by reflection and the field is gone. A VoidManager update. Also logged once as `Ectype: MPModCheckManager.MyModList not found (VoidManager update?) - every selection gate reports Unavailable.` |
-| `the host's mod list does not carry <guid>` | The GUID passed to `Register` or `Evaluate` is not a loaded plugin's GUID. Check the spelling against the plugin's `[BepInPlugin]` attribute, and that the plugin declares a `VoidPlugin`. |
-| `evaluation threw: <ExceptionType>` | The gate threw. The full exception is logged as `Ectype: selection gate evaluation for <guid> threw: <exception>`. |
-
-### `Ectype: selection gate for <guid> is <verdict> (<why>): <names>`
-
-Logged only with `VerboseLogging`. A routine change of verdict. `<names>` lists members that
-are not `Match`: `(mod list not received)` and `(version only, no hash)` are the non-failing
-ones.
-
-### The gate stays `Unverified`
-
-Every member's version matches and the host holds no hash for at least one. The host holds no
-hash for a member when the room changed host and that member's resent list has not arrived. Look
-for `Ectype: cannot re-send the mod list to the new host (<what> not found; VoidManager update?) - it will see this client as Unverified.`
-on the members' machines: it means the resend could not run, and those members stay unverified
-until they rejoin. `Ectype: re-sending the mod list to the new host threw: <exception>` is the
-same failure with an exception.
-
-### The gate returns `NotHost` or `Pass` and the dependent does nothing
-
-`NotHost` is the answer on every client except the master. `Pass` is also the answer offline,
-solo and outside a room. A dependent that applies policy on the host only should read the
-gate on the host only.
-
-### `Ectype: a selection gate callback for <guid> threw: <exception>` and `Ectype: selection gate re-evaluation (<why>) threw: <exception>`
-
-The dependent's callback threw, or the evaluation loop did. The framework catches both so the
-other callbacks still run. Fix the callback.
-
-### Host suppression
-
-| Line | Meaning |
-| --- | --- |
-| `Ectype: published host suppression to the room: '<roleIds>'.` / `(cleared).` | The host wrote its per-role toggles to the room. This happens only while the host is in the hub. |
-| `Ectype: host suppression changed +[<ids>] -[<ids>].` | This client applied a new suppressed set. It then reapplies every player's perks and rebuilds the gene-tree screens. |
-| `Ectype: rebuilt <n> gene-tree screen(s) for the suppression change.` | The open terminals were rebuilt. |
-| `Ectype: gene-tree screen on '<name>' has no trees or no authored template - left as built, so it shows the old suppression until a respawn.` | One terminal could not be rebuilt. It updates after a respawn. |
-| `Ectype: host suppression armed - session flagged via VoidManager.PluginHandler.EscalateSession.` | The first suppression marked the session as modded. |
-| `Ectype: PluginHandler.EscalateSession not found; falling back to ModdingUtils.RegisterSessionMod.` and the matching `threw` form | VoidManager's internal method moved. The public fallback sets the same flag and does not notify other VoidManager clients. |
-| `Ectype: could not flag the session for host suppression: <exception>` | Both routes failed. The room is not marked by this route. |
-| `Ectype: publishing host suppression failed: <exception>`, `Ectype: reading host suppression room property failed: <exception>`, `Ectype: suppression rederive after host-suppression change failed: <exception>`, `Ectype: re-applying a player's perks after a host suppression change failed: <exception>`, `Ectype: gene-tree rebuild after host-suppression change failed: <exception>` | A step of applying a suppression change threw. The remaining steps still ran. |
+### A role is suppressed and players still need it
 
 Things that look like they should work and do not:
 
-- **A suppressed role still has to be installed by everyone.** Suppression hides a role and
-  leaves its assets registered, so the asset check still compares them.
-- **A toggle changed during a run does nothing until the host is in the hub.** The host
-  publishes its toggles only from the hub.
-- **Suppression does not delete saves.** The perks stay in each loadout and read as absent.
-  Lifting the suppression brings the build back.
+- **A suppressed role still has to be installed by everyone.** Suppression through another
+  role's `suppressRoles` hides a role and leaves its assets registered, so the asset check
+  still compares them.
+- **Suppression does not delete saves.** A suppressed role's perks stay in each loadout and
+  read as absent. Removing the role mod that suppresses it brings the build back.
+- **There is no in-game switch.** Which roles are suppressed follows from the installed role
+  mods' manifests alone. To change it, change the installed mod set.
 
 ### Mutator guards
 

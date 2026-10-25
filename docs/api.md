@@ -14,7 +14,7 @@ Register them from literals that are identical on every client.
 
 | Type | Purpose |
 | --- | --- |
-| `RoleRegistry` | Links a manifest role to code and answers questions about it. `RegisterAbilityFactory(roleId, factory)` attaches the role ability. `PerkGuid(roleId, perkKey)` returns the asset GUID a perk registers under. `IsAvailableInRoom(roleId)` is true while the role is registered and not suppressed in the room, and gives the same answer on every client. |
+| `RoleRegistry` | Links a manifest role to code and answers questions about it. `RegisterAbilityFactory(roleId, factory)` attaches the role ability. `PerkGuid(roleId, perkKey)` returns the asset GUID a perk registers under. `IsAvailableInRoom(roleId)` is true while the role is registered and no other active role suppresses it through `suppressRoles`, and gives the same answer on every client running the same role mods. |
 | `EctypeRoleAbility` | Base class for a role ability. Implement `OnApplyEffect` and `OnRemoveEffect`; the protected constructor takes cooldown and duration in seconds, and `Locomotion` is the Opsive locomotion the ability is installed on. Exceptions in the hooks are caught and logged. The stop path always runs, the start path may not have finished, so write `OnRemoveEffect` to tolerate a half-applied effect. Override `OwnerCanUse()` to decide usability on the owning client. Assign `Cancel` in the constructor to make the channel cancelable; `RequestCancel(reason)` ends it from the ability's own code, and `LastEnd` says how a channel ended, readable from `OnRemoveEffect`. |
 | `CancelPolicy` | A channel's cancel policy: `On` (the triggers), `Cooldown`, and `CollisionSpeed`, read at every contact. |
 | `CancelTriggers` | Flags: `AbilityKey`, `Collision`, `GrappleAttach`, `InertiaZoneEntry`, `JetpackFlightEnd`, `Requested`. |
@@ -29,16 +29,6 @@ Register them from literals that are identical on every client.
 | Type | Purpose |
 | --- | --- |
 | `RuntimeAbilities` | Opts an Opsive ability that a mod installs at runtime into key-based replication. `Register(ability, key)` after the ability is in its locomotion's array; `Unregister`; `KeyOf`. Peers resolve the key against their own copy of the ability list, so array order stops mattering. The key must be the same literal on every client. |
-
-## Room checks
-
-| Type | Purpose |
-| --- | --- |
-| `SelectionGate` | Reports whether every room member runs the same build of a mod, so a mod can refuse or revert content a member cannot load. `Register(modGuid, onChanged)` tracks a mod and calls back when its result changes. `Evaluate(modGuid)` and `Current(modGuid)` return a `GateResult`. `Changed` is the global event. `Reevaluate()` forces a pass. `PeersWithMod` and `PeerHasMod` answer presence only, on any client. |
-| `GateResult` | The outcome for one mod. `ModGuid`, `Verdict`, `Failed`, `HostVersion`, `Reason`, `Members`, `FailingNames`, `DescribeFailures()`, `DescribeNonMatching()`. |
-| `GateVerdict` | `Pass`, `Pending`, `Unverified`, `Fail`, `NotHost`, `Unavailable`. |
-| `MemberModResult` | One member's state: `Player`, `Name`, `State`, `Version`, `Failed`. |
-| `MemberModState` | `Match`, `NotKnownYet`, `Unverified`, `Missing`, `VersionMismatch`, `HashMismatch`. |
 
 ## Loot
 

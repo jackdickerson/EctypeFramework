@@ -140,7 +140,7 @@ Warden  (tree <n>, WardenRole)
 ```
 
 `Pipeline` counts every installed role mod, so the figures are `<n>/<n>` when other role
-mods are present. The checkbox beside the role is the host's per-role suppress toggle.
+mods are present.
 
 Then open the gene-tree terminal on the ship. A tree titled WARDEN, in the colour from
 `color`, should sit beside the stock trees. The hero banner at the top grants nothing, since
@@ -159,9 +159,6 @@ this role has no ability.
 
 A role mod is declared `MultiplayerType.All`. Everyone in a room needs the framework and
 every role mod any player has, at the same build, and hosting with the mod installed marks
-the session as modded. This is the current build's posture. A coming framework version makes
-role mods optional per player: the framework will suppress a role for the whole room when
-any member lacks it, and refuse a joiner who lacks a role that is active in a running
-session. [multiplayer.md](multiplayer.md) has the checks and the consequences.
+the session as modded. [multiplayer.md](multiplayer.md) has the checks and the consequences.
 [choosing.md](choosing.md) compares the three kinds of mod, and [publishing.md](publishing.md)
 covers the Thunderstore package.
