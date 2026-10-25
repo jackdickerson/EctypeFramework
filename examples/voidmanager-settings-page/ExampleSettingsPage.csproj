@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Reference Include="EctypeFramework" HintPath="$(PluginsDir)\EctypeFramework.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
     <Reference Include="0Harmony" HintPath="$(BepInExCoreDir)\0Harmony.dll" Private="false" />
     <Reference Include="UnityEngine.IMGUIModule" HintPath="$(ManagedDir)\UnityEngine.IMGUIModule.dll" Private="false" />
   </ItemGroup>

@@ -389,9 +389,10 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 ## Manifest notes
 
 - `src/shared/ModFlagPolicy.cs` is a compile-time switch for whether a build flags the session.
-  Its `MPType` is `Session` or `Client` and never `All`, so a role mod that declares a
-  `VoidPlugin` declares `MPType => MultiplayerType.All` itself and returns
-  `SetMod_Session = true` from `OnSessionChange`. The framework compiles with
+  Its `MPType` is `Session` or `Client` and never `All`, so a mod that declares an
+  `All` `VoidPlugin` declares `MPType => MultiplayerType.All` itself and returns
+  `SetMod_Session = true` from `OnSessionChange`. A role mod that follows the examples declares
+  no `VoidPlugin`, so none of this applies to it. The framework compiles with
   `VOIDMANAGER_OPTIONAL`, which leaves `MPType` out, and declares no VoidManager type: an `All`
   framework would make every VoidManager host kick every joiner without VoidManager, and a
   `Client` one would make the mod launcher advertise it as client-side only.

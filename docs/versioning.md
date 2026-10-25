@@ -104,10 +104,11 @@ Two things follow from the number:
 
 ## Every player needs the same build
 
-A role mod that declares a `VoidPlugin` of multiplayer type `All` gets two VoidManager checks
+A mod that declares a `VoidPlugin` of multiplayer type `All` gets two VoidManager checks
 when a player joins a room, provided the host and the joiner both run VoidManager. The
 framework declares no VoidManager type, so neither check covers the framework itself: its join
 check is the network contract above, and its version is matched by the mod launcher alone.
+A role mod that follows the examples declares no `VoidPlugin`, so neither check applies to it.
 
 1. The joining client compares its mod list with the host's list. Mod name, GUID, version and
    multiplayer type are visible to every peer. A mod missing on either side, or present with a

@@ -75,7 +75,7 @@ A minimal `manifest.json`:
 
 Keep the mod's own `PLUGIN_VERSION` and the package's `version_number` identical. The mod
 launcher and a player reading the listing go by the package version; BepInEx logs the plugin
-version, and VoidManager compares it across the room for a mod declared `All` to it. Raise both
+version, and VoidManager compares it only for a mod that declares `All` to it. Raise both
 on every build you give to anyone: a joiner can download only what is on Thunderstore, and two
 builds under one version number cannot be told apart by anything but their bytes.
 
@@ -94,7 +94,9 @@ register the same plugin GUID.
 ## What the listing must say
 
 Players decide from the listing whether they can join a room, so it states these points in
-plain words.
+plain words. Points 1 and 2 apply to an `All Required` mod, a role mod included; a
+`Client-Side` mod states instead that players who want it install it and the rest of the room
+need not (the framework itself is still required in the room).
 
 1. **Everyone in the room needs it.** A role mod's content and the framework's contract
    marker are registered in the game's required-asset set. A player without them cannot join
@@ -152,7 +154,7 @@ a dependent mod carries that category only if its own code does. The list change
 read the live list (`https://thunderstore.io/api/experimental/community/void-crew/category/`)
 before you set categories.
 
-A listing skeleton for the multiplayer section:
+A listing skeleton for the multiplayer section of an `All Required` mod:
 
 ```markdown
 ### Multiplayer
@@ -160,8 +162,19 @@ A listing skeleton for the multiplayer section:
 - Everyone in the room needs this mod and the Ectype Framework, at the same version.
 - Hosting a room with this mod marks the session as modded in the server browser until the
   game restarts.
-- Players without VoidManager can join only a host that either has no VoidManager or runs no
-  mod declared `All` to it.
+- Updating: update this mod and the Ectype Framework together.
+```
+
+A mod that declares an `All` `VoidPlugin` adds one bullet: players without VoidManager can
+join only a host that either has no VoidManager or runs no mod declared `All` to it.
+
+The skeleton for a `Client-Side` mod:
+
+```markdown
+### Multiplayer
+
+- Only you see the effect: install it if you want it. Other players in the room need not.
+- Everyone in the room still needs the Ectype Framework.
 - Updating: update this mod and the Ectype Framework together.
 ```
 
