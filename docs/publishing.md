@@ -120,7 +120,10 @@ plain words.
    to add.
 
 The Void Crew community's categories include `All Required`, which describes a role mod's
-requirement. The framework's own package carries `All Required`. The community also has
+requirement. The framework's own package carries `All Required`, written into the DLL's
+`AssemblyMetadata("ModCategories", "Mods, All Required")`, from which the publish script takes the
+package's categories; a build with `-p:NoProgressionFlag=true` registers nothing in the game's
+required set and carries `Mods` alone. The community also has
 `Disables Progression`; the framework does not disable progression, so a role mod carries that
 category only if its own code does.
 It declares no `VoidPlugin`, so a mod launcher that looks for one in the DLL finds none and

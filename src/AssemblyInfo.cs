@@ -10,14 +10,18 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // Distribution metadata, read by packaging tooling to describe the mod.
-// MPType is the need letter for a reader that inspects the DLL without loading it: the
-// framework has no VoidPlugin, so a mod launcher finds no declared type in the assembly.
-// Keep it equal to the type VoidManagerBridge declares and to the Thunderstore category
-// (All Required).
+// ModCategories becomes the Thunderstore categories. The framework has no VoidPlugin, so a mod
+// launcher finds no declared type in the assembly and decides from the categories: "All
+// Required" means every player installs it, which the normal build needs, because its network
+// contract marker sits in the game's required set and the game refuses a joiner without it.
+// "Mod_Session Required" would read as needed only by the host, so joiners would skip it and
+// then be refused. The no-flag build registers nothing in the required set: "Mods" alone.
+// MPType is the need letter for a reader that inspects the DLL without loading it; keep it
+// equal to the type VoidManagerBridge declares and to the category.
 #if NO_SESSION_FLAG
 [assembly: AssemblyMetadata("ModCategories", "Mods")]
 #else
-[assembly: AssemblyMetadata("ModCategories", "Mods, Mod_Session Required")]
+[assembly: AssemblyMetadata("ModCategories", "Mods, All Required")]
 #endif
 [assembly: AssemblyMetadata("MPType", "All")]
 [assembly: AssemblyMetadata("ProgressionFlag", ModFlagPolicy.BuildTag)]

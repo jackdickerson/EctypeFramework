@@ -70,7 +70,7 @@
        The switch registers the network-contract marker and every role asset outside the
        game's required set (ModFlagPolicy.RequiredEffect), so rooms the build hosts are not
        tagged modded and the game's join check no longer compares them; it also drops
-       "Mod_Session Required" from the ModCategories metadata and changes the build tag
+       "All Required" from the ModCategories metadata and changes the build tag
        ModFlagPolicy reports. Neither variant touches progression. -->
   <PropertyGroup Condition="'$(NoProgressionFlag)' == 'true'">
     <DefineConstants>$(DefineConstants);NO_SESSION_FLAG</DefineConstants>

@@ -64,6 +64,10 @@ build.
   per subtype for the whole process.
 - `Topology` forgets the last ship's view id when that ship is destroyed, so a ship that wakes
   before the next poll numbers 1.
+- The DLL's `ModCategories` metadata, from which the package's Thunderstore categories come, is
+  `Mods, All Required` (was `Mods, Mod_Session Required`). With no VoidManager type declared, a
+  launcher read the old value as host-only, so joiners skipped the framework and the game then
+  refused them. The `-p:NoProgressionFlag=true` build keeps `Mods`.
 
 ## 0.27.0
 
