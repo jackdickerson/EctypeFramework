@@ -83,8 +83,9 @@ Every application and removal travels with the actor number of the client that s
 receiver judges that sender against the target itself, so a modified client cannot put a status
 on a target its stance forbids, or strip one its stance gives it no claim to. The sending client
 runs the same checks first, so a refused change happens nowhere. The rules depend only on who
-sends and on the target, never on which client happened to apply first, so every client reaches
-the same verdict whatever order messages arrive in.
+sends and on the target, never on which client happened to apply first, so clients that agree
+on the sides reach the same verdict whatever order messages arrive in. They can disagree for a
+moment while a multi-ship mod rewrites a respawned character's faction.
 
 **Stance** (`EnemyStatusDef.Stance`) is the sender-to-target relation the status accepts:
 
@@ -109,12 +110,15 @@ the same verdict whatever order messages arrive in.
   a character), the NPC's side is judged instead. NPCs are simulated on the master, so only the
   master applies a status on an NPC's behalf, and the master is trusted with any removal
   already. An enemy debuff on a player ship, applied by the master with the enemy as
-  attacker, can therefore be declared `Hostile`. A status applied on behalf of a player from
-  another player's client, such as the target's owner applying the shooter's effect, cannot,
-  and keeps `Stance = Any`.
+  attacker, can therefore be declared `Hostile`. When a receiver can no longer find the named
+  attacker (the NPC died or despawned while a coalesced batch waited), an application from the
+  master is accepted, since the master judged the NPC when it applied. A status applied on
+  behalf of a player from another player's client, such as the target's owner applying the
+  shooter's effect, cannot use this, and keeps `Stance = Any`.
 - **The master may always remove.** It simulates the NPCs, and a multi-ship mod's arbiter
-  runs there. After a host migration the new master inherits this; a receiver that has not yet
-  processed the switch refuses the new master's removal for that moment.
+  runs there. A removal is judged when it arrives: one from a client that is no longer the
+  master by then (it just handed the role on) is refused, is not retried, and the status runs
+  to its end on the clients that refused it.
 - **`Apply` and `Remove` are fire and forget.** `TryApply` and `TryRemove` take the same
   arguments and return a `StatusRefusal`: `None` when the change was made here and sent (or,
   with `CoalesceMs`, queued), else `Stance`, `UnknownSide`, `Authority` (a removal its stance
@@ -134,6 +138,13 @@ on an NPC's behalf) is still on another side from the target, after a team chang
 captured ship, and skips the tick when not. Skipped ticks are not paid later. When that client
 has left the room, or the NPC is gone, the side recorded at creation stands in.
 
+**A copy that arrives late does not owe the past.** A client that creates the status from a
+message pays the ticks, and starts the ability suspension, from the status's start only when
+the message arrived within a grace of `CoalesceMs` plus 500 ms; from an older start it begins
+the grace before arrival. A coalesced batch carries the start of the sender's whole run of the
+status, which can be long ago when this client's copy had ended in a gap in fire, and the
+grace keeps such a copy from paying seconds of damage in one frame.
+
 **Refusals in the log.** A receiver logs a refused message as a warning naming the status, the
 operation, the sender's actor number, the target and the reason. One line per sender,
 operation and status per 30 s; the next line counts the refusals left unreported in between.
@@ -145,7 +156,7 @@ operation and status per 30 s; the next line counts the refusals left unreported
 | `Visibility` | Drawn for a viewer |
 | --- | --- |
 | `All` (default) | always |
-| `OwnForce` | on the side of any player whose application of the status was accepted |
+| `OwnForce` | on the side of any player whose application of the status was accepted; for one the master applied on an NPC's behalf, the NPC's side, which no player shares in co-op |
 | `TargetForce` | on the target's side: a warning to the afflicted crew |
 | `HostileToTarget` | on another side from the target, whoever applied it |
 
@@ -178,17 +189,21 @@ hit, and the stacks reach the peers at most 150 ms late.
   if each had arrived alone, so applications from several crews to one target add up in any
   order. Two totals for one target would overwrite each other.
 - **The timer it carries is the local status's own:** its start and its end after the last
-  application. A receiver that creates the status from the message runs it on the same timer,
-  and one that already has it moves its end no earlier.
+  application. A receiver that creates the status from the message ends it where the applier's
+  ends and pays ticks only from the grace described under damage over time; one that already
+  has it moves its end no earlier.
 - **A batch belongs to one life of the status.** When the local status ends or is created
   anew, the open batch closes and goes out at the next flush, and later applications open a
-  new one, so no message mixes the stacks or the timer of two lives. A batch whose status has
-  already ended is not sent, and a receiver ignores one that arrives after its end. A
-  duration no longer than `CoalesceMs` can end before its batch is sent, so the peers never
-  see it; the first such `Apply` per key logs a warning.
+  new one, so no message mixes the stacks or the timer of two lives. A receiver with no copy of
+  the status ignores a batch that arrives after its end; one whose copy still runs (another
+  client extended it) adds the stacks. A duration no longer than `CoalesceMs` plus 500 ms can
+  end before its batch arrives, so the peers never see it; the first such `Apply` per key logs
+  a warning.
 - **A removal drops what is still queued** for that target and key, on the client that
-  removed it and on every client that accepts the removal, so no client's batch re-adds the
-  status after it.
+  removed it and on every client that accepts the removal. A batch another client had already
+  sent when the removal was made can still arrive after it; each client remembers the removal
+  for `CoalesceMs` plus 2 s and ignores an application whose start precedes it, so such a batch
+  does not re-create the status. An application started after the removal is new and lands.
 - One message carries at most 255 applications; more within one window travel as a second
   message.
 - `0` (the default) sends each application at once.

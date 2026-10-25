@@ -20,7 +20,12 @@ namespace Ectype
     /// - a removal drops open and closed batches alike, and only for its own key (a key that
     ///   extends another with '#' is untouched);
     /// - the cap margin: 601 m does not displace 600 m, 400 m displaces 600 m, 80 m does not
-    ///   displace 100 m, 70 m does.
+    ///   displace 100 m, 70 m does;
+    /// - catch-up on a copy created late, with a 650 ms grace and 1 s ticks: a start 10.8 s old
+    ///   pays no tick, 10 s old pays the one due now, and 300 ms old at 100 ms ticks pays all 3;
+    /// - a removal at 1000 kept 2150 ms covers an application started at 900, not one at 1200,
+    ///   not another key, and nothing once expired;
+    /// - the removal rule over every stance, master or not, and every side.
     ///
     /// Authority (in game, once a character and its crew ship exist): status templates with no
     /// stat entries and no marker are driven through the receive path with synthetic senders,
@@ -29,14 +34,17 @@ namespace Ectype
     ///   must be refused both times with exactly one log line, and must not be active; a local
     ///   TryApply of it must be refused for its stance too;
     /// - an Any status received as ApplyN with 10 applications, then 3, must hold 13 stacks, and
-    ///   a removal from actor 9999 must take, since Any lets anyone remove;
+    ///   a removal from actor 9999 must take, since Any lets anyone remove; a batch started
+    ///   before that removal must then be ignored, and one started after it must land;
     /// - a Hostile status placed directly must refuse a removal from a sender that is not the
     ///   master and that its stance would not let apply it: this client's own actor when it is
     ///   not the master (same side), else actor 9999 (unknown side); the master's removal must
     ///   take when this client is the master;
     /// - a received removal must drop this client's own queued batch for that target and key;
     /// - on the master with an NPC in the sector, a Hostile application from the master whose
-    ///   attacker is that NPC must be judged by the NPC's side and land on the ship.
+    ///   attacker is that NPC must be judged by the NPC's side and land on the ship;
+    /// - on the master, a Hostile application from the master naming an attacker view that no
+    ///   longer resolves must land.
     /// </summary>
     internal static class StatusSelfTest
     {
@@ -44,6 +52,8 @@ namespace Ectype
         private const string OpenKey = "ectype.dev.selftest-open";
         private const string QueuedKey = "ectype.dev.selftest-queued";
         private const int Stranger = 9999;
+        /// <summary>A view id no object in a session carries.</summary>
+        private const int GoneView = 987654;
 
         private static bool _done;
         private static float _nextTry;
@@ -104,6 +114,36 @@ namespace Ectype
                               ", 400/600 " + EnemyStatusRank.Displaces(400f, 600f) + ", 80/100 " +
                               EnemyStatusRank.Displaces(80f, 100f) + ", 70/100 " +
                               EnemyStatusRank.Displaces(70f, 100f) + "; expected False, True, False, True");
+
+                // Catch-up on a copy created late: grace 650 ms (CoalesceMs 150 + 500), 1 s ticks.
+                const int now = 100000, tick = 1000, grace = 650;
+                long oldPaid = 10 - EnemyStatusEffect.FirstUnpaidTick(now, now - 10800, tick, grace);
+                long edgePaid = 10 - EnemyStatusEffect.FirstUnpaidTick(now, now - 10000, tick, grace);
+                long freshPaid = 3 - EnemyStatusEffect.FirstUnpaidTick(now, now - 300, 100, grace);
+                int anchor = EnemyStatusEffect.CatchUpFrom(now, now - 10800, grace);
+                if (oldPaid != 0 || edgePaid != 1 || freshPaid != 3 || anchor != now - grace)
+                    fails.Add("catch-up paid " + oldPaid + " tick(s) for a start 10.8 s old, " + edgePaid +
+                              " for 10 s, " + freshPaid + " for 300 ms at 100 ms ticks, anchored " +
+                              (anchor - now) + " ms; expected 0, 1, 3 and -650 ms");
+
+                // Removals remembered against applications already in flight.
+                EnemyStatusTombstones tombs = new EnemyStatusTombstones();
+                tombs.Record(4242, "ectype.dev.t", 1000, 2150);
+                bool stale = tombs.Covers(4242, "ectype.dev.t", 900, 1100);
+                bool fresh = tombs.Covers(4242, "ectype.dev.t", 1200, 1100);
+                bool other = tombs.Covers(4242, "ectype.dev.u", 900, 1100);
+                bool expired = tombs.Covers(4242, "ectype.dev.t", 900, 4000);
+                if (!stale || fresh || other || expired)
+                    fails.Add("a removal at 1000 covered a start of 900 " + stale + ", 1200 " + fresh +
+                              ", another key " + other + ", after expiry " + expired +
+                              "; expected True, False, False, False");
+
+                // The removal rule as a table.
+                string table = Verdicts();
+                const string want = "Any:None Any:None Any:None Any:None Any:None Any:None " +
+                                    "Hostile:None Hostile:None Hostile:None Hostile:Authority Hostile:None Hostile:Authority " +
+                                    "Friendly:None Friendly:None Friendly:None Friendly:Authority Friendly:Authority Friendly:None";
+                if (table != want) fails.Add("removal table " + table + ", expected " + want);
             }
             catch (Exception e)
             {
@@ -113,10 +153,28 @@ namespace Ectype
                 Plugin.Log.LogInfo("Ectype: dev self-test: status coalescing passed - ten applications " +
                                    "in one 150 ms window made one send carrying 10 applications; two " +
                                    "lives of a status made two batches; a removal dropped only its own key; " +
-                                   "the cap margin held.");
+                                   "the cap margin held; a copy created 10.8 s late paid no ticks; a removal " +
+                                   "covered applications started before it; the removal table held.");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: status coalescing FAILED - " +
                                     string.Join("; ", fails.ToArray()) + ".");
+        }
+
+        /// <summary>Each stance against (master, unknown), (master, same), (master, other),
+        /// (not master, unknown), (not master, other), (not master, same).</summary>
+        private static string Verdicts()
+        {
+            List<string> parts = new List<string>();
+            foreach (StatusStance stance in new[] { StatusStance.Any, StatusStance.Hostile, StatusStance.Friendly })
+            {
+                parts.Add(stance + ":" + EnemyStatuses.RemovalVerdict(stance, true, StatusSide.Unknown));
+                parts.Add(stance + ":" + EnemyStatuses.RemovalVerdict(stance, true, StatusSide.Same));
+                parts.Add(stance + ":" + EnemyStatuses.RemovalVerdict(stance, true, StatusSide.Other));
+                parts.Add(stance + ":" + EnemyStatuses.RemovalVerdict(stance, false, StatusSide.Unknown));
+                parts.Add(stance + ":" + EnemyStatuses.RemovalVerdict(stance, false, StatusSide.Other));
+                parts.Add(stance + ":" + EnemyStatuses.RemovalVerdict(stance, false, StatusSide.Same));
+            }
+            return string.Join(" ", parts.ToArray());
         }
 
         private static string Describe(List<EnemyStatusOutbox.Batch> batches)
@@ -183,6 +241,19 @@ namespace Ectype
                               (EnemyStatuses.IsActive(ship, OpenKey) ? " and left it active" : "") +
                               ", expected it to take");
 
+                // A batch in flight across that removal is ignored; one started after it lands.
+                StatusRefusal late = EnemyStatuses.HandleStacks(me, new object[] { view, OpenKey, now - 1000, 5000, 1f, 0, 2 });
+                if (late != StatusRefusal.InvalidDuration || EnemyStatuses.IsActive(ship, OpenKey))
+                    fails.Add("a batch started before the removal answered " + late +
+                              (EnemyStatuses.IsActive(ship, OpenKey) ? " and re-created the status" : "") +
+                              ", expected it ignored");
+                int after = PhotonNetwork.ServerTimestamp + 1;
+                StatusRefusal anew = EnemyStatuses.HandleStacks(me, new object[] { view, OpenKey, after, 5000, 1f, 0, 2 });
+                if (anew != StatusRefusal.None || EnemyStatuses.Stacks(ship, OpenKey) != 2)
+                    fails.Add("a batch started after the removal answered " + anew + " with " +
+                              EnemyStatuses.Stacks(ship, OpenKey) + " stack(s), expected 2");
+                EnemyStatuses.RemoveLocal(ship, OpenKey);
+
                 // A Hostile status refuses a remover its stance would not let apply it.
                 bool created;
                 EnemyStatuses.ApplyLocal(ship, hostileDef, now, 5000, 1f, null, Stranger, -1, false, 1, out created);
@@ -219,7 +290,7 @@ namespace Ectype
                 if (npc != null)
                 {
                     StatusRefusal rn = EnemyStatuses.HandleMessage(me, new object[]
-                        { (byte)0, view, HostileKey, now, 5000, 1f, npc.photonView.ViewID });
+                        { (byte)0, view, HostileKey, PhotonNetwork.ServerTimestamp + 1, 5000, 1f, npc.photonView.ViewID });
                     if (rn != StatusRefusal.None || !EnemyStatuses.IsActive(ship, HostileKey))
                         fails.Add("a Hostile apply from the master with NPC attacker " + npc.name +
                                   " answered " + rn + ", expected it to land");
@@ -227,6 +298,19 @@ namespace Ectype
                 }
                 else notes.Add(master ? "NPC-attacker case skipped: no hostile NPC in the sector"
                                       : "NPC-attacker case skipped: this client is not the master");
+
+                // The master naming an attacker that no longer resolves here (an NPC gone while
+                // its batch waited) is accepted.
+                if (master)
+                {
+                    EnemyStatuses.RemoveLocal(ship, HostileKey);
+                    StatusRefusal rg = EnemyStatuses.HandleMessage(me, new object[]
+                        { (byte)0, view, HostileKey, PhotonNetwork.ServerTimestamp + 1, 5000, 1f, GoneView });
+                    if (rg != StatusRefusal.None || !EnemyStatuses.IsActive(ship, HostileKey))
+                        fails.Add("a Hostile apply from the master naming a vanished attacker answered " + rg +
+                                  ", expected it to land");
+                    else notes.Add("a master apply naming a vanished attacker landed");
+                }
             }
             catch (Exception e)
             {
@@ -247,7 +331,8 @@ namespace Ectype
                 Plugin.Log.LogInfo("Ectype: dev self-test: status authority passed - a Hostile status " +
                                    "from actor " + me + " on its own ship was refused twice with one " +
                                    "log line, ApplyN 10 then 3 left 13 stacks, an Any status was removed " +
-                                   "by actor " + Stranger + ", a received removal dropped the queued batch; " +
+                                   "by actor " + Stranger + " and a batch started before that removal was ignored, a " +
+                                   "received removal dropped the queued batch; " +
                                    string.Join("; ", notes.ToArray()) + ".");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: status authority FAILED - " +
