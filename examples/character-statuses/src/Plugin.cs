@@ -5,6 +5,7 @@ using BepInEx.Logging;
 using CG.Game;
 using Ectype;
 using CG.Game.Player;
+using CG.Ship.Object;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -57,10 +58,11 @@ namespace ExampleCharacterStatuses
                 {
                     DisplayName = "Slowed",
                     // Accept requests from other clients, judged on the slowed player's client.
-                    Replicated = true,
+                    AcceptsRequests = true,
                     Stance = StatusStance.Friendly,      // crewmates only
-                    MaxRange = SlowReach + 1f,           // a metre of slack for network delay
+                    MaxRange = SlowReach,                // measured on the slowed player's client
                     RequiresLineOfSight = true,
+                    RefuseInTube = true,                 // not while either is in a clone tube
                     MinInterval = 2f,                    // one slow per 2 s from each requester
                     Burst = 1,
                     MaxSeconds = 3f,
@@ -88,8 +90,8 @@ namespace ExampleCharacterStatuses
                 Player me = LocalPlayer.I;
                 if (me == null) return;
 
-                // Applying again refreshes the timer. The status is removed on expiry,
-                // death and despawn; Remove(me, key) or RemoveAll(me) ends it early.
+                // Applying again refreshes the timer. The status ends on expiry, on death and
+                // when the character is destroyed; Remove(me, key) or RemoveAll(me) ends it early.
                 if (kb[Key.F6].wasPressedThisFrame)
                     CharacterStatuses.Apply(me, GuardKey, seconds: 10f);
 
@@ -101,11 +103,14 @@ namespace ExampleCharacterStatuses
                         Log.LogInfo("No crewmate within " + SlowReach + " m.");
                         return;
                     }
-                    // None means sent: the crewmate's client checks again and can refuse.
-                    CharacterStatusRefusal r = CharacterStatuses.Request(mate, SlowKey, seconds: 3f);
-                    Log.LogInfo(r == CharacterStatusRefusal.None
-                                    ? "Asked " + mate.name + "'s client to slow them."
-                                    : "Slow on " + mate.name + " refused here: " + r + ".");
+                    // The crewmate's client checks again and answers; a refusal from this
+                    // client's own checks is in before Request returns.
+                    string name = mate.name;
+                    CharacterStatuses.Request(mate, SlowKey, seconds: 3f).OnCompleted(r =>
+                        Log.LogInfo(r.Applied
+                                        ? "Slowed " + name + "."
+                                        : "Slow on " + name + " refused " +
+                                          (r.Sent ? "by their client" : "here") + ": " + r.Refusal + "."));
                 }
             }
             catch (Exception e)
@@ -114,8 +119,8 @@ namespace ExampleCharacterStatuses
             }
         }
 
-        /// <summary>The nearest other player's character within reach, or null. Every
-        /// player's character is in ClientGame.Current.Players.</summary>
+        /// <summary>The nearest living crewmate within reach, or null. Every player's
+        /// character is in ClientGame.Current.Players; Topology.Hostile tells sides apart.</summary>
         private static Player NearestCrewmate(Player me, float reach)
         {
             ClientGame game = ClientGame.Current;
@@ -124,7 +129,7 @@ namespace ExampleCharacterStatuses
             float bestDistance = reach;
             foreach (Player p in game.Players)
             {
-                if (p == null || p == me) continue;
+                if (p == null || p == me || p.State != LifeState.Alive || Topology.Hostile(me, p)) continue;
                 float d = Vector3.Distance(p.transform.position, me.transform.position);
                 if (d <= bestDistance)
                 {
