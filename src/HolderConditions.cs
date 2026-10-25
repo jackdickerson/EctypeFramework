@@ -316,17 +316,35 @@ namespace Ectype
         /// <summary>Records a holder's mask and rebuilds on a change.</summary>
         internal static void Apply(int actor, int mask)
         {
-            int old;
-            if (Received.TryGetValue(actor, out old) && old == mask) return;
-            Received[actor] = mask;
-            CharacterShipRoute.RequestPass();
+            if (!Record(actor, mask)) return;
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: conditions - actor " + actor + " now " + Describe(mask) + ".");
+        }
+
+        /// <summary>Stores a holder's mask and asks the route for a pass; false when it is unchanged.</summary>
+        internal static bool Record(int actor, int mask)
+        {
+            int old;
+            if (Received.TryGetValue(actor, out old) && old == mask) return false;
+            Received[actor] = mask;
+            CharacterShipRoute.RequestPass();
+            return true;
         }
 
 #if ECTYPE_DEV
         /// <summary>Dev build: forgets a holder's mask a self-test recorded.</summary>
         internal static void Forget(int actor) { Received.Remove(actor); }
+
+        /// <summary>Dev build: a holder's received mask, without the local-player lookup (which
+        /// touches Photon); -1 when none.</summary>
+        internal static int ReceivedMask(int actor)
+        {
+            int mask;
+            return Received.TryGetValue(actor, out mask) ? mask : -1;
+        }
+
+        /// <summary>Dev build: restores the declared flag a self-test's parsing set.</summary>
+        internal static void SetInUse(bool inUse) { InUse = inUse; }
 #endif
     }
 }

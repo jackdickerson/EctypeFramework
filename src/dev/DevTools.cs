@@ -37,6 +37,7 @@ namespace Ectype
             ContentSelfTest.Run();
             CharacterStatusSelfTest.RunOffline();
             DiscoverySelfTest.Run();
+            ScopeSelfTest.Run();
         }
 
         private static void Bind(ConfigFile cfg)

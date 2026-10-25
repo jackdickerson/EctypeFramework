@@ -114,38 +114,11 @@ namespace Ectype
 
         /// <summary>The facts perk scopes, holder conditions and RoleContext read. The live
         /// view in every shipped code path; a dev build's self-tests swap in a synthetic one for
-        /// the duration of one synchronous call.</summary>
+        /// the duration of one synchronous call (<see cref="TopologyView.Current"/>).</summary>
         internal static TopologyView View
         {
-            get
-            {
-#if ECTYPE_DEV
-                if (_testView != null) return _testView;
-#endif
-                return LiveTopologyView.Instance;
-            }
+            get { return TopologyView.Current; }
         }
-
-#if ECTYPE_DEV
-        private static TopologyView _testView;
-
-        /// <summary>Dev build only: answers <see cref="View"/> from <paramref name="view"/> until
-        /// the returned scope is disposed. The caller sets and restores it inside one call, so
-        /// no driver step ever sees the synthetic view.</summary>
-        internal static IDisposable UseTestView(TopologyView view)
-        {
-            TopologyView before = _testView;
-            _testView = view;
-            return new Restore(before);
-        }
-
-        private sealed class Restore : IDisposable
-        {
-            private readonly TopologyView _before;
-            internal Restore(TopologyView before) { _before = before; }
-            public void Dispose() { _testView = _before; }
-        }
-#endif
 
         /// <summary>
         /// The ship a player crews, identical on every client, or null while none can be named (a

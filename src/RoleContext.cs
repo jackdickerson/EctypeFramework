@@ -38,7 +38,7 @@ namespace Ectype
         public static int ForceOf(EctypeRoleAbility ability)
         {
             int actor = OwnerActor(ability);
-            return actor == 0 ? -1 : Topology.View.ForceOf(actor);
+            return actor == 0 ? -1 : TopologyView.Current.ForceOf(actor);
         }
 
         /// <summary>The owner's character is aboard their own crew ship.</summary>
@@ -83,7 +83,7 @@ namespace Ectype
         /// <summary>A team match is running (<see cref="Topology.TeamMatch"/>).</summary>
         public static bool IsTeamMatch
         {
-            get { return Topology.View.TeamMatch; }
+            get { return TopologyView.Current.TeamMatch; }
         }
 
         // ---- by actor, for the public members and the dev build's self-tests --------------
@@ -98,13 +98,13 @@ namespace Ectype
         internal static object ShipHandleOf(int actor, bool aboard)
         {
             if (actor == 0) return null;
-            TopologyView view = Topology.View;
+            TopologyView view = TopologyView.Current;
             return aboard ? view.AboardShip(actor) : view.CrewShip(actor);
         }
 
         internal static int ConditionsOf(int actor)
         {
-            return actor == 0 ? -1 : HolderConditions.Evaluate(Topology.View, actor);
+            return actor == 0 ? -1 : HolderConditions.Evaluate(TopologyView.Current, actor);
         }
 
         private static bool Has(EctypeRoleAbility ability, HolderCondition condition)

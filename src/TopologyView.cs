@@ -14,6 +14,41 @@ namespace Ectype
     /// </summary>
     internal abstract class TopologyView
     {
+        /// <summary>The live view, or in a dev build the synthetic one a self-test installed.
+        /// Held here rather than on Topology so a test reaches it without initialising Topology,
+        /// whose registry is typed on game classes.</summary>
+        internal static TopologyView Current
+        {
+            get
+            {
+#if ECTYPE_DEV
+                if (_testView != null) return _testView;
+#endif
+                return LiveTopologyView.Instance;
+            }
+        }
+
+#if ECTYPE_DEV
+        private static TopologyView _testView;
+
+        /// <summary>Dev build only: answers <see cref="Current"/> from <paramref name="view"/>
+        /// until the returned scope is disposed. The caller sets and restores it inside one call,
+        /// so no driver step ever sees the synthetic view.</summary>
+        internal static IDisposable UseTestView(TopologyView view)
+        {
+            TopologyView before = _testView;
+            _testView = view;
+            return new Restore(before);
+        }
+
+        private sealed class Restore : IDisposable
+        {
+            private readonly TopologyView _before;
+            internal Restore(TopologyView before) { _before = before; }
+            public void Dispose() { _testView = _before; }
+        }
+#endif
+
         /// <summary>More than one player ship object exists, dying ones included.</summary>
         internal abstract bool Multi { get; }
 
