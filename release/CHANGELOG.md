@@ -1,6 +1,6 @@
 ## 0.31.0
 
-Mods can give every ship or every player a lasting bonus, such as a tougher hull for a team match. Every player's game applies it as each ship or player appears, so ships start at their full, larger hull and every hull bar agrees.
+Mods can give every ship or every player a lasting bonus, such as a tougher hull for a team match. Every player's game applies it as each ship or player appears, so new ships and players start at their full, larger maximum and every bar agrees.
 
 Every mod-made status, button, setting and stat carries the name of the mod that made it, so a problem in a modded game traces back to its mod from the log.
 

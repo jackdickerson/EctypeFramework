@@ -100,7 +100,8 @@ namespace Ectype
     /// Postfix, not prefix: Player.Awake is what resolves Locomotion and fills the
     /// collection this registers into. It also covers every replica, since LocalPlayer's
     /// override calls into it. Lasting stat contributions for characters apply here, after the
-    /// stat surfaces are registered and before Start reads any stat.
+    /// stat surfaces are registered; their change events are raised again one frame after the
+    /// character's Start, for the health and oxygen components that subscribe late.
     /// </summary>
     [HarmonyPatch(typeof(Player), "Awake")]
     internal static class Player_Awake_Patch

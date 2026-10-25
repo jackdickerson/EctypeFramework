@@ -44,7 +44,9 @@ namespace Ectype
         /// The amount on one target (a PlayerControlledShip or a Player), or null for no
         /// contribution there. Asked at the target's spawn and on every
         /// <see cref="StatContributions.Refresh"/>. Every client asks it about every target, so it
-        /// must answer alike on every client: read replicated state only.
+        /// must answer alike on every client: read replicated state only. A character is asked
+        /// during its Awake, before it has a ship or a sector, so a character's answer reads
+        /// session-wide state, or the mod calls Refresh once the state it reads has arrived.
         /// </summary>
         public Func<OrbitObject, float?> Amount;
 
@@ -61,7 +63,9 @@ namespace Ectype
     /// client for every orbit object; the lines right after it set EstimatedHitPoints to
     /// MaxHitPoints on every client, and HitPoints on the master client, which replicates it. A
     /// contribution to MaxHitPoints is therefore where the ship starts. A character is caught in
-    /// the Player.Awake postfix, after the framework registers its stat surfaces there.
+    /// the Player.Awake postfix, after the framework registers its stat surfaces there; one frame
+    /// after its Start the change events of every stat applied by then are raised again, for the
+    /// components that subscribe in their own Awake or Start (see MarkStarted).
     ///
     /// Own stat only. The modifier goes on the target collection's own ModifiableFloat, not
     /// through StatTagCollection.ApplyModifiers, which recurses into every child collection: a
@@ -73,13 +77,19 @@ namespace Ectype
     /// recalculates (a prefix on ModifiableFloat.RecalculateValue, live only once a handle has
     /// been issued): while the handle is live the copy is tracked and follows the original's
     /// amount; once it is withdrawn every tracked copy is set to 0, which every modifier type
-    /// composes as no change, and an untracked copy reads 0 at its stat's next recalculation.
+    /// composes as no change, and an untracked copy reads 0 at its stat's next recalculation. A
+    /// deep copy of a whole stat carries its cached value and its clean flag, so it shows the
+    /// value at copy time until something marks it dirty.
     /// </summary>
     public static class StatContributions
     {
         /// <summary>Seconds between the driver's checks for destroyed targets and a changed
         /// session.</summary>
         public const float PruneSeconds = 1f;
+
+        /// <summary>Tracked copies of one modifier at which collected entries are swept. After a
+        /// sweep the next one waits for twice the live count.</summary>
+        private const int CopySweepBound = 16;
 
         private sealed class Entry
         {
@@ -102,6 +112,11 @@ namespace Ectype
             internal StatTagCollection Collection;
             internal float Requested;
             internal readonly List<WeakReference> Copies = new List<WeakReference>();
+            /// <summary>Copies.Count at which Track next drops collected entries.</summary>
+            internal int SweepAt = CopySweepBound;
+            /// <summary>Applied to a character before its after-Start notification ran: that
+            /// notification raises this stat's change events again.</summary>
+            internal bool BeforeStart;
         }
 
         internal sealed class TargetRec
@@ -116,6 +131,10 @@ namespace Ectype
             internal string Name;
             /// <summary>Dev self-test only: the stat every contribution lands on.</summary>
             internal ModifiableFloat TestStat = null;
+            /// <summary>Frame of the character's Start, or -1 before it.</summary>
+            internal int StartedFrame = -1;
+            /// <summary>True once the after-Start notification has run.</summary>
+            internal bool Notified;
             internal readonly Dictionary<string, Applied> ById = new Dictionary<string, Applied>(StringComparer.Ordinal);
 
             internal bool Destroyed { get { return IsUnity && Obj == null; } }
@@ -123,6 +142,7 @@ namespace Ectype
 
         private static readonly List<Entry> Entries = new List<Entry>();
         private static readonly List<TargetRec> Targets = new List<TargetRec>();
+        private static readonly List<TargetRec> StartPending = new List<TargetRec>();
         private static readonly Dictionary<int, Applied> ByHandle = new Dictionary<int, Applied>();
         private static readonly HashSet<string> WarnedOnce = new HashSet<string>();
         private static bool _anyHandle;
@@ -141,14 +161,13 @@ namespace Ectype
         {
             try
             {
-                string id = contribution != null ? contribution.Id : null;
-                // TODO(J7): check the "<plugin GUID>/<name>" shape with J7's shared identifier helper.
-                if (string.IsNullOrEmpty(id))
+                if (contribution == null)
                 {
-                    Plugin.Log.LogWarning("Ectype: stat contribution not registered: it needs an id " +
-                                          "(\"<plugin GUID>/<name>\").");
+                    Plugin.Log.LogWarning("Ectype: stat contribution not registered: the contribution is null.");
                     return false;
                 }
+                string id = contribution.Id;
+                if (!Identifiers.RefuseId("stat contribution", id)) return false;
                 if (Find(id) != null)
                 {
                     Plugin.Log.LogWarning("Ectype: stat contribution '" + id + "' not registered: that id " +
@@ -280,11 +299,63 @@ namespace Ectype
         }
 
         /// <summary>An orbit object reached its Start: a character caught at Awake takes the
-        /// session that is active now as its own.</summary>
+        /// session that is active now as its own, and is queued for the after-Start
+        /// notification.</summary>
         internal static void OnStarted(OrbitObject obj)
         {
             TargetRec t = RecOf(obj);
-            if (t != null && t.Session == null) t.Session = GameSessionManager.ActiveSession;
+            if (t == null) return;
+            if (t.Session == null) t.Session = GameSessionManager.ActiveSession;
+            MarkStarted(t, Time.frameCount);
+        }
+
+        /// <summary>
+        /// The character's health component subscribes to MaxHitPoints changes in its own Start,
+        /// and its oxygen component to JetpackOxygen changes in its own Awake, each with no
+        /// initial read, and the order of component Awake and Start calls on one object is
+        /// undefined. A contribution applied at the character's Awake can raise its change before
+        /// they subscribe. One frame after the character's Start every component's Start has run,
+        /// so the stats' change events are raised once more then.
+        /// </summary>
+        private static void MarkStarted(TargetRec t, int frame)
+        {
+            if (t.Kind != StatTarget.Character || t.StartedFrame >= 0) return;
+            t.StartedFrame = frame;
+            StartPending.Add(t);
+        }
+
+        /// <summary>Raises OnValueChange once for every stat, and OnModifiersChange once for every
+        /// collection, that a contribution was applied to before the notification, on each
+        /// queued character whose Start ran before <paramref name="frame"/>.</summary>
+        private static void NotifyStarted(int frame)
+        {
+            for (int i = StartPending.Count - 1; i >= 0; i--)
+            {
+                TargetRec t = StartPending[i];
+                if (frame <= t.StartedFrame) continue;
+                StartPending.RemoveAt(i);
+                t.Notified = true;
+                if (t.Destroyed || !Targets.Contains(t)) continue;
+                List<ModifiableFloat> stats = new List<ModifiableFloat>();
+                List<StatTagCollection> collections = new List<StatTagCollection>();
+                foreach (Applied a in t.ById.Values)
+                {
+                    if (!a.BeforeStart) continue;
+                    a.BeforeStart = false;
+                    if (!stats.Contains(a.Stat)) stats.Add(a.Stat);
+                    if (a.Collection != null && !collections.Contains(a.Collection)) collections.Add(a.Collection);
+                }
+                try
+                {
+                    foreach (ModifiableFloat stat in stats) stat.OnValueChange?.Invoke();
+                    foreach (StatTagCollection c in collections) c.OnModifiersChange?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError("Ectype: stat contributions on " + t.Name + " could not notify the " +
+                                        "character's components after its Start: " + ex);
+                }
+            }
         }
 
         private static void Spawn(TargetRec t)
@@ -299,6 +370,7 @@ namespace Ectype
         /// not touched) and withdraws everything from targets of an ended session.</summary>
         internal static void Poll()
         {
+            if (StartPending.Count > 0) NotifyStarted(Time.frameCount);
             if (Targets.Count == 0) return;
             float now = Time.unscaledTime;
             if (now < _nextPrune) return;
@@ -372,6 +444,7 @@ namespace Ectype
                     Stat = stat,
                     Collection = collection,
                     Requested = want.Value,
+                    BeforeStart = t.Kind == StatTarget.Character && !t.Notified,
                 };
                 a.Source = new LastingSource(a.Handle, e.Label);
                 a.Mod = new FloatModifier(amount, type, a.Source);
@@ -577,6 +650,11 @@ namespace Ectype
         {
             for (int i = 0; i < a.Copies.Count; i++)
                 if (ReferenceEquals(a.Copies[i].Target, copy)) return;
+            if (a.Copies.Count >= a.SweepAt)
+            {
+                a.Copies.RemoveAll(w => !w.IsAlive);
+                a.SweepAt = Math.Max(CopySweepBound, a.Copies.Count * 2);
+            }
             a.Copies.Add(new WeakReference(copy));
         }
 
@@ -623,6 +701,17 @@ namespace Ectype
             if (t != null) Drop(t, "dev self-test");
         }
 
+        /// <summary>Dev self-test: the target's Start ran in <paramref name="frame"/>.</summary>
+        internal static void DevStarted(object key, int frame)
+        {
+            TargetRec t = RecOf(key);
+            if (t != null) MarkStarted(t, frame);
+        }
+
+        /// <summary>Dev self-test: runs the after-Start notification as the driver would in
+        /// <paramref name="frame"/>.</summary>
+        internal static void DevNotify(int frame) { NotifyStarted(frame); }
+
         internal static FloatModifier DevModifier(object key, string id)
         {
             TargetRec t = RecOf(key);
@@ -655,7 +744,8 @@ namespace Ectype
     /// Postfix: OrbitObject.Start calls this on every client for every orbit object, and the lines
     /// right after it set the object's hit points to its maximum. A player ship's lasting
     /// contributions are applied here, so a MaxHitPoints contribution is where the ship starts. A
-    /// character, applied at Awake, takes its session here.
+    /// character, applied at Awake, takes its session here and is queued for the after-Start
+    /// notification.
     /// </summary>
     [HarmonyPatch(typeof(GameSession), "ApplyGlobalOrbitObjectSpawnProperties")]
     internal static class GameSession_ApplyGlobalOrbitObjectSpawnProperties_Patch

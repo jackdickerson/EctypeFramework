@@ -45,16 +45,33 @@ value when its ships spawn.
   so it reads replicated state only: which ship belongs to whom (see [topology.md](topology.md)),
   session data, a session stat. An answer that differs between clients gives each client a
   different ship. The local player, a local config value or `ClientGame.PlayerShip` differ
-  between clients.
+  between clients. A character is asked during its `Awake`, before it has a ship or a sector:
+  a character's `Amount` reads session-wide state, or the mod calls `Refresh` once the state it
+  reads has arrived. Null at `Awake` means no contribution on that character until a `Refresh`.
 - **Applied at spawn.** A player ship is caught in a postfix on
   `GameSession.ApplyGlobalOrbitObjectSpawnProperties`. Every orbit object's `Start` calls it on
   every client, and the next lines of `Start` set the object's estimated hit points to its
   maximum on every client and its hit points to its maximum on the master client, which
-  replicates them. A contribution to `MaxHitPoints` is therefore the hull every ship starts with,
-  on every screen. Every player ship passes there, extra ships included: a mod that spawns them
-  through the game's loadout path gets a networked `PlayerControlledShip` whose `Start` runs on
-  every client. A character is caught in the `Player.Awake` postfix, after the framework
-  registers its stat surfaces there and before `Start` reads any stat.
+  replicates them. A contribution to `MaxHitPoints` is therefore the hull a new ship starts
+  with, on every screen. A resumed save's ship is the exception: after its `Start` the game sets
+  its hit points to the absolute value saved with it. Every player ship passes there, extra ships
+  included: a mod that spawns them through the game's loadout path gets a networked
+  `PlayerControlledShip` whose `Start` runs on every client. A character is caught in the
+  `Player.Awake` postfix, after the framework registers its stat surfaces there.
+- **A character's health and oxygen take the new maximum one frame after its `Start`.** The
+  character's real health and jetpack oxygen are Opsive attributes with a maximum of their own.
+  The game copies `MaxHitPoints` and `JetpackOxygenCapacity` into them only when those stats
+  raise their change event: the health component subscribes in its `Start`, the oxygen component
+  in its `Awake`, neither reads the stat when it subscribes, and the order of component `Awake`
+  and `Start` calls on one object is undefined. A modifier added in `Player.Awake` raises its
+  change before the health component listens. The framework therefore raises the change event of
+  every stat it applied to a character, and its collection's modifiers-changed event, once more
+  one frame after the character's `Start`, when every component's `Start` has run. The game's
+  handler sets the attribute's maximum to the stat's value and adds the difference to the
+  current value, which the attribute clamps to its range. A character at full health stays full
+  at the new maximum. The HUD shows attribute health over `MaxHitPoints`, and clone-tube revival
+  heals to the attribute's maximum, so both agree from that frame on. Raising the event again
+  for a stat whose attribute already matches adds a difference of 0.
 - **Once per target and id.** Repeated spawn calls for one object do nothing more, and a second
   `Register` of a live id is refused, so a contribution never stacks with itself.
 - **`Amount` returning null withdraws.** At spawn it means no contribution there. On a
@@ -82,7 +99,16 @@ value when its ships spawn.
   integer handle and the label, never the contribution or its target. A copy is found when the
   stat it was added to recalculates: while the contribution is live there, the copy follows the
   original's amount; once it is withdrawn the copy is set to 0, which every modifier type
-  composes as no change.
+  composes as no change. Copies are tracked by weak reference; collected ones are swept when one
+  modifier's list passes 16 entries.
+- **A deep copy of a whole stat is a snapshot until it recalculates.** The copy carries the
+  stat's cached value and its clean flag, and a clean stat returns its cached value without
+  recalculating, so the copy shows the value at copy time, contribution included. Its next
+  recalculation, after anything marks it dirty, finds the copied modifier and applies the rule
+  above.
+- **A live copy on another target stacks.** A copy that another mod adds to a stat on another
+  live target follows the original's amount there. If that target carries the same contribution,
+  the copy adds to that target's own modifier until the original is withdrawn.
 - **The label.** `Source` is the modifier source's header, through the game's
   descriptive-source interface. The game's displays that list a stat's modifiers by header (the
   module stat panel, a module's hover information, the clone tube's regeneration panel) read
@@ -92,8 +118,13 @@ value when its ships spawn.
 - **Late joiners need nothing extra.** A joiner's game spawns its own copy of every ship and
   character and applies the contributions there, provided `Amount` can answer from what the
   joiner holds at that moment.
-- With nothing registered, a spawn adds one entry to a list, and the driver's step is a count
-  check once a second.
+- **Cost.** A spawn adds one entry to a list, registered contributions or not. The driver's step
+  runs every frame: two count checks, then, while any ship or character is recorded, a time
+  compare, and once a second a scan of the recorded targets for destroyed ones and a changed
+  session. The copy check is a prefix on every float stat's recalculation. It returns at once
+  until the first contribution is applied in the process; from then on, for the rest of the
+  process, it walks the modifiers of each stat that recalculates, including after every
+  contribution is unregistered. A stat recalculates only after something marks it dirty.
 
 ## Log lines
 
@@ -104,7 +135,8 @@ value when its ships spawn.
 | `Ectype: stat contribution '<id>' registered: <target> <stat> <kind>.` (verbose) | `Register` accepted it. |
 | `Ectype: stat contribution '<id>' unregistered.` (verbose) | `Unregister` withdrew it everywhere. |
 | `Ectype: stat contributions on <target> dropped (<reason>).` (verbose) | A target with contributions was destroyed (`target destroyed`: its stats are not touched) or belongs to a session that ended (`session ended`: every contribution is withdrawn). |
-| `Ectype: stat contribution not registered: it needs an id ("<plugin GUID>/<name>").` | `Register` got no contribution or an empty id. |
+| `Ectype: stat contribution not registered: the contribution is null.` | `Register` got null. |
+| `Ectype: stat contribution '<id>' refused: <problem>.` | The id is not `"<plugin GUID>/<name>"` with the GUID of a loaded plugin. `<problem>` is one of the identifier problems in [../identifiers.md](../identifiers.md). |
 | `Ectype: stat contribution '<id>' not registered: that id is already registered; unregister it first.` | The id is live. A contribution is registered once; change what `Amount` reads and call `Refresh` instead. |
 | `Ectype: stat contribution '<id>' not registered: it needs a stat and an Amount function.` | `Stat` is empty or `Amount` is null. |
 | `Ectype: stat contribution '<id>' not registered: unknown target <n>.` and `... unknown kind <n>.` | An enum value outside `StatTarget` or `SessionStatModifierKind`. |
@@ -117,8 +149,9 @@ value when its ships spawn.
 | `Ectype: stat contribution '<id>': updating a copy threw; the copy is no longer followed: <message>` (verbose) | A copy of the modifier could not be updated, usually because the stat it was added to went away. |
 | `Ectype: stat contribution copy check on recalculation failed (reported once): <exception>` | The check that finds copies of a lasting modifier as their stat recalculates threw. Copies may then keep their amount after the contribution is withdrawn. |
 | `Ectype: registering stat contribution '<id>' failed: <exception>`, `Ectype: refreshing stat contribution '<id>' failed: <exception>`, `Ectype: unregistering stat contribution '<id>' failed: <exception>`, `Ectype: applying stat contribution '<id>' to <target> failed: <exception>`, `Ectype: withdrawing stat contribution '<id>' from <target> failed: <exception>` | An unexpected failure in that step. The other targets and contributions carry on. |
+| `Ectype: stat contributions on <target> could not notify the character's components after its Start: <exception>` | A handler on a contributed stat's change event threw when the framework raised it one frame after the character's `Start`. The character's health or oxygen may keep the prefab maximum. |
 | `Ectype: stat contributions on a spawning ship failed: <exception>` and `Ectype: stat contributions on a spawning character failed: <exception>` | The spawn hook threw. That target has none of its contributions; a `Refresh` does not reach it, because it was never recorded. |
-| `Ectype: dev self-test: stat contributions passed (validation; once per target; kinds; null withdraws; Refresh; copies inert after Unregister; Unregister everywhere).` (dev tools build only) | Registration refusals, the once-per-target rule, the kinds, withdrawal by null, in-place refresh, a deep copy following the original and reading 0 after `Unregister`, and withdrawal from every target came out as documented. A `FAILED` line names each wrong value. |
+| `Ectype: dev self-test: stat contributions passed (validation; once per target; kinds; null withdraws; Refresh; copies inert after Unregister; copied stat; after Start; Unregister everywhere).` (dev tools build only) | Registration refusals, the once-per-target rule, the kinds, withdrawal by null, in-place refresh, a deep copy following the original and reading 0 after `Unregister`, a deep-copied stat keeping its cached value until marked dirty, the after-Start change event raised once a frame after `Start`, and withdrawal from every target came out as documented. The self-test also logs one `stat contribution 'com.example.notloaded/x' refused` error, its refusal case. A `FAILED` line names each wrong value. |
 
 [../troubleshooting.md](../troubleshooting.md) lists every line with its cause.
 
@@ -127,6 +160,25 @@ value when its ships spawn.
 - **Registering after the ships spawned, to give them a bigger hull.** The maximum rises at
   once, but the hit points were set at spawn and stay where they are. Register in `Awake`.
 - **`Refresh` to heal a ship.** It changes the maximum, not the current hit points.
+- **`Refresh` lowering a ship's `MaxHitPoints` to cap its hull.** The ship's hit-point setter
+  does not clamp to the maximum, so the hit points stay above the new maximum until damage
+  brings them below it.
+- **`Refresh` on a character expecting only the maximum to move.** The game's handler adds the
+  change in maximum to the current health and oxygen: raising the maximum heals by the
+  difference, lowering it takes the difference away, down to the attribute's minimum.
+- **Expecting a resumed save's ship at its full, larger hull.** The game sets a resumed ship's
+  hit points to the absolute value saved with it, after `Start`. A save made without the
+  contribution resumes with the old hit points under the larger maximum.
+- **Adding a character `MaxHitPoints` modifier by hand in a `Player.Awake` patch.** The stat
+  changes, but the health component subscribes in its `Start` and never reads the stat, so the
+  character's real health keeps the prefab maximum and the HUD shows a part-empty bar at full
+  health. A lasting contribution raises the change again after `Start`. Between the character's
+  `Awake` and one frame after its `Start`, its health still reads the prefab maximum.
+- **A character's `Amount` reading the character's ship or sector.** It is asked during the
+  character's `Awake`, before either exists. Read session-wide state, or call `Refresh` when the
+  state arrives.
+- **Unregistering and expecting a deep-copied stat to drop the contribution at once.** The
+  copied stat returns its cached value until something marks it dirty.
 - **`Stat = "ForwardPower"` on a `PlayerShip` target.** That stat lives on the engine's
   collection, a child of the ship's, and a lasting contribution touches the ship's own stats
   only. Use a perk, or a timed contribution on the engine's collection.
@@ -138,8 +190,9 @@ value when its ships spawn.
   into every module, and each module registers its own `MaxHitPoints`.
 - **Expecting the label in the ship's stat panel.** The stock panels list module stats only.
 - **`Kind = Factor` with `Amount` 0 to switch it off.** A factor is above 0. Answer null.
-- **An id without the plugin GUID.** It must be `<plugin GUID>/<name>`, so two mods cannot
-  collide.
+- **An id without the plugin GUID, or with another mod's.** `Register` refuses an id unless the
+  part before its first `/` is the GUID of a loaded plugin, so two mods cannot collide. See
+  [../identifiers.md](../identifiers.md).
 
 Sample: [examples/timed-stat-contributions](../../examples/timed-stat-contributions/), which
 registers a +25% hull contribution beside its timed thrust bonus.
