@@ -463,8 +463,8 @@ namespace Ectype
     /// The replication half, not built. What it would take, so the next person does not
     /// have to re-derive it:
     ///
-    /// 1. Wire. A ModMessage subclass beside EnemyStatusMessage, carrying
-    ///    (op, target view id, key, start timestamp, duration ms, magnitude). Broadcast
+    /// 1. Wire. A new EctypeNet subtype beside EnemyStatus (and a network contract bump),
+    ///    carrying (op, target view id, key, start timestamp, duration ms, magnitude). Broadcast
     ///    with RuntimeAbilities.Recipients() as EnemyStatuses.Broadcast does. A Player is
     ///    a networked object, so PhotonView.Find resolves the target on the far side;
     ///    the local map key (Unity instance id) must become the view id in the same

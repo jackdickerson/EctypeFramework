@@ -61,6 +61,13 @@ namespace Ectype
             }
             PatchesApplied = true;
 
+            // The framework's message types. The driver subscribes the receive path on its
+            // first frame, before any room can be joined.
+            EctypeNet.Register(EctypeNet.AbilityActive, "ability-active",
+                               AbilityActiveMessage.Receive);
+            EctypeNet.Register(EctypeNet.EnemyStatus, "enemy-status",
+                               EnemyStatusMessage.Receive);
+
             // Resolved and patched gate by gate, so a renamed game member costs only the
             // system that needs it.
             try { EnemyAbilities.ApplyPatches(harmony); }
@@ -163,6 +170,8 @@ namespace Ectype
 #if ECTYPE_DEV
             Step("layout poll", DevLayout.Poll);
 #endif
+            Step("net", EctypeNet.Poll);
+            Step("presence", PeerPresence.Publish);
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.
             Step("enemy abilities", EnemyAbilities.Poll);

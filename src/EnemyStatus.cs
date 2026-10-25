@@ -6,7 +6,6 @@ using Gameplay.Utilities;
 using Photon.Pun;
 using Photon.Realtime;
 using UnityEngine;
-using VoidManager.ModMessages;
 
 namespace Ectype
 {
@@ -33,8 +32,8 @@ namespace Ectype
     ///    client only (the master, for NPCs); HP replicates through the game's own
     ///    serialization, and set_HitPoints already calls Kill() at &lt;= 0 on the owner,
     ///    so a DoT can finish a target with no extra death handling.
-    ///  * Replication rides VoidManager's ModMessage channel, like AbilitySync: the
-    ///    applier broadcasts (target view id, status key, timestamps, magnitude) and each
+    ///  * Replication rides the framework's own Photon event (EctypeNet), like AbilitySync:
+    ///    the applier broadcasts (target view id, status key, timestamps, magnitude) and each
     ///    peer materializes the status locally against its own replica. Fresh modifier
     ///    instances are built per application - a shared StatMod instance cannot be
     ///    applied to two targets, because applying overwrites its Source and removal
@@ -414,9 +413,7 @@ namespace Ectype
         {
             Player[] to = RuntimeAbilities.Recipients();
             if (to.Length == 0) return;
-            ModMessage.Send(EctypePluginInfo.PLUGIN_GUID,
-                            ModMessage.GetIdentifier(typeof(EnemyStatusMessage)),
-                            to, args, reliable: true);
+            EctypeNet.Send(EctypeNet.EnemyStatus, to, args, reliable: true);
         }
 
         internal static void HandleMessage(object[] args)
@@ -694,14 +691,14 @@ namespace Ectype
     }
 
     /// <summary>
-    /// Receiver. Discovered by VoidManager like every other ModMessage subclass here.
+    /// Receiver, registered with EctypeNet as subtype <see cref="EctypeNet.EnemyStatus"/>.
     /// Deliberately not owner-gated: any crew member's client may apply a status to an
     /// NPC (the applier is not the view owner - the master is), and the payload can only
     /// reference templates this client itself registered.
     /// </summary>
-    public sealed class EnemyStatusMessage : ModMessage
+    internal static class EnemyStatusMessage
     {
-        public override void Handle(object[] args, Player sender)
+        internal static void Receive(int senderActor, object[] args)
         {
             try
             {
