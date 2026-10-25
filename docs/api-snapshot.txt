@@ -31,10 +31,14 @@ Ectype.ChannelEnd :: public override string ToString()
 Ectype.CharacterStatusDef : public sealed class
 Ectype.CharacterStatusDef :: public Ectype.StatusStance Stance
 Ectype.CharacterStatusDef :: public Ectype.StatusVisibility Visibility
+Ectype.CharacterStatusDef :: public System.Action<CG.Game.Player.Player, CG.Game.Player.Player, float, int> OnRequestApplied
 Ectype.CharacterStatusDef :: public System.Action<CG.Game.Player.Player, float> OnTick
 Ectype.CharacterStatusDef :: public System.Action<CG.Game.Player.Player, int> OnApplied
 Ectype.CharacterStatusDef :: public System.Action<CG.Game.Player.Player> OnRemoved
 Ectype.CharacterStatusDef :: public System.Func<CG.Game.Player.Player, UnityEngine.GameObject> CreateVfx
+Ectype.CharacterStatusDef :: public System.Func<CG.Game.Player.Player, float> MaxMagnitudeFor
+Ectype.CharacterStatusDef :: public System.Func<CG.Game.Player.Player, float> MaxRangeFor
+Ectype.CharacterStatusDef :: public System.Func<CG.Game.Player.Player, float> MinIntervalFor
 Ectype.CharacterStatusDef :: public bool AcceptsRequests
 Ectype.CharacterStatusDef :: public bool Presented
 Ectype.CharacterStatusDef :: public bool RefreshOnReapply
@@ -188,6 +192,8 @@ Ectype.EnemyStatusDef :: public Ectype.StatusVisibility Visibility
 Ectype.EnemyStatusDef :: public System.Action<CG.Space.OrbitObject, CG.Space.OrbitObject, float> OnTick
 Ectype.EnemyStatusDef :: public System.Action<CG.Space.OrbitObject, int> OnApplied
 Ectype.EnemyStatusDef :: public System.Action<CG.Space.OrbitObject> OnRemoved
+Ectype.EnemyStatusDef :: public System.Action<Ectype.StatusInstance> OnInstanceApplied
+Ectype.EnemyStatusDef :: public System.Action<Ectype.StatusInstance> OnInstanceRemoved
 Ectype.EnemyStatusDef :: public System.Func<CG.Space.OrbitObject, UnityEngine.GameObject> CreateVfx
 Ectype.EnemyStatusDef :: public UnityEngine.Sprite Icon
 Ectype.EnemyStatusDef :: public UnityEngine.Vector3 VfxLocalOffset
@@ -211,14 +217,26 @@ Ectype.EnemyStatusDef :: public Ectype.EnemyStatusDef AddIntStat(string statAlia
 Ectype.EnemyStatusDef :: public Ectype.EnemyStatusDef AddStat(string statAlias, string modifierType, float amount)
 Ectype.EnemyStatuses : public static class
 Ectype.EnemyStatuses :: public static Ectype.StatusRefusal TryApply(CG.Space.OrbitObject target, string key, float seconds, float magnitude = 1f, CG.Space.OrbitObject attacker = null)
+Ectype.EnemyStatuses :: public static Ectype.StatusRefusal TryApply(CG.Space.OrbitObject target, string key, float seconds, float magnitude, CG.Space.OrbitObject attacker, int tag)
+Ectype.EnemyStatuses :: public static Ectype.StatusRefusal TryApply(Ectype.StatusPart part, string key, float seconds, int tag = 0)
 Ectype.EnemyStatuses :: public static Ectype.StatusRefusal TryRemove(CG.Space.OrbitObject target, string key)
+Ectype.EnemyStatuses :: public static Ectype.StatusRefusal TryRemove(Ectype.StatusPart part, string key)
 Ectype.EnemyStatuses :: public static UnityEngine.Sprite IconFromEmbeddedPng(System.Reflection.Assembly asm, string key)
 Ectype.EnemyStatuses :: public static bool IsActive(CG.Space.OrbitObject target, string key)
+Ectype.EnemyStatuses :: public static bool IsActive(Ectype.StatusPart part, string key)
 Ectype.EnemyStatuses :: public static float RemainingSeconds(CG.Space.OrbitObject target, string key)
+Ectype.EnemyStatuses :: public static float RemainingSeconds(Ectype.StatusPart part, string key)
+Ectype.EnemyStatuses :: public static int GetActive(System.Collections.Generic.List<Ectype.StatusInstance> into, string key = null)
 Ectype.EnemyStatuses :: public static int Stacks(CG.Space.OrbitObject target, string key)
+Ectype.EnemyStatuses :: public static int Stacks(Ectype.StatusPart part, string key)
+Ectype.EnemyStatuses :: public static int Tag(CG.Space.OrbitObject target, string key)
+Ectype.EnemyStatuses :: public static int Tag(Ectype.StatusPart part, string key)
 Ectype.EnemyStatuses :: public static void Apply(CG.Space.OrbitObject target, string key, float seconds, float magnitude = 1f, CG.Space.OrbitObject attacker = null)
+Ectype.EnemyStatuses :: public static void Apply(CG.Space.OrbitObject target, string key, float seconds, float magnitude, CG.Space.OrbitObject attacker, int tag)
+Ectype.EnemyStatuses :: public static void Apply(Ectype.StatusPart part, string key, float seconds, int tag = 0)
 Ectype.EnemyStatuses :: public static void Register(Ectype.EnemyStatusDef def)
 Ectype.EnemyStatuses :: public static void Remove(CG.Space.OrbitObject target, string key)
+Ectype.EnemyStatuses :: public static void Remove(Ectype.StatusPart part, string key)
 Ectype.FrameworkStats : public static class
 Ectype.FrameworkStats :: public const string AntiPersonnelDamage = "AntiPersonnelDamage"
 Ectype.FrameworkStats :: public const string ExternalForceDamping = "ExternalForceDamping"
@@ -265,6 +283,14 @@ Ectype.GateSide :: Owner = 1
 Ectype.HandAttractorStats : public static class
 Ectype.HandAttractorStats :: public static bool Register(Gameplay.Utilities.StatTagCollection stats, ref Gameplay.Utilities.ModifiableFloat range, ref Gameplay.Utilities.ModifiableFloat pullVelocity)
 Ectype.HandAttractorStats :: public static bool RegisterTiming(FiniteDurationClassAbility ability, ref Gameplay.Utilities.ModifiableFloat beams)
+Ectype.HostRoomValue<T> : public sealed class : Ectype.IHostRoomValue
+Ectype.HostRoomValue<T> :: public T Value { get; }
+Ectype.HostRoomValue<T> :: public bool CanSet { get; }
+Ectype.HostRoomValue<T> :: public bool HasValue { get; }
+Ectype.HostRoomValue<T> :: public int MaxBytes { get; }
+Ectype.HostRoomValue<T> :: public string Key { get; }
+Ectype.HostRoomValue<T> :: public event System.Action<T> Changed
+Ectype.HostRoomValue<T> :: public bool Set(T value)
 Ectype.HostValue<T> : public sealed class : Ectype.IHostValue
 Ectype.HostValue<T> :: public BepInEx.Configuration.ConfigEntry<T> Entry { get; }
 Ectype.HostValue<T> :: public Ectype.HostValueSource Source { get; }
@@ -307,22 +333,30 @@ Ectype.InteractionGate :: public static bool Register(string id, System.Func<Ect
 Ectype.InteractionGate :: public static bool Unregister(string id)
 Ectype.InteractionGate :: public static void SuppressWarningsFor(string id, bool suppress = true)
 Ectype.InteractionKind : public enum : int
-Ectype.InteractionKind :: AirlockControl = 6
-Ectype.InteractionKind :: CarryablePickup = 9
-Ectype.InteractionKind :: CloneTube = 13
+Ectype.InteractionKind :: AirlockPressurize = 6
+Ectype.InteractionKind :: AirlockSafety = 7
+Ectype.InteractionKind :: Breaker = 11
+Ectype.InteractionKind :: CarryablePickup = 14
+Ectype.InteractionKind :: CloneTube = 18
 Ectype.InteractionKind :: Door = 5
-Ectype.InteractionKind :: EnhancementPanel = 8
+Ectype.InteractionKind :: EnhancementPanel = 13
 Ectype.InteractionKind :: Helm = 2
-Ectype.InteractionKind :: Minigame = 14
-Ectype.InteractionKind :: ModuleUpgrade = 12
+Ectype.InteractionKind :: Minigame = 19
+Ectype.InteractionKind :: ModulePowerSwitch = 8
+Ectype.InteractionKind :: ModuleUpgrade = 17
 Ectype.InteractionKind :: Other = 0
-Ectype.InteractionKind :: Periscope = 15
-Ectype.InteractionKind :: PowerSwitch = 7
+Ectype.InteractionKind :: OtherPowerSwitch = 12
+Ectype.InteractionKind :: Periscope = 20
+Ectype.InteractionKind :: PowerLineSwitch = 10
 Ectype.InteractionKind :: Seat = 1
-Ectype.InteractionKind :: SocketInsert = 10
-Ectype.InteractionKind :: SocketRelease = 11
+Ectype.InteractionKind :: ShipPowerSwitch = 9
+Ectype.InteractionKind :: SocketInsert = 15
+Ectype.InteractionKind :: SocketRelease = 16
 Ectype.InteractionKind :: Terminal = 4
 Ectype.InteractionKind :: Turret = 3
+Ectype.InteractionKinds : public static class
+Ectype.InteractionKinds :: public static bool IsAirlockControl(this Ectype.InteractionKind kind)
+Ectype.InteractionKinds :: public static bool IsPowerSwitch(this Ectype.InteractionKind kind)
 Ectype.LayoutSpec : public class
 Ectype.LayoutSpec :: public bool showPager
 Ectype.LayoutSpec :: public bool? showRoleName
@@ -498,6 +532,20 @@ Ectype.RoleRegistry :: public static void RegisterUnlockPredicate(string roleId,
 Ectype.RoleStats : public static class
 Ectype.RoleStats :: public static bool RegisterAbilityTiming(FiniteDurationClassAbility ability, string roleId, string durationStat, string cooldownStat)
 Ectype.RoleStats :: public static int Id(string roleId, string statName)
+Ectype.RpcContext : public static class
+Ectype.RpcContext :: public static Ectype.RpcSource Source { get; }
+Ectype.RpcContext :: public static Photon.Realtime.Player Sender { get; }
+Ectype.RpcContext :: public static bool Installed { get; }
+Ectype.RpcContext :: public static byte EventCode { get; }
+Ectype.RpcContext :: public static int SenderActor { get; }
+Ectype.RpcContext :: public static int ViewId { get; }
+Ectype.RpcContext :: public static bool FromAbsentPlayer(Photon.Pun.PhotonView view)
+Ectype.RpcContext :: public static bool TryGetSender(Photon.Pun.PhotonView view, out Photon.Realtime.Player sender)
+Ectype.RpcContext :: public static void Enable()
+Ectype.RpcSource : public enum : int
+Ectype.RpcSource :: Event = 2
+Ectype.RpcSource :: None = 0
+Ectype.RpcSource :: Rpc = 1
 Ectype.RuntimeAbilities : public static class
 Ectype.RuntimeAbilities :: public static string KeyOf(Opsive.UltimateCharacterController.Character.Abilities.Ability ability)
 Ectype.RuntimeAbilities :: public static void Register(Opsive.UltimateCharacterController.Character.Abilities.Ability ability, string key)
@@ -514,6 +562,7 @@ Ectype.SessionData :: public const string HostValuesRoomProperty = "Ectype.HostV
 Ectype.SessionData :: public const string RoomPropertyPrefix = "Ectype."
 Ectype.SessionData :: public static string SessionId { get; }
 Ectype.SessionData :: public static event System.Action<string> Changed
+Ectype.SessionData :: public static Ectype.HostRoomValue<T> HostRoomValue<T>(string key, T defaultValue, int maxBytes = 4096)
 Ectype.SessionData :: public static Ectype.HostValue<T> HostValue<T>(BepInEx.Configuration.ConfigEntry<T> entry, string key = null)
 Ectype.SessionData :: public static T Current<T>(string key)
 Ectype.SessionData :: public static bool Has(string key)
@@ -591,6 +640,45 @@ Ectype.StatCollectionKind : public enum : int
 Ectype.StatCollectionKind :: Character = 0
 Ectype.StatCollectionKind :: Session = 2
 Ectype.StatCollectionKind :: Ship = 1
+Ectype.StatContribution : public sealed class
+Ectype.StatContribution :: public Ectype.SessionStatModifierKind Kind
+Ectype.StatContribution :: public Ectype.StatTarget Target
+Ectype.StatContribution :: public System.Func<CG.Space.OrbitObject, float?> Amount
+Ectype.StatContribution :: public string Id
+Ectype.StatContribution :: public string Source
+Ectype.StatContribution :: public string Stat
+Ectype.StatContribution :: public StatContribution()
+Ectype.StatContributions : public static class
+Ectype.StatContributions :: public const float PruneSeconds = 1f
+Ectype.StatContributions :: public static bool IsRegistered(string id)
+Ectype.StatContributions :: public static bool Register(Ectype.StatContribution contribution)
+Ectype.StatContributions :: public static bool Unregister(string id)
+Ectype.StatContributions :: public static float? Current(CG.Space.OrbitObject target, string id)
+Ectype.StatContributions :: public static int Refresh(string id)
+Ectype.StatTarget : public enum : int
+Ectype.StatTarget :: Character = 1
+Ectype.StatTarget :: PlayerShip = 0
+Ectype.StatusInstance : public struct
+Ectype.StatusInstance :: public readonly CG.Space.OrbitObject Target
+Ectype.StatusInstance :: public readonly Ectype.StatusPart Part
+Ectype.StatusInstance :: public readonly bool Created
+Ectype.StatusInstance :: public readonly bool IsPart
+Ectype.StatusInstance :: public readonly int EndServerTime
+Ectype.StatusInstance :: public readonly int Stacks
+Ectype.StatusInstance :: public readonly int Tag
+Ectype.StatusInstance :: public readonly string Key
+Ectype.StatusInstance :: public float RemainingSeconds { get; }
+Ectype.StatusPart : public struct : System.IEquatable<Ectype.StatusPart>
+Ectype.StatusPart :: public readonly int Index
+Ectype.StatusPart :: public readonly int ViewId
+Ectype.StatusPart :: public bool IsValid { get; }
+Ectype.StatusPart :: public StatusPart(int viewId, int index)
+Ectype.StatusPart :: public T Resolve<T>() where T : UnityEngine.Component
+Ectype.StatusPart :: public bool Equals(Ectype.StatusPart other)
+Ectype.StatusPart :: public override bool Equals(object obj)
+Ectype.StatusPart :: public override int GetHashCode()
+Ectype.StatusPart :: public override string ToString()
+Ectype.StatusPart :: public static Ectype.StatusPart Of<T>(T part) where T : UnityEngine.Component
 Ectype.StatusRefusal : public enum : int
 Ectype.StatusRefusal :: Authority = 8
 Ectype.StatusRefusal :: Failed = 9
@@ -599,6 +687,7 @@ Ectype.StatusRefusal :: InvalidDuration = 4
 Ectype.StatusRefusal :: InvalidTarget = 1
 Ectype.StatusRefusal :: Invulnerable = 5
 Ectype.StatusRefusal :: None = 0
+Ectype.StatusRefusal :: NotMaster = 10
 Ectype.StatusRefusal :: NotRegistered = 2
 Ectype.StatusRefusal :: Stance = 6
 Ectype.StatusRefusal :: UnknownSide = 7
@@ -606,6 +695,7 @@ Ectype.StatusStance : public enum : int
 Ectype.StatusStance :: Any = 0
 Ectype.StatusStance :: Friendly = 2
 Ectype.StatusStance :: Hostile = 1
+Ectype.StatusStance :: MasterOnly = 3
 Ectype.StatusVisibility : public enum : int
 Ectype.StatusVisibility :: All = 0
 Ectype.StatusVisibility :: HostileToTarget = 3
