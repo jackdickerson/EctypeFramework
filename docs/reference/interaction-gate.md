@@ -156,7 +156,8 @@ them, so a prefix and finalizer around the dispatch hold the event being handled
 These Photon hooks are installed once the game's state machine has left its first state and
 the loading screen, never at plugin load: patching `PhotonNetwork` at start-up sets Photon up
 before the game does, and the game's connection then never gets past the name server. Until
-then, owner-side checks that need the RPC sender let everything through.
+then, the owner-side checks that rely on them (power, panel, synced-switch and socket requests,
+ownership takeovers) let everything through.
 
 ## The consistency rule
 
@@ -213,7 +214,7 @@ Suppression and the gate answer different questions:
 stop another mod's background system (automatic turrets, a spawner), because that is not an
 interaction.
 
-A role manifest does not declare gates in this version. The shape it would take, compiled to a
+A role manifest does not declare gates. The shape a declaration would take, compiled to a
 registered gate when the role registers:
 
 ```json
@@ -249,8 +250,8 @@ consistency rule, which is why the vocabulary would be closed rather than free c
   use is refused at the station's own entry, with the warning.
 - **The superior grappling hook pulls a loose item in** without the raycast. The pick-up at the
   end goes through the carry interaction and is judged there.
-- **Owner-side checks before the game has loaded** let requests that need the RPC sender
-  through.
+- **Owner-side checks before the game has loaded** let power, panel, synced-switch and socket
+  requests and ownership takeovers through.
 - **A refusal on the owner side shows the acting player nothing** unless their own game ran the
   gate first.
 
