@@ -4,6 +4,29 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.25.0
+
+- `SessionData`: values the host decides for a whole session, carried inside the game's own
+  session data. `Register<T>(key, hostProduce, apply, options)`: the host produces each value
+  once per session, as it starts the session (the hub included); every client, the host and
+  late joiners included, gets `apply` when a session carrying the key arrives. The values sit
+  under one `"ectype"` key of the session JSON, which clients without the framework ignore.
+  `Current<T>`, `TryGetCurrent<T>`, `Has`, `SessionId`, `Changed`. Each key is capped
+  (`SessionDataOptions.MaxBytes`, default 4096 bytes) and the whole envelope at 16384 bytes;
+  a value over either is left out with one error naming its key.
+- A resumed saved run sends the values it started with: the host keeps them in
+  `BepInEx/config/jack.voidcrew.ectype.sessions/<session id>.json`, written at mission start and
+  on each save, and pruned past 30 days or 64 files. `SessionDataOptions.KeepOnResume` false
+  produces a fresh value instead.
+- Session data raised by a player who is in the room and is not the master client is ignored.
+- `SessionData.HostValue(configEntry, key)` returns a `HostValue<T>` whose `Value` is the host's
+  setting on every client: the host's own config on the host; in the hub, the room property
+  `Ectype.<key>` the host publishes, accepted only when stamped with the master's actor number
+  and not written by another player; from the start of a mission, the value frozen into the
+  session data on every client, the host included; the client's own config before any host
+  value arrives (`IsFromHost` false). `Source`, `Changed`.
+- No change to network contract 1.
+
 ## 0.22.0
 
 - `Topology`: which player ships exist and which is whose, answered the same on every client.

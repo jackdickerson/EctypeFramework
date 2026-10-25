@@ -22,6 +22,7 @@ Paths are relative to the framework project folder.
 | Enemy statuses | `src/EnemyStatus.cs`, `src/EnemyStatusFx.cs` |
 | Enemy abilities and suspension | `src/EnemyAbilities.cs` |
 | Character statuses | `src/CharacterStatus.cs` |
+| Session data and host-synced settings | `src/SessionData.cs` |
 | Ship arrivals | `src/ShipArrivals.cs` |
 | Ship registry and per-player ship resolution | `src/Topology.cs` |
 | Crafting-data audit | `src/CraftingAudit.cs` |
@@ -118,6 +119,10 @@ column.
 | `HintsController.TryShowHint` (called), `HintsController.HintsEnabled` postfix | the show path; the postfix returns true only while a forced show is inside its own `TryShowHint` call and `ForceDisableHints` is false, so stock hints keep the player's setting. `HintsEnabled` is the only reader of the Show-hints setting, and the controller's private `ShouldShowHint` is its only gate. Its per-session check is `TimesSeenThisPlaysession > MaxNumberShowsPerPlaysession`, so the framework refuses at `>=` first |
 | `UI.HUD.HintDisplayVE.Show(ContextInfo)` postfix | the HUD hint element sets the icon as a background image on its `Icon` child and never hides it; the postfix collapses that child when the hint has no icon and restores it otherwise, because the elements are pooled across stock and mod hints |
 | `HintsController.shownHint` / `stackedHints` / `animationFinishedPlaying` (read), `UpdateHintToShow` (called by delegate), `RepeatEventScheduler.ToInvokeEvents` (read), `RepeatEventScheduler.RegisterEvent(float, Func<bool>, Action, float)` | the forced-show countdown. The controller runs `UpdateHintToShow` from a 0.5 s scheduler entry that its settings handler registers only while hints are enabled, so with the setting off a forced hint would never close. After a forced show with no controller tick in the scheduler list, the framework registers one of its own (at most one live per process) and retires it when the hint and the stack are empty, when the controller changes, or when any entry running the controller's own `UpdateHintToShow` appears: the setting turned on, or a dismissal (`RequestHideHint` registers the controller's tick whatever the setting). The check scans the list rather than the controller's handle field, because the settings handler registers a new entry without removing the old one. A retired entry is dropped by the scheduler through its alive callback, never removed during the scheduler's iteration. Any of these missing makes `ShowForced` refuse with the setting off |
+| `GameSession.AsJObject` postfix, `GameSession.FromJObject(JObject)` postfix, patched by name after the attribute pass | `SessionData`: the host's first serialisation of a session object captures the envelope and writes it under `"ectype"`; a client reads it back. The host serialises once per session, in `GameSessionManager.DistributeSessionData`, which raises the JSON as event 9 (`AddToRoomCacheGlobal`, `ReceiverGroup.Others`, reliable); the host never calls `FromJObject` on its own session. A miss turns session data off and `HostValue` follows each client's config |
+| `PhotonService.OnEvent(EventData)` prefix + finalizer | records the sender of event 9 for the `FromJObject` postfix, which acts only inside that handler. The game's case 9 checks only that the receiver is not the master. The game never calls `SetMasterClient`, so a sender present in the room and not master is never the session's host. A miss leaves the sender unchecked |
+| `GameSession.GetPreservedState` postfix; `GameSession.GameSessionID` / `IsHub`, `PreservedGameSession.GameSessionID` (read) | the saved-run sidecar under `BepInEx/config/jack.voidcrew.ectype.sessions/`. `GameSessionID` is `Guid.NewGuid().ToString()` from `GenerateSessionID` for a fresh session and is copied through `PreservedGameSession.GenerateGameSession` on resume, whose other fields drop the envelope |
+| Room property `Ectype.<key>` (written by the master in the hub, read), `LoadBalancingClient.EventReceived` event 253 (subscribed: `Sender`, parameter 253 target actor, parameter 251 properties) | `HostValue<T>`'s hub channel. `EventReceived` runs after `LoadBalancingClient` has merged the change into the room's copy, so the writer and the merged value are seen together |
 | `GameSession.InitStartingMutators` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 | `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 
@@ -147,6 +152,11 @@ What it adds:
   through Photon's Protocol18 and unpacked as the receive path does, and must come back with
   the same types and values. It logs `dev self-test: net payload round trip passed` or
   `FAILED` with the first difference. Add a layout to it with each new message subtype.
+- A session-data self-test on the first frame: an envelope round trip through the game's own
+  `GameSession.AsJObject` and `FromJObject` with the framework's postfixes (diverted to the
+  test), the per-key and envelope caps, sidecar write, read and prune in a temporary folder, and
+  the host-value stamp. It logs `dev self-test: session data passed` or `FAILED` with each
+  difference.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
   ability disabled while still selected, a channel stopped with time left (with a short

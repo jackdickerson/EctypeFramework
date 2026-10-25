@@ -229,6 +229,10 @@ For a mod that declares `All`:
   progression and achievements on every client in the room until the game restarts.
 - A player who has the mod cannot join a host who lacks it. The asset check is symmetric.
 
+A setting only the host's config should decide, so that every client acts on the same number,
+reaches every client through `SessionData.HostValue`; see
+[reference/session-data.md](reference/session-data.md).
+
 ## Rooms with more than one ship
 
 A mod can put several player ships in one room, for co-op crews or for teams playing against

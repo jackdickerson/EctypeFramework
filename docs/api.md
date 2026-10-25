@@ -66,6 +66,15 @@ Register them from literals that are identical on every client.
 | `TimedStatContribution` | The handle `Start` returns: `Key`, `Label`, `Target`, `StatId`, `StartServerMs`, `DurationSeconds`, `Active`, `Progress`, `Amount`, `EndReason`. |
 | `ShipSpeedSurge` | A top-speed boost on the player ship that decays linearly to nothing, built on `ShipDrag`. `Start(arrival, magnitude, durationSeconds)` or `Start(ship, magnitude, durationSeconds, startServerMs)`, `End(ship)`, `IsActive(ship)`. Magnitude 1 doubles top speed at the start. `TopSpeedFactor(magnitude, progress)` and `DragFactor(magnitude, progress)` give the curve. Start it on every machine from `ShipArrivals.Arrived`. |
 
+## Session data
+
+| Type | Purpose |
+| --- | --- |
+| `SessionData` | Values the host decides for a whole session, carried inside the game's own session data to every client, late joiners included, and restored on a resumed run from a host-side sidecar. `Register<T>(key, hostProduce, apply, options)` at `Awake` on every client; the host produces each value once per session and every client, the host included, gets `apply` when a session carrying the key arrives. `Current<T>(key)`, `TryGetCurrent<T>`, `Has`, `SessionId`, and `Changed`, raised with a key whose value appeared, changed or went away. Values are capped per key (default 4 KB) and in total (16 KB). `HostValue(configEntry, key)` returns a `HostValue<T>`. See [reference/session-data.md](reference/session-data.md). |
+| `SessionDataOptions` | `MaxBytes`, the per-key cap; `KeepOnResume`, whether a resumed run sends the value it started with (default true). |
+| `HostValue<T>` | A config entry read as the host's value: `Value`, `IsFromHost`, `Source`, `Key`, `Entry`, `Changed`. Live in the hub through a room property the host publishes; frozen for a mission from its start on every client, the host included. |
+| `HostValueSource` | `LocalConfig`, `Room`, `Session`: where a `HostValue<T>`'s value came from. |
+
 ## HUD
 
 | Type | Purpose |
