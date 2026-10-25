@@ -75,9 +75,13 @@ build.
   or `Factor`, `Amount`). It returns a `MutatorHandle` (`Pending`, `Registered` or `Failed` with a
   `Reason`). The GUID is the spec's `Guid`, or MD5 of `ectype:mutator:<owner>/<key>`. The asset is
   registered with the Required effect: a player without the registering mod is refused at the
-  join screen of every room hosted with it, whether or not the run uses the mutator. The
-  framework makes it selectable in the menu and re-verifies the registration every 10 s and
-  before each session start.
+  join screen of every room hosted with it, whether or not the run uses the mutator. A GUID that
+  the game's runtime-asset register, the mutator container or the unlock container already holds
+  for something else is refused before anything is written. A mutator refused after its walk
+  began is taken back out of those tables. Registering the same owner and key again returns the
+  first handle. The framework makes the mutator selectable in the menu, republishing every
+  missing shared-unlock index in one write. It re-verifies the registration every 10 s, and
+  before each session start it attempts every pending registration and re-verifies the rest.
 - While the host starts a session, the framework contributes the effects of every session-stat
   mutator the session is about to activate, selected in the menu or forced by the quest's
   `ForcedMutators`, to the session collection before `SessionStats.Opening` and before the values
@@ -87,8 +91,10 @@ build.
   activated any other way contributes to the host only, with a warning.
 - A role manifest's `mutators` block (`key`, `guid`, `name`, `description`, `icon`, `iconDonor`,
   `effects` of `stat`, `kind` `"flat"`, `"percent"` or `"factor"`, and `amount`) registers through the
-  same API, with the `roleId` as owner. A stat that is not a session stat, an unknown kind or a
-  missing amount refuses that mutator by name; the role still registers. Set
+  same API, with the `roleId` as owner, once the role has registered. A role that fails
+  registration or that another role suppresses through `suppressRoles` registers none of its
+  mutators. A stat that is not a session stat, an unknown kind or a missing amount refuses that
+  mutator by name; the role still registers. Set
   `minFrameworkVersion` to `"0.30.0"`: an older framework ignores the block.
 - `SessionStatMutatorEffect` is the game-side `MutatorEffectSession` the registered asset carries;
   a mod's own `Mutator` asset may carry one, and it is contributed the same way.

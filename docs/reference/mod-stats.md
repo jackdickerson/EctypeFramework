@@ -316,36 +316,65 @@ returns the first handle. Another spec under a GUID already registered is refuse
 
 An accepted spec is `Pending` until the game's asset tables exist and the stats files have been
 read. Then each effect's stat must resolve to a session stat, or the mutator is refused. The
-framework registers pending mutators in GUID order, so one set of mods registers in one order on
-every machine. Each registration is this walk, every step skipped when the game already holds it:
+framework registers pending mutators in GUID order. Each registration is this walk, every write
+skipped when the game already holds this registration's own object:
 
 1. A `Mutator` asset under the GUID, carrying one `SessionStatMutatorEffect` with the resolved
    modifiers. The game's activation iterates `Effects` without a null check, so the list is never
    null.
-2. Its card (`ContextInfo`) and its `MutatorDef`, whose reference is marked runtime.
-3. An entry in the game's runtime-asset register with the Required effect.
-4. An entry in the mutator container, and the def in the container's authored list, placed among
+2. Its card (`ContextInfo`), its `MutatorDef` and its unlock def, whose references are marked
+   runtime.
+3. The claim, before anything is written to the game's tables. The runtime-asset register must
+   hold nothing under the GUID, or this registration's own `Mutator`. Until this registration has
+   first held the GUID, the mutator container and the unlock container must hold nothing under
+   it, or this registration's own defs. Otherwise the mutator is refused and the other holder's
+   entries stay as they were. A def whose asset resolves to another object would never verify,
+   and the Mutators menu dereferences every listed row's asset while it builds, so one such row
+   leaves every row of the menu without its click handlers.
+4. An entry in the game's runtime-asset register with the Required effect.
+5. An entry in the mutator container, and the def in the container's authored list, placed among
    the runtime entries in GUID order. The Mutators menu lists only the authored list. The
    container's runtime list is then put in the authored list's order: the shared unlocks below
    name an entry by its index in the authored list and read it back by index in the runtime list.
-5. An unlock entry with a manual criterion, in the unlock container and its authored list. The
+6. An unlock entry with a manual criterion, in the unlock container and its authored list. The
    menu reads every row's unlock entry while it refreshes, and one missing entry blanks every row.
-6. A walk back: the container resolves the GUID, the def's asset resolves and carries the effect
+7. A walk back: the container resolves the GUID, the def's asset resolves and carries the effect
    and the GUID, the card has a title, the def is in the authored list, the unlock entry exists.
 
 A failed attempt is retried on the next registration pass, about every 2 seconds, up to 200
-attempts. Every 10 seconds, and before each session start, the walk back runs again on every
-registered mutator. One that no longer holds, because the game rebuilt a container, is
-registered again.
+attempts. A mutator refused for good, by a refusal or at its 200th attempt, is taken out of the
+runtime-asset register, the mutator container and its authored list, and the unlock container
+and its authored list, wherever the entry is its own: the menu never lists a def that did not
+verify, and no hosted room requires it. The game has no removal call for these tables, so the
+framework removes the entries from their private lookups by name. Every 10 seconds the walk back
+runs again on every registered mutator. One that no longer holds, because the game rebuilt a
+container, is registered again. Before each session start, every pending mutator gets an attempt
+and every registered one is walked back, because the host snapshots its Required assets and its
+starting mutators right after.
+
+**One order on every machine.** The shared unlocks, and the room property the matchmaking list
+reads a room's mutators from, name a mutator by its index in the authored list, so every client must build that list in the same
+order. The framework inserts each def into the runtime tail of the list: the entries after the
+last one whose reference is not marked runtime. A tail built only by that insert is sorted by
+GUID whatever order the inserts ran in. This holds while every entry another mod adds to the
+mutator container's authored list carries a reference marked runtime. An entry whose reference
+is not marked runtime ends the tail where it lands, so framework mutators registered before it
+sit ahead of it and those registered after it sit behind. Registration timing then decides the
+indices, and two clients with the same mods can disagree on them.
 
 The menu draws a row as selectable only when its index is in the union, across the room's
 players, of a player property holding each player's unlocked mutator indices. The game writes
 that property in full when the player's profile initialises, from the unlock check, which the
 framework answers as unlocked for its mutators. The profile can initialise before the
 registration, and it rebuilds the property on every profile rebuild, so every 2 seconds the
-framework reads the local player's property back and adds a missing index. The game's write
-adds to the property; nothing is unlocked in the player's profile. An index past 255 cannot be
-written, and that mutator shows locked.
+framework reads the local player's property back and writes every missing index in one write.
+In a room, the local copy of a player property changes only when the server echoes the write
+back, so a second write sent before that echo would start from the stale copy and drop the
+first one's indices. After a write, the framework writes nothing until every index it added
+reads back or 5 seconds have passed, and only an index still missing then counts as a failed
+attempt; after 10, that mutator stops being written until its index shows up. Nothing is
+unlocked in the player's profile. An index past 255 cannot be written, and that mutator shows
+locked.
 
 **The join cost.** Every framework mutator is registered with the Required effect. The game
 compares the Required assets of host and joiner at join, so a player without the registering
@@ -362,8 +391,8 @@ The game starts a hosted session in this order:
 
 1. The previous session ends. Its mutators are deactivated.
 2. The new session object becomes active. Its starting list holds the mutators selected in
-   the menu, or the saved run's list on resume. The framework re-verifies its registrations
-   first. Then session data captures the session's values: the session collection opens,
+   the menu, or the saved run's list on resume. The framework first attempts its pending
+   registrations and re-verifies the registered ones. Then session data captures the session's values: the session collection opens,
    the mutator effects are contributed, `Opening` is raised, and the values are composed.
 3. The quest is generated, and the game activates the quest's forced mutators.
 4. The first sector is entered.
@@ -453,6 +482,8 @@ ship.
 | `Ectype: session stats: <name> changed after the session started; clients keep the session-start value until the next session.` | A contribution outside `Opening`. |
 | `Ectype: mutators: '<name>' registered (<guid>, effect Required): <stat> <amount>, ...` | A session-stat mutator registered. Amounts read `+2`, `+25%` or `x1.5`. |
 | `Ectype: mutators: <name>, ... contributed <n> modifier(s) to the session stats.` | Host, at session start: the mutators the session is about to activate contributed. |
+| `Ectype: mutators: role '<roleId>' failed to register; its <n> mutator(s) are not registered.` and `Ectype: mutators: role '<roleId>' is suppressed by another role; its <n> mutator(s) are not registered.` | A role manifest's `mutators` register only with the role. |
+| `Ectype: mutators: '<name>' could not be taken out of <tables> after it was refused (game update?); its entry stays there.` | A refused mutator's entries could not all be removed; the menu may still list it. |
 
 [../troubleshooting.md](../troubleshooting.md) lists every line with its cause.
 
@@ -497,6 +528,14 @@ ship.
   The published value changes and nothing reads it. The framework reads none of its generic
   stats.
 - **Renaming a mutator's key.** A new GUID: a saved run that used the old one loads without it.
+- **An explicit `guid` copied from a vanilla mutator, another mod's mutator, or any asset the
+  game's runtime-asset register holds.** Refused before anything is written; the other holder
+  keeps its entry.
+- **Adding your own `MutatorDef` to the mutator container's authored list with a reference not
+  marked runtime.** It ends the runtime tail where it lands, and framework mutators then take
+  indices that depend on registration timing, so the shared unlocks and a room's mutator list
+  can name different mutators on different clients. Mark the reference runtime.
+- **A role's `mutators` while another role suppresses it.** None of them register.
 
 Samples: [examples/mod-stats](../../examples/mod-stats/) (stats file and reader),
 [examples/framework-stats](../../examples/framework-stats/) (the Hostile Surge mutator).
