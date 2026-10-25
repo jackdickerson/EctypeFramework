@@ -6,9 +6,6 @@ using Ectype;
 using Gameplay.Utilities;
 using CG.Space;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleTimedStat
 {
     /// <summary>
@@ -19,7 +16,6 @@ namespace ExampleTimedStat
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Timed Stat", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -76,15 +72,5 @@ namespace ExampleTimedStat
                 Log.LogError("Arrival handler failed: " + e);
             }
         }
-    }
-
-    /// <summary>Session: the stat lives on the ship, and the ship's simulation reads every
-    /// machine's copy, so every player should run the mod. A member without it sees a different
-    /// ship. Presence flags the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Session; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Adds a decaying thrust bonus after each normal arrival."; } }
     }
 }

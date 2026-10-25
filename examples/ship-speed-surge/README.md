@@ -5,7 +5,7 @@ After each normal arrival from the void, raises the player ship's top speed by h
 Shows:
 
 - `ShipSpeedSurge.Start(arrival, magnitude, durationSeconds)` from `ShipArrivals.Arrived`.
-- `MultiplayerType.Session`: every machine must start the surge. Loading it flags the session.
+- Thunderstore category `All Required`: every machine must start the surge, and a machine without it that takes the helm ends the surge for everyone.
 
 Rules:
 
@@ -24,7 +24,7 @@ This example does not build as committed. `src\Plugin.cs` has a `#error` directi
 dotnet build -c Release
 ```
 
-References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` and `VoidManager.dll` are referenced from `BepInEx\plugins`, so both must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game, BepInEx or VoidManager binary comes from NuGet.
+References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` is referenced from `BepInEx\plugins`, so it must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game or BepInEx binary comes from NuGet.
 
 The output is `bin\Release\ExampleSpeedSurge.dll`. Copy it to `<game>\BepInEx\plugins\` to try it.
 

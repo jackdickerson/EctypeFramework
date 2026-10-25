@@ -8,9 +8,6 @@ using CG.Game.Player;
 using Gameplay.Utilities;
 using UnityEngine.InputSystem;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleFrameworkStat
 {
     /// <summary>
@@ -20,7 +17,6 @@ namespace ExampleFrameworkStat
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Framework Stat", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -92,15 +88,5 @@ namespace ExampleFrameworkStat
                 Log.LogError("Update failed: " + e);
             }
         }
-    }
-
-    /// <summary>Session: the modifier changes this character's movement. Stat changes are not
-    /// replicated, so a modifier applied only here is seen by the local simulation alone.
-    /// Presence flags the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Session; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Toggles a walking speed modifier on a framework stat."; } }
     }
 }

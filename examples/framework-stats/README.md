@@ -6,7 +6,7 @@ Shows:
 
 - `FrameworkStats.EnsureRegistered()`, `FrameworkStats.Id(name)` and the `const string` stat names.
 - Applying a `StatMod` to the character's stat collection with a source object, and removing it by that source.
-- `MultiplayerType.Session`: the modifier changes this character's movement. Loading the mod flags the session.
+- Thunderstore category `Mod_Session Required`: the modifier changes this character's movement, and other players need nothing from the mod to see it. The Void Crew Mod Launcher does not install a mod in this category for joiners.
 
 Rules:
 
@@ -26,7 +26,7 @@ This example does not build as committed. `src\Plugin.cs` has a `#error` directi
 dotnet build -c Release
 ```
 
-References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` and `VoidManager.dll` are referenced from `BepInEx\plugins`, so both must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game, BepInEx or VoidManager binary comes from NuGet.
+References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` is referenced from `BepInEx\plugins`, so it must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game or BepInEx binary comes from NuGet.
 
 The output is `bin\Release\ExampleFrameworkStat.dll`. Copy it to `<game>\BepInEx\plugins\` to try it.
 

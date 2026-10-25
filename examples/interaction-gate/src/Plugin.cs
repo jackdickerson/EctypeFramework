@@ -4,9 +4,6 @@ using BepInEx;
 using BepInEx.Logging;
 using Ectype;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleInteractionGate
 {
     /// <summary>
@@ -16,7 +13,6 @@ namespace ExampleInteractionGate
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Interaction Gate", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -58,20 +54,6 @@ namespace ExampleInteractionGate
         {
             if (q.Kind != InteractionKind.Helm || q.ActorIsHost) return Refusal.Allowed;
             return Refusal.Because("helm is host-only", "ONLY THE HOST MAY PILOT THIS SHIP.");
-        }
-    }
-
-    /// <summary>All: a client without the mod shows the helm's prompt, and its request is then
-    /// dropped by the host without a word. The rule changes what other players may do, so the
-    /// plugin sets the modded-session flag.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Only the host may take the helm."; } }
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = true };
         }
     }
 }

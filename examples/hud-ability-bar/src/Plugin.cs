@@ -6,9 +6,6 @@ using Ectype;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleHudBar
 {
     /// <summary>
@@ -18,7 +15,6 @@ namespace ExampleHudBar
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Hud Bar", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -101,14 +97,5 @@ namespace ExampleHudBar
             t.Apply();
             return t;
         }
-    }
-
-    /// <summary>Client: the bar is presentation only. Nothing is networked or registered, so
-    /// it cannot flag a session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Client; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Adds a HUD button that logs when its key is pressed."; } }
     }
 }

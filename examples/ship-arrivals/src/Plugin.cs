@@ -5,9 +5,6 @@ using BepInEx.Logging;
 using Ectype;
 using CG.Space;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleShipArrivals
 {
     /// <summary>
@@ -16,7 +13,6 @@ namespace ExampleShipArrivals
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Ship Arrivals", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -73,14 +69,5 @@ namespace ExampleShipArrivals
                 Log.LogError("Left-flight handler failed: " + e);
             }
         }
-    }
-
-    /// <summary>Client: the sample only reads, so a room does not require it and it does not
-    /// flag the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Client; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Logs ship arrivals and departures from normal flight."; } }
     }
 }

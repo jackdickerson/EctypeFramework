@@ -7,9 +7,6 @@ using CG.Game;
 using CG.Space;
 using UnityEngine.InputSystem;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleEnemyAbilities
 {
     /// <summary>
@@ -19,7 +16,6 @@ namespace ExampleEnemyAbilities
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Enemy Abilities", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -105,18 +101,5 @@ namespace ExampleEnemyAbilities
             return best;
         }
 
-    }
-
-    /// <summary>All: suspension is a status, and a status takes effect only on clients that
-    /// registered it. Applying one flags the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Lists an enemy's abilities on F7 and suspends them for five seconds on F8."; } }
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = true };
-        }
     }
 }

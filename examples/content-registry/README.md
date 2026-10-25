@@ -9,7 +9,7 @@ Shows:
 - A dormant prefab copy taken from a stock donor. The copy is instantiated under an inactive holder so the donor's behaviours never wake. It is then kept as an inactive root that survives scene loads.
 - Waiting for the game's containers before building the copy, because the donor prefab is only reachable through them.
 - `LootTables.Register` for the new GUID.
-- `MultiplayerType.All`: the item is a network-spawned asset that every client in the room must have.
+- Thunderstore category `All Required`: the item is a network-spawned asset that every client in the room must have. It is registered in the game's required-asset set, so the game's asset check refuses a joiner who lacks it, with or without VoidManager.
 
 The copy keeps the donor's model, icon, stat mods and tooltip type chips. A real item changes its stat mods, or builds its prefab some other way. The publication is the same either way.
 
@@ -30,7 +30,7 @@ This example does not build as committed. `src\Plugin.cs` has a `#error` directi
 dotnet build -c Release
 ```
 
-References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder in one of three ways: `-p:VoidCrewDir="<path>"`, a `Local.props` beside that file (copy `Local.props.example`), or the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` and `VoidManager.dll` are referenced from `BepInEx\plugins`, so both must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org. No game, BepInEx or VoidManager binary comes from NuGet.
+References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder in one of three ways: `-p:VoidCrewDir="<path>"`, a `Local.props` beside that file (copy `Local.props.example`), or the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` is referenced from `BepInEx\plugins`, so it must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org. No game or BepInEx binary comes from NuGet.
 
 The output is `bin\Release\ExampleContentRegistry.dll`. Copy it to `<game>\BepInEx\plugins\` to try it.
 

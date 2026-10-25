@@ -3,19 +3,15 @@ using System;
 using BepInEx;
 using BepInEx.Logging;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleRole
 {
     /// <summary>
     /// The whole role lives in the embedded manifest; the framework registers it. This plugin
-    /// is loaded so BepInEx orders it after the framework and VoidManager, and so the
-    /// framework's discovery scan finds the assembly.
+    /// is loaded so BepInEx orders it after the framework, and so the framework's discovery
+    /// scan finds the assembly.
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Role", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -30,20 +26,6 @@ namespace ExampleRole
         {
             Log = Logger;
             Log.LogInfo("Example Role v" + PLUGIN_VERSION + " loaded.");
-        }
-    }
-
-    /// <summary>Every player in a room needs the same role mods, and VoidManager's version
-    /// check enforces it for MultiplayerType.All.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "A minimal data-only role for the Ectype Framework."; } }
-
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = true };
         }
     }
 }

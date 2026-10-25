@@ -8,9 +8,6 @@ using Ectype;
 using ResourceAssets;
 using UnityEngine;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleContentRegistry
 {
     /// <summary>
@@ -20,7 +17,6 @@ namespace ExampleContentRegistry
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Content Registry", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -144,14 +140,5 @@ namespace ExampleContentRegistry
             Destroy(holder);
             return copy;
         }
-    }
-
-    /// <summary>All: the item is a network-spawned asset every client in a room must have,
-    /// so VoidManager refuses a joiner without this mod or on another version.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Publishes a copy of a stock weapon mod as a new item."; } }
     }
 }

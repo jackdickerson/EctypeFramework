@@ -10,9 +10,6 @@ using CG.Game.Player;
 using Gameplay.Utilities;
 using UnityEngine;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleModStats
 {
     /// <summary>
@@ -23,7 +20,6 @@ namespace ExampleModStats
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Mod Stats", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     public class Plugin : BaseUnityPlugin
     {
 #error Replace every REPLACE_ME (the plugin GUID) with your own unique value, then delete this line.
@@ -159,14 +155,5 @@ namespace ExampleModStats
             if (c == null || c.Stats == null) return "absent";
             return c.Stats.ContainsKey(id) ? "registered" : "not registered";
         }
-    }
-
-    /// <summary>All: a perk on one client that names a declared stat needs the stat declared on
-    /// every client, so every player in the room runs the mod.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Declares stats in a data file and reads them by id."; } }
     }
 }
