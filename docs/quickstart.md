@@ -1,16 +1,19 @@
 # Quickstart
 
-From an install with the game, BepInEx 5, VoidManager and the framework to a new role in
-the gene-tree terminal. The role is the data-only example: a JSON manifest embedded in a
-small plugin, with no framework code in it.
+From an install with the game, BepInEx 5 and the framework to a new role in the gene-tree
+terminal. The role is the data-only example: a JSON manifest embedded in a small plugin, with
+no framework code in it.
 
 ## What you need
 
-- Void Crew with BepInEx 5 and VoidManager installed, and `EctypeFramework.dll` in
-  `BepInEx\plugins\`. The build reads all four from the game folder.
+- Void Crew with BepInEx 5 installed, and `EctypeFramework.dll` in `BepInEx\plugins\`. The
+  build reads all three from the game folder. VoidManager is optional: the role neither
+  references nor needs it, and with it installed the framework adds an F5 status page. A
+  mod that wants VoidManager for its own F5 page opts in as
+  [setup.md](setup.md#opting-into-voidmanager) describes.
 - A .NET SDK, any recent version, from Microsoft. nuget.org must be reachable on the first
-  restore, which downloads the .NET Framework 4.7.2 reference assemblies. No game, BepInEx or
-  VoidManager binary comes from NuGet.
+  restore, which downloads the .NET Framework 4.7.2 reference assemblies. No game or BepInEx
+  binary comes from NuGet.
 - The `data-only-role` folder and `Directory.Build.props` from the framework's `examples`
   folder.
 
@@ -39,14 +42,14 @@ small plugin, with no framework code in it.
    | Where | Identifier | Change it to |
    | --- | --- | --- |
    | `WardenRole.csproj` | `AssemblyName`, `RootNamespace` | `WardenRole`. The assembly name is the DLL's file name. |
-   | `src\Plugin.cs` | `namespace`, class `ExampleVoidPlugin` | A namespace and class name of your own. |
+   | `src\Plugin.cs` | `namespace` | A namespace of your own. |
    | `src\Plugin.cs` | `PLUGIN_GUID` (`REPLACE_ME`) and the `#error` line above it | A GUID of your own, for example `acme.voidcrew.warden`. Delete the `#error` line. |
-   | `src\Plugin.cs` | `[BepInPlugin]` name, `Author`, `Description` | What players see in VoidManager's mod list. |
+   | `src\Plugin.cs` | `[BepInPlugin]` name | What BepInEx logs and players see in mod lists. |
    | `src\Plugin.cs` | The `"Example Role v"` text in `Awake` | The line your plugin logs at startup, for example `"Warden Role v"`. |
    | `manifest\ectype-role.json` | `roleId` (`REPLACE_ME`) | The same string as `PLUGIN_GUID`. |
    | `manifest\ectype-role.json` | `roleName`, `roleDesc`, `color`, hero `name` and `desc` | The role's title, tooltip and accent colour. |
 
-   Leave `[BepInDependency("jack.voidcrew.ectype")]` and `MultiplayerType.All` alone.
+   Leave `[BepInDependency("jack.voidcrew.ectype")]` alone.
 
    Three identifiers are seeds, and renaming one after players have used the role has
    consequences:
@@ -57,11 +60,10 @@ small plugin, with no framework code in it.
      longer exist.
    - A perk's `key` seeds that perk's GUID the same way. Renaming a key orphans that perk's
      saved selections. A `guid` field on the perk pins the GUID across a rename.
-   - `PLUGIN_GUID` is the plugin's identity to BepInEx and VoidManager. Renaming it makes the
-     new build a different mod from the old one: the join check treats the old GUID as a mod
-     the room lacks, and the plugin gets a new `BepInEx\config\<guid>.cfg`. A role with a
-     coded ability also passes the plugin GUID to the framework as its `roleId`, so the two
-     must stay equal.
+   - `PLUGIN_GUID` is the plugin's identity to BepInEx and to mod lists. Renaming it makes the
+     new build a different mod from the old one, and the plugin gets a new
+     `BepInEx\config\<guid>.cfg`. A role with a coded ability also passes the plugin GUID to
+     the framework as its `roleId`, so the two must stay equal.
 
    Choose all three before the first build you give to anyone.
 
@@ -130,8 +132,8 @@ prefix `[Info   :<source>]`.
 The last three lines can appear well after the first two, because registration waits for the
 game's tables.
 
-In game, press F5 to open VoidManager's menu and choose Ectype Framework. The status page
-shows:
+With VoidManager installed, press F5 in game to open its menu and choose Ectype Framework.
+The status page shows:
 
 ```
 Pipeline: 1/1 roles registered
@@ -157,8 +159,10 @@ this role has no ability.
 
 ## Before you give it to anyone
 
-A role mod is declared `MultiplayerType.All`. Everyone in a room needs the framework and
-every role mod any player has, at the same build, and hosting with the mod installed marks
-the session as modded. [multiplayer.md](multiplayer.md) has the checks and the consequences.
-[choosing.md](choosing.md) compares the three kinds of mod, and [publishing.md](publishing.md)
+Everyone in a room needs the framework and every role mod any player has. The game's asset
+check refuses a joiner whose role content differs from the host's, with or without
+VoidManager, and the Void Crew Mod Launcher installs the host's versions for a joiner when
+the package carries the Thunderstore category `All Required`. Hosting with the mod installed
+marks the session as modded. [multiplayer.md](multiplayer.md) has the checks and the
+consequences. [choosing.md](choosing.md) compares the three kinds of mod, and [publishing.md](publishing.md)
 covers the Thunderstore package.

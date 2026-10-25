@@ -6,8 +6,9 @@ with code and a utility-only mod; [choosing.md](choosing.md) says which to write
 
 ## Prerequisites
 
-- Void Crew with BepInEx 5 and VoidManager installed. The build reads their DLLs from the
-  game folder.
+- Void Crew with BepInEx 5 installed. The build reads the game's and BepInEx's DLLs from the
+  game folder. VoidManager is not needed, unless the mod opts into it
+  ([Opting into VoidManager](#opting-into-voidmanager)).
 - `EctypeFramework.dll` in `BepInEx\plugins\`. A mod that calls framework code compiles
   against that file. A data-only role never references it, but it needs the framework
   installed to run.
@@ -90,7 +91,6 @@ fewest references.
   <ItemGroup>
     <Reference Include="EctypeFramework" HintPath="$(PluginsDir)\EctypeFramework.dll" Private="false" />
     <Reference Include="BepInEx" HintPath="$(VoidCrewDir)\BepInEx\core\BepInEx.dll" Private="false" />
-    <Reference Include="VoidManager" HintPath="$(PluginsDir)\VoidManager.dll" Private="false" />
     <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
@@ -115,13 +115,13 @@ check for one when a build behaves differently from the examples.
 | `RootNamespace` | your namespace | It prefixes the name of each embedded resource. A manifest is found by the end of that name, so the prefix is free. |
 | `TargetFramework` | `net472` | The game runs on Unity's Mono with the .NET Framework 4.x profile. |
 | `LangVersion` | `latest` | Uses the newest C# the SDK's compiler offers. Features that need runtime types the .NET Framework profile lacks, such as ranges, still do not compile. |
-| `Version` | equal to the plugin's `PLUGIN_VERSION` | Sets the DLL's file and assembly version. VoidManager compares the version in `[BepInPlugin]`, so the two are kept equal by hand. |
+| `Version` | equal to the plugin's `PLUGIN_VERSION` | Sets the DLL's file and assembly version. `[BepInPlugin]` carries its own version string, which BepInEx logs and VoidManager compares for a mod declared `All` to it, so the two are kept equal by hand. |
 | `EnableDefaultCompileItems` | `false` | Only the files named in `Compile` build. A stray `.cs` in the folder cannot join the assembly. |
 | `AppendTargetFrameworkToOutputPath` | `false` | Output goes to `bin\Release\`, with no `net472` subfolder. |
 | `DebugType` | `portable` | Writes a `.pdb` beside the DLL. Nothing requires installing it. |
 | `IsPackable` | `false` | Stops `dotnet pack` from treating the project as a NuGet package. |
 | `VoidCrewDir` | the game folder | The one path every reference derives from. It takes the value of `-p:VoidCrewDir="<path>"` first, then the `VOID_CREW_DIR` environment variable, then the Steam folder from the registry, then the standard Steam path. |
-| `ManagedDir`, `PluginsDir` | derived from `VoidCrewDir` | `Void Crew_Data\Managed` holds the game's assemblies. `BepInEx\plugins` holds VoidManager and the framework. |
+| `ManagedDir`, `PluginsDir` | derived from `VoidCrewDir` | `Void Crew_Data\Managed` holds the game's assemblies. `BepInEx\plugins` holds the framework, and VoidManager when it is installed. |
 
 ### References
 
@@ -166,15 +166,27 @@ framework area or a game type reaches for more assemblies by the same rule.
 
 `examples\Directory.Build.props` is a standard MSBuild property file that applies to every
 project under `examples\`. It resolves the game folder, sets the common project properties and
-adds the references every example needs (`BepInEx`, `VoidManager`, `UnityEngine`,
+adds the references every example needs (`BepInEx`, `UnityEngine`,
 `UnityEngine.CoreModule`). The game folder, the `VoidCrewDir` property, is taken from the first
 of these that is set: `-p:VoidCrewDir="<path>"` on the command line, a `VoidCrewDir` set in an
 optional, gitignored `examples\Local.props` (copy `examples\Local.props.example` and edit the
 one property), the `VOID_CREW_DIR` environment variable, the Steam folder from the registry,
 then the standard Steam path ([Finding the game folder](#finding-the-game-folder)). A missing
-game, BepInEx or VoidManager stops the build with one error naming the folder it looked in. The
-file is read from the project's folder upward, so an example copied out of `examples\` builds
-only if the props file is copied into a folder above it.
+game or BepInEx stops the build with one error naming the folder it looked in, and so does a
+missing VoidManager in an example that sets `UseVoidManager`. The file is read from the
+project's folder upward, so an example copied out of `examples\` builds only if the props file
+is copied into a folder above it.
+
+### Opting into VoidManager
+
+A mod that wants VoidManager for an F5 page, or to declare a `VoidPlugin`, adds the reference
+itself: `<Reference Include="VoidManager" HintPath="$(PluginsDir)\VoidManager.dll" Private="false" />`,
+or `<UseVoidManager>true</UseVoidManager>` in a project under `examples\`, which adds that
+reference from the shared property file. The build then needs VoidManager installed. Whether
+the built mod needs it is set by the dependency attribute and by where VoidManager types
+appear in the code ([The dependency attribute](#the-dependency-attribute)). The
+[voidmanager-settings-page](../examples/voidmanager-settings-page/) example is an F5 page on
+a soft dependency.
 
 ### Embedded resources
 
@@ -192,11 +204,12 @@ placeholder. A utility-only mod embeds nothing.
 
 ### The metadata VoidManager reads
 
-A mod needs BepInEx and the framework, nothing else. VoidManager is optional: depend on it
-softly, and only for an F5 page or to declare a VoidManager multiplayer type. A mod without a
-`VoidPlugin` is listed by VoidManager as `Unmanaged`: shown, never compared at join. The Void
-Crew Mod Launcher then takes the mod's need from its Thunderstore categories, so a role mod
-carries `All Required`. What keeps a role mod's players compatible is the game's asset check
+A mod needs BepInEx and the framework, nothing else. VoidManager is optional, and a mod uses it
+for one of two things: an F5 page, on a soft dependency, or a declared VoidManager multiplayer
+type, which makes the dependency hard. A mod without a `VoidPlugin` is listed by VoidManager as
+`Unmanaged`: shown, never compared at join. The Void Crew Mod Launcher then takes the mod's
+need from its Thunderstore categories ([publishing.md](publishing.md)), so a role mod carries
+`All Required`. What keeps a role mod's players compatible is the game's asset check
 on its required assets, with or without VoidManager.
 
 When a mod does declare a `VoidPlugin`, VoidManager builds its entry from the plugin, not from
@@ -224,9 +237,13 @@ public class Plugin : BaseUnityPlugin
 A mod that uses VoidManager adds `[BepInDependency("VoidCrewModdingTeam.VoidManager")]`: hard
 when the mod cannot run without it (it declares a `VoidPlugin`, which fails to load without
 VoidManager), or with `BepInDependency.DependencyFlags.SoftDependency` when VoidManager only
-adds an F5 page. A soft-dependent mod keeps every VoidManager type inside members that run only
-when VoidManager is loaded, and declares no type deriving from one: such a type fails to load
-without VoidManager and makes reflection over the whole assembly throw.
+adds an F5 page. A soft-dependent mod declares no type that derives from a VoidManager type or
+names one in a field, property, parameter or return type: such a type fails to load without
+VoidManager, and `Assembly.GetTypes()` over the whole assembly then throws. VoidManager types
+appear only inside method bodies that run after the mod has found VoidManager in
+`Chainloader.PluginInfos`, because the runtime resolves the types a method body names when it
+first compiles that method. The check: load the built DLL in a process without VoidManager
+and read every type's base type, fields, properties and method signatures; nothing throws.
 
 BepInEx loads a plugin after every plugin it depends on, and does not load it at all when
 one is missing. Without the attribute the load order is undefined, and a call into the
@@ -265,8 +282,8 @@ the registry names only Steam's own folder; [Finding the game folder](#finding-t
 locates it. The examples' property file reports this case as one error naming the folder.
 
 **A missing DLL in a correct game folder.** The same two messages appear for one reference
-only. `VoidManager.dll` and `EctypeFramework.dll` come from `BepInEx\plugins`, so a game folder
-that has not had VoidManager or the framework installed fails on them. Install both first.
+only. `EctypeFramework.dll`, and `VoidManager.dll` for a mod that references it, come from
+`BepInEx\plugins`, so a game folder without them installed fails on them. Install them first.
 
 **A reference assembly the compiler cannot find.** `CS0012` as above. Add the named DLL.
 
