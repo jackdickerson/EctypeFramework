@@ -21,7 +21,9 @@ namespace Ectype
     /// a row in docs/stat-names.csv (with the id printed at registration) so tooling that
     /// reads the alias list can offer it, and an entry in docs/framework-stats.json saying what the
     /// number does and what the game authored. A stat with no consumer is inert, and the
-    /// log says so.
+    /// log says so. A generic factor with no field behind it takes a row in ModStats'
+    /// collection table in place of a consumer: ModStats registers it into that collection and
+    /// a mod reads it by id.
     ///
     /// Public, because a role mod's ability code contributes to a framework stat the normal
     /// vanilla way - a StatMod against Id(name) applied to the player's collection on start
@@ -102,6 +104,22 @@ namespace Ectype
         // the ship's own collection; wired by ShipPlatformStats.
         /// <summary>The player ship platform's quadratic drag; lower raises top speed and lets the ship coast further.</summary>
         public const string ShipDrag = "ShipDrag";
+
+        // Generic factors with no field behind them and no reader in the framework: a plain
+        // ModifiableFloat of authored value 1 that ModStats registers into the named collection.
+        // The mod that owns the action multiplies its own constant by the composed value, read by
+        // id. Factors, so two readers with different base numbers compose correctly and "no
+        // contributor" reads the same as "stat not registered".
+        /// <summary>Multiplier on a character's melee damage, on the player's own collection.</summary>
+        public const string MeleeDamage = "MeleeDamage";
+        /// <summary>Multiplier on a character's melee cooldown, on the player's own collection; lower is better.</summary>
+        public const string MeleeCooldown = "MeleeCooldown";
+        /// <summary>Multiplier on a character's melee reach, on the player's own collection.</summary>
+        public const string MeleeReach = "MeleeReach";
+        /// <summary>Multiplier on the damage a player ship's weapons deal to characters, on the ship's own collection.</summary>
+        public const string AntiPersonnelDamage = "AntiPersonnelDamage";
+        /// <summary>Multiplier on hostile spawn amounts for the whole run, on the session collection.</summary>
+        public const string HostileSpawnScale = "HostileSpawnScale";
 
         /// <summary>A framework stat and the vanilla stat whose icon it borrows.</summary>
         private struct Spec
@@ -248,6 +266,43 @@ namespace Ectype
                 displayType = "value",
                 lowerIsBetter = true,
             } },
+            new Spec { IconDonor = StatType.Damage, Stat = new CustomStatSpec
+            {
+                name = MeleeDamage,
+                displayName = "Melee Damage",
+                desc = "How hard your melee attacks hit.",
+                displayType = "percentage",
+            } },
+            new Spec { IconDonor = StatType.ClassAbilityCooldown, Stat = new CustomStatSpec
+            {
+                name = MeleeCooldown,
+                displayName = "Melee Cooldown",
+                desc = "How long you wait between melee attacks.",
+                displayType = "percentage",
+                lowerIsBetter = true,
+            } },
+            new Spec { IconDonor = StatType.Range, Stat = new CustomStatSpec
+            {
+                name = MeleeReach,
+                displayName = "Melee Reach",
+                desc = "How far your melee attacks reach.",
+                displayType = "percentage",
+            } },
+            new Spec { IconDonor = StatType.Damage, Stat = new CustomStatSpec
+            {
+                name = AntiPersonnelDamage,
+                displayName = "Anti-Personnel Damage",
+                desc = "How much damage the ship's weapons deal to people.",
+                displayType = "percentage",
+            } },
+            new Spec { IconDonor = StatType.Damage, Stat = new CustomStatSpec
+            {
+                name = HostileSpawnScale,
+                displayName = "Hostile Spawn Scale",
+                desc = "How many hostiles each spawn wave brings for the whole run.",
+                displayType = "percentage",
+                lowerIsBetter = true,
+            } },
         };
 
         private static readonly Dictionary<string, int> _ids =
@@ -313,6 +368,11 @@ namespace Ectype
             Status = _ids.Count + " registered";
             Plugin.Log.LogInfo("Ectype: framework-owned stats registered (" +
                                string.Join(", ", lines.ToArray()) + ").");
+
+            // Data-file stats register beside the framework's own, before any role resolves a
+            // perk effect that may name one.
+            try { ModStats.DiscoverAndRegister(); }
+            catch (Exception e) { Plugin.Log.LogError("Ectype: mod stats: discovery failed: " + e); }
         }
     }
 }

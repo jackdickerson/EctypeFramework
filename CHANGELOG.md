@@ -4,6 +4,35 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.26.0
+
+- Mod-declared stats: a mod ships a JSON file whose resource or file name ends in
+  `ectype-stats.json`, embedded in its plugin assembly or beside its DLL, declaring stats it owns
+  (`owner`, and per stat `name`, `kind` `field` or `factor`, `default`, `collection`
+  `character`, `ship` or `session`, `display`, `tooltip`, `lowerIsBetter`, `displayType`,
+  `iconFrom`). Each gets a tooltip entry and is registered at its base into every collection of
+  its kind. The id is `0x20000000 | (MD5("ectype:stat:" + owner + "/" + name) first four bytes,
+  little-endian, & 0x0FFFFFFF)`, so a mod that never references the framework reads its stats by
+  id. Each file is parsed on its own, so a bad file is refused by name and the others register. A
+  duplicate id is refused with an error naming both files, the winner decided by embedded before
+  loose, then assembly name, never by install path. Owners `ectype`, `framework` and every
+  installed role's id are reserved. Manifest effects name a declared character or ship stat as
+  `"owner/Name"`. Schema: `docs/schemas/ectype-stats.schema.json`.
+- `ModStats`: `Id(owner, name)`, `Id(name)`, `TryGet`/`Get` by collection or by
+  `StatCollectionKind`, `LocalCollection`, `IsDeclared`.
+- Framework stats `MeleeDamage`, `MeleeCooldown`, `MeleeReach` (character), `AntiPersonnelDamage`
+  (ship) and `HostileSpawnScale` (session): factors of authored value 1 that the framework
+  registers and a mod reads by id with its own constant as the base.
+- `SessionStats`: a run-wide stat collection, one per session. The host raises `Opening`, takes
+  contributions through `Contribute(statId, modifier, source)` and `Withdraw(source)`, and
+  publishes the composed values in the session data key `framework/sessionStats`; every other
+  client, late joiners included, sets each stat's base to them. At most 128 session stats. A
+  contribution after the session starts changes the host's value only, until the next session.
+  No perk target reaches the session collection, so a manifest effect naming a session stat,
+  `HostileSpawnScale` included, is refused. The collection is held by a component
+  on the GameObject `Ectype.SessionStats`, reachable through the game's `IStatCollectionHolder`.
+- No change to the network contract.
+
 ## 0.25.0
 
 - `SessionData`: values the host decides for a whole session, carried inside the game's own

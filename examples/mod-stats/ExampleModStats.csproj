@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ExampleModStats</AssemblyName>
+    <RootNamespace>ExampleModStats</RootNamespace>
+  </PropertyGroup>
+
+  <!-- No reference to EctypeFramework.dll: the stats file is data, and the reader computes
+       ids and reads them with the game's own API. -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="VoidCrewCommon" HintPath="$(ManagedDir)\VoidCrewCommon.dll" Private="false" />
+    <Reference Include="ResourceAssets" HintPath="$(ManagedDir)\ResourceAssets.dll" Private="false" />
+    <Reference Include="PhotonUnityNetworking" HintPath="$(ManagedDir)\PhotonUnityNetworking.dll" Private="false" />
+    <Reference Include="PhotonRealtime" HintPath="$(ManagedDir)\PhotonRealtime.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(ManagedDir)\Newtonsoft.Json.dll" Private="false" />
+    <Reference Include="Unity.InputSystem" HintPath="$(ManagedDir)\Unity.InputSystem.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\*.cs" />
+    <!-- A resource whose name ends "ectype-stats.json" is how the framework finds the stats this mod declares. -->
+    <EmbeddedResource Include="stats\*.json" />
+  </ItemGroup>
+
+</Project>

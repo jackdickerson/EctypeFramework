@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ectype mod stats file",
+  "description": "The JSON document a mod ships under a resource name or file name ending in \"ectype-stats.json\", embedded in its plugin assembly or beside its DLL. Each stat's id is 0x20000000 | (the first four bytes of MD5(UTF-8 \"ectype:stat:\" + owner + \"/\" + name), little-endian, & 0x0FFFFFFF). Property names and string values are matched exactly. Unknown properties are ignored by the framework with a warning and refused here; every other rule here the framework enforces the same way.",
+  "type": "object",
+  "required": ["owner", "stats"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "$comment": {},
+    "owner": {
+      "description": "The namespace of every stat in the file, part of every id. \"ectype\" and \"framework\" are reserved. Never rename after shipping.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}(?![\\s\\S])",
+      "not": { "enum": ["ectype", "framework"] }
+    },
+    "stats": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/stat" }
+    }
+  },
+  "$defs": {
+    "stat": {
+      "type": "object",
+      "required": ["name", "kind", "collection"],
+      "additionalProperties": false,
+      "properties": {
+        "$comment": {},
+        "name": {
+          "description": "Part of the id; a manifest names the stat as \"owner/name\". Never rename after shipping.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(?![\\s\\S])"
+        },
+        "kind": {
+          "description": "\"field\": an absolute number whose base is \"default\". \"factor\": a multiplier whose base is 1.",
+          "enum": ["field", "factor"]
+        },
+        "default": {
+          "description": "The base value. Required for a field; a factor's is 1. A number no float can hold refuses the whole file.",
+          "type": "number",
+          "minimum": -3.4028234663852886e38,
+          "maximum": 3.4028234663852886e38
+        },
+        "collection": {
+          "description": "Where the framework registers the stat: every player character's own collection, every player ship's own collection, or the session collection.",
+          "enum": ["character", "ship", "session"]
+        },
+        "display": { "description": "Tooltip header. Default: the name.", "type": "string" },
+        "tooltip": { "description": "Tooltip body.", "type": "string" },
+        "lowerIsBetter": { "description": "True colours a reduction as a buff.", "type": "boolean" },
+        "displayType": {
+          "description": "How a modifier on the stat reads in tooltips. Default \"percentage\" for a factor, \"value\" for a field.",
+          "enum": ["value", "percentage"]
+        },
+        "iconFrom": {
+          "description": "A vanilla StatType name or framework stat name whose tooltip icon the stat borrows.",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "field" } } },
+          "then": { "required": ["default"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "factor" } } },
+          "then": { "properties": { "default": { "const": 1 } } }
+        }
+      ]
+    }
+  }
+}

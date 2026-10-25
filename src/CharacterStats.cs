@@ -109,6 +109,7 @@ namespace Ectype
             if (!Plugin.PatchesApplied || !EctypeConfig.Enabled.Value) return;
             CharacterStats.Wire(__instance);
             BuildStats.Wire(__instance);
+            ModStats.WireCharacter(__instance);
         }
     }
 }

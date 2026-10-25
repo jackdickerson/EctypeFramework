@@ -39,6 +39,8 @@ namespace Ectype
         private static Dictionary<string, int> _vanilla;          // alias -> id
         private static readonly Dictionary<int, string> _customOwners =
             new Dictionary<int, string>();                        // id -> "roleId/name"
+        private static readonly Dictionary<int, string> _customOrigins =
+            new Dictionary<int, string>();                        // id -> who declared it
 
         public static int VanillaCount
         {
@@ -75,23 +77,38 @@ namespace Ectype
 
         /// <summary>
         /// Resolve a manifest "stat" string against, in order: the role's own custom stats,
-        /// the framework-owned stats, the vanilla StatType names, a raw int literal. Throws
+        /// the framework-owned stats, a stat declared in a mod's stats file by its qualified
+        /// "owner/name", the vanilla StatType names, a raw int literal. Throws
         /// with the failing name - the caller turns that into one named error and an empty
         /// level, never a broken perk. That order is what keeps a role from being broken by
-        /// a name the framework or the game adds later.
+        /// a name the framework or the game adds later. On the manifest path (a non-null
+        /// <paramref name="customStats"/>) a session stat is refused by name.
         /// </summary>
         public static int Resolve(string stat, Dictionary<string, int> customStats)
+        {
+            int id = ResolveAny(stat, customStats);
+            // customStats is non-null only on the manifest path. No perk target reaches the session
+            // collection, so an effect on a session stat would register and change nothing.
+            if (customStats != null && ModStats.IsSessionStat(id))
+                throw new Exception("'" + stat + "' is a session stat, which no perk target reaches; " +
+                                    "session stats take contributions only through " +
+                                    "SessionStats.Contribute on the host");
+            return id;
+        }
+
+        private static int ResolveAny(string stat, Dictionary<string, int> customStats)
         {
             if (string.IsNullOrEmpty(stat)) throw new Exception("effect names no stat");
             int id;
             if (customStats != null && customStats.TryGetValue(stat, out id)) return id;
             if (FrameworkStats.TryGet(stat, out id)) return id;
+            if (ModStats.TryGetDeclaredId(stat, out id)) return id;
             EnsureVanilla();
             if (_vanilla.TryGetValue(stat, out id)) return id;
             if (int.TryParse(stat, out id)) return id;
             throw new Exception("unknown stat '" + stat + "' (not a StatType name, not a " +
                                 "framework-owned stat, not a custom stat of this role, not " +
-                                "an int id)");
+                                "a declared owner/name, not an int id)");
         }
 
         public static ModifierType ResolveModifierType(string type)
@@ -111,10 +128,13 @@ namespace Ectype
 
         /// <summary>
         /// Register one custom stat into the live StatTable (LUT and authored list, so a
-        /// lookup rebuild keeps it). Re-runnable; collision with a different owner is a named
-        /// error. Returns the derived id.
+        /// lookup rebuild keeps it). Re-runnable; collision with a different owner, or with the
+        /// same owner and name declared by someone else, is a named error. Returns the derived
+        /// id. declaredBy names who declares it, for the collision message: null for a role
+        /// manifest or the framework, the file for a mod stats file.
         /// </summary>
-        public static int RegisterCustomStat(string roleId, CustomStatSpec spec, Sprite icon)
+        public static int RegisterCustomStat(string roleId, CustomStatSpec spec, Sprite icon,
+                                             string declaredBy = null)
         {
             StatTable table = DataTable<StatTable>.Instance;
             if (table == null) throw new Exception("StatTable not loaded yet");
@@ -125,7 +145,13 @@ namespace Ectype
             string existingOwner;
             if (_customOwners.TryGetValue(id, out existingOwner))
             {
-                if (existingOwner == owner) return id;   // re-entry
+                string existingBy;
+                _customOrigins.TryGetValue(id, out existingBy);
+                if (existingOwner == owner && existingBy == declaredBy) return id;   // re-entry
+                if (existingOwner == owner)
+                    throw new Exception("custom stat " + owner + " is declared by " +
+                                        (declaredBy ?? "a role manifest") + " and by " +
+                                        (existingBy ?? "a role manifest"));
                 throw new Exception("custom stat id collision: " + owner + " and " +
                                     existingOwner + " derive the same id " + id);
             }
@@ -153,6 +179,7 @@ namespace Ectype
             if (authored != null && !authored.Contains(structure)) authored.Add(structure);
 
             _customOwners[id] = owner;
+            _customOrigins[id] = declaredBy;
             if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: custom stat '" + owner + "' registered as id " + id +
                                                    ".");
             return id;
