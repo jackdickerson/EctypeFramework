@@ -115,10 +115,14 @@ namespace Ectype
             PerkBuff hero = RoleRegistry.BannerPerk(rec, 0);
             if (hero == null) return null;   // registration not finished; a later Start retries
 
+            // Only an EctypeRoleAbility: the array rebuild keeps every ability that is not one in
+            // the vanilla prefix, so any other type would be appended again by every rebuild.
             ClassAbility ability;
+            object made;
             try
             {
-                ability = rec.AbilityFactory() as ClassAbility;
+                made = rec.AbilityFactory();
+                ability = made as EctypeRoleAbility;
             }
             catch (Exception e)
             {
@@ -132,8 +136,9 @@ namespace Ectype
             {
                 rec.AbilityInstallFailed = true;
                 Plugin.Log.LogError("Ectype: ability factory for '" + rec.Manifest.roleId +
-                                    "' returned null or a non-ClassAbility - the role " +
-                                    "stays data-only this session.");
+                                    "' returned " + (made == null ? "null" : "a " + made.GetType().FullName) +
+                                    ", not an EctypeRoleAbility - the role stays data-only this " +
+                                    "session.");
                 return null;
             }
 

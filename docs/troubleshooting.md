@@ -53,14 +53,23 @@ declares no VoidManager type, so VoidManager never refuses a join on its account
 Logged once, on a client with VoidManager joining a host without it. VoidManager's own check
 needs the host's mod list and would fail without one; the framework passes it for such a room.
 
-### `Ectype: progression guard engaged: this room is tagged modded, so cloud profile writes, Steam stats and achievements are blocked until the game restarts.`
+### `Ectype: progression guard engaged: this room is tagged modded, so profile progression, unlocks, the saved run, Steam stats and achievements are not saved until the game restarts; the block list and cosmetic, ship and gene-tree loadouts still are.`
 
 With or without VoidManager. The client is in a room the game tagged modded, which every room
-hosted with the framework is. From here until the game restarts, nothing this process earns
-is saved to the profile or reported to Steam. `progression guard is missing <methods>` lists
-write methods a game update renamed; those writes are not blocked.
+hosted with the framework is, the player's own hub room included. From here until the game
+restarts, nothing this process earns is saved to the profile or reported to Steam: profile
+data (level, experience, tokens, quest progress, and the seen hints, awakening flag and
+accepted EULA and GDPR versions saved with them), unlocks, achievements and their metrics,
+metaquest times, rewards, the resumable run, the offline profile's exit save, and Steam stats
+and achievements. The block list, the cosmetic loadout, ship loadout presets, gene-tree
+loadouts and the "new item" badges are still saved. [multiplayer.md](multiplayer.md) has the
+table.
 
-### `Ectype: disabled via config ([General] Enabled = false).`
+| Line | Meaning |
+| --- | --- |
+| `Ectype: progression guard skipped cloud write '<key>' (logged once per key).` (verbose) | A cloud profile entry carrying progression was not saved. |
+| `Ectype: progression guard is missing <methods> (game update?); those writes are not blocked in a modded session.` | A write method a game update renamed; those writes go through. |
+| `Ectype: progression guard could not patch <method>: <exception>` | One hook failed to apply; that write goes through. |
 
 ### `Ectype: disabled via config ([General] Enabled = false).`
 
@@ -461,10 +470,12 @@ does nothing.
 The factory threw on a character spawn. The role has no ability this session and its perks
 still apply. Fix the exception.
 
-### `Ectype: ability factory for '<roleId>' returned null or a non-ClassAbility - the role stays data-only this session.`
+### `Ectype: ability factory for '<roleId>' returned <null or a type>, not an EctypeRoleAbility - the role stays data-only this session.`
 
-The factory must return a `ClassAbility` subclass. The simplest base is
-`EctypeRoleAbility`, which wraps the effect hooks.
+The factory must return a new `EctypeRoleAbility` subclass instance. The framework rebuilds a
+character's ability array as the abilities that are not role abilities, in their order,
+followed by each role's `EctypeRoleAbility`; an ability of any other type would be kept in the
+first part and appended again by every rebuild, so it is refused.
 
 ### `Ectype: ability field wiring failed for '<roleId>' (member rename? see warnings above) - ability not installed.`
 

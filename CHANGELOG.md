@@ -75,6 +75,13 @@ build.
   for every member caches its reflection. A build process whose requester has no live
   character no longer logs an error every frame, and picks the requester up once the character
   exists.
+- The progression guard skips only cloud profile entries that carry progression. While it is
+  engaged, the block list, the cosmetic loadout, ship loadout presets, gene-tree loadouts and
+  the "new item" badges are saved again; level, experience, unlocks, achievements, the saved run
+  and Steam stats stay unsaved. Every room a process with the framework hosts is tagged modded,
+  so the guard engages in the player's own hub room.
+- A role ability factory that returns something other than an `EctypeRoleAbility` is refused
+  with one error naming the role, and the role stays data-only for the session.
 
 ## 0.21.0
 
