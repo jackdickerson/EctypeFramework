@@ -31,6 +31,8 @@ namespace Ectype
             // the workbench switch only decides whether the F5 menu can reload it mid-session.
             DevLayout.Reload();
             NetSelfTest.Run();
+            InteractionGateDev.SelfTest();
+            InteractionGateDev.Bind(cfg);
         }
 
         private static void Bind(ConfigFile cfg)
