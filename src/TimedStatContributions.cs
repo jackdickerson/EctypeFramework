@@ -347,12 +347,6 @@ namespace Ectype
             return true;
         }
 
-        /// <summary>
-        /// A collection applied a StatMod. A copy of an already-applied value arrives here without
-        /// ever initialising again (the copier copies the initialised flag), so this is where it is
-        /// found: it is tracked and recalculated at once, which brings it onto the curve, or to the
-        /// neutral amount when its contribution has ended.
-        /// </summary>
         /// <summary>True once any contribution has started this process.</summary>
         internal static bool AnyStarted { get { return _lastHandle != 0; } }
 
@@ -365,18 +359,31 @@ namespace Ectype
             Plugin.Log.LogError("Ectype: timed stat copy check on apply failed (reported once): " + e);
         }
 
+        /// <summary>
+        /// A collection applied a StatMod. A copy of an already-applied value arrives here without
+        /// ever initialising again (the copier copies the initialised flag), so this is where it is
+        /// found: it is tracked and recalculated at once, which brings it onto the curve, or to the
+        /// neutral amount when its contribution has ended. A copy of an ended contribution that
+        /// already reads neutral is left alone, so applying it down a collection tree does not
+        /// re-announce a change at every level.
+        /// </summary>
         internal static void OnApplied(StatMod mod)
         {
             CurveValue v = mod != null ? mod.DynamicValue as CurveValue : null;
             if (v == null || !v.IsInitialized) return;
             bool live = ByHandle.ContainsKey(v.Handle);
             if (live && !Track(v.Handle, v)) return;   // already known: nothing to catch up
+            if (!live)
+            {
+                FloatModifier m = mod.Mod as FloatModifier;
+                if (m != null && m.Amount == 0f) return;
+            }
             v.Refresh();
         }
 
-        /// <summary>Recalculates every live value on a handle; drops the collected ones.</summary>
-        /// <summary>A throw from the original propagates (the caller ends the contribution); a
-        /// throw from a copy drops that copy.</summary>
+        /// <summary>Recalculates every live value on a handle and drops the collected ones. A throw
+        /// from the original propagates (the caller ends the contribution); a throw from a copy
+        /// drops that copy.</summary>
         private static void RefreshAll(TimedStatContribution c, bool includeOriginal)
         {
             List<WeakReference> list;
@@ -569,10 +576,11 @@ namespace Ectype
         private static void Many(IEnumerable<StatMod> mods)
         {
             if (!Plugin.PatchesApplied || !TimedStatContributions.AnyStarted) return;
-            // Only a materialised collection: enumerating a deferred query again would run it again.
-            ICollection<StatMod> list = mods as ICollection<StatMod>;
+            // Only a materialised list: enumerating a deferred query again would run it again.
+            // Indexed, so the check allocates no enumerator.
+            IList<StatMod> list = mods as IList<StatMod>;
             if (list == null) return;
-            try { foreach (StatMod m in list) TimedStatContributions.OnApplied(m); }
+            try { for (int i = 0; i < list.Count; i++) TimedStatContributions.OnApplied(list[i]); }
             catch (Exception e) { TimedStatContributions.CopyCheckFailed(e); }
         }
     }
