@@ -145,9 +145,8 @@ each time the ship enters the void and when the crew saves and leaves.
 
 So the values are also kept in a sidecar file:
 
-- `BepInEx/config/jack.voidcrew.ectype.sessions/<id>.json`, written by the host when it starts a
-  mission that carries values, and again each time the game saves the run, named by the id the
-  save carries.
+- `BepInEx/config/jack.voidcrew.ectype.sessions/<id>.json`, written each time the game saves a
+  run that carries values, by whichever machine saves it, named by the id the save carries.
 - The id the save carries is the saving machine's own session id. A player who became host
   mid-run has a session id the game gave them on joining, not the original host's, and their
   saves carry that one; the sidecar follows it, so a resume from their save finds the values.
@@ -157,13 +156,14 @@ So the values are also kept in a sidecar file:
 - A fresh session gets a fresh id, so it never matches a sidecar. Only files named by a session
   id are read or deleted.
 - The file is written beside the old one and swapped in, so a crash leaves either the old file
-  or the new one. Leftover temporary files are deleted, then sidecars last written more than 30
-  days ago, then all but the newest 64, each time one is written.
+  or the new one. Leftover temporary files are deleted, then sidecars last written more than 180
+  days ago, then all but the newest 16, each time one is written. The game keeps one saved run per
+  profile, so the newest file is the one a resume needs.
 
-A run resumed on another machine has no sidecar there, and its values are produced fresh. In a
-modded session the framework's progression guard keeps the saved run out of the cloud profile,
-so such a run resumes only within the game process that saved it. The sidecar is on disk either
-way.
+The game keeps the saved run in the player's profile, so a run can be resumed in a later game
+process; the sidecar is a file beside the framework's config and lasts as long. A run resumed on
+another machine, or on one whose config folder was cleared, has no sidecar there, and its values
+are produced fresh.
 
 ## Host-synced settings
 
@@ -238,7 +238,7 @@ the next session it starts.
 | `Ectype: session data: patched.` | The hooks are in. Logged once at start-up. |
 | `Ectype: session data: GameSession.AsJObject / FromJObject or GameSessionManager.PrepareNextSession not found (game update?); session data and host values follow each client's own config.` | A game update renamed a hook. |
 | `Ectype: session data: PhotonService.OnEvent(EventData) not found (game update?); the session data's sender is not checked.` | The envelope's stamp is still checked against the master on receipt. |
-| `Ectype: session data: GameSession.GetPreservedState not found (game update?); a saved run's sidecar is written only at mission start.` | Saves after mission start do not refresh the sidecar, and a run saved by a host who took over mid-run loses its values on resume. |
+| `Ectype: session data: GameSession.GetPreservedState not found (game update?); a saved run's sidecar is written at mission start instead, under the id the session started with.` | The sidecar holds the values the mission started with. A run saved by a host who took over mid-run loses its values on resume, because its save carries another id. |
 | `Ectype: session data: Register('<key>') refused: <problem>.` | The key is empty, longer than 128 characters, holds a control character or is already registered; no producer was given; or `T` does not survive JSON. |
 | `Ectype: session data: '<key>' not registered: the session-data patches are not applied this session, so no host value reaches this client.` | The framework is inert or a hook is missing. `HostValue` then follows the local config. |
 | `Ectype: session data: sending <n> key(s) with <hub\|mission> session <id> (<bytes> bytes[, <k> restored from the saved run]).` | Host: the values that go out with this session. |
@@ -284,9 +284,9 @@ With two clients and `VerboseLogging` on both:
    client `received`, both `applied`.
 3. Join a third client mid-mission: it logs `received` with `from the room cache` and the same
    id, and reads the host's value.
-4. Save an endless run, return to the hub, resume it: the host logs
-   `restored from the saved run`, and clients read the value the run started with even if the
-   host's config changed since.
+4. Save an endless run, quit the game, change the host's config, start the game and resume the
+   run: the host logs `restored from the saved run`, and clients read the value the run started
+   with.
 5. Let the host leave mid-run; the new host saves and resumes: it logs `this run is saved under
    session` once, then `restored from the saved run`.
 

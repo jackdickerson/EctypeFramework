@@ -66,8 +66,8 @@ namespace Ectype
         public const string HostValuesRoomProperty = RoomPropertyPrefix + "HostValues";
 
         internal const int FormatVersion = 1;
-        internal const int SidecarMaxAgeDays = 30;
-        internal const int SidecarMaxCount = 64;
+        internal const int SidecarMaxAgeDays = 180;
+        internal const int SidecarMaxCount = 16;
         private const int MaxKeyLength = 128;
         private const float PollSeconds = 0.25f;
 
@@ -155,6 +155,7 @@ namespace Ectype
 
         // event 9 sender, recorded around the game's handler
         private static bool _senderHook;
+        private static bool _saveHook;
         private static bool _inEvent9;
         private static int _event9Sender;
 
@@ -461,10 +462,13 @@ namespace Ectype
 
             MethodInfo save = typeof(GameSession).GetMethod("GetPreservedState", I, null, Type.EmptyTypes, null);
             if (save != null)
+            {
                 harmony.Patch(save, postfix: Hook("GetPreservedStatePostfix"));
+                _saveHook = true;
+            }
             else
                 Plugin.Log.LogWarning("Ectype: session data: GameSession.GetPreservedState not found (game " +
-                                      "update?); a saved run's sidecar is written only at mission start.");
+                                      "update?); a saved run's sidecar is written at mission start instead, under the id the session started with.");
             Plugin.Log.LogInfo("Ectype: session data: patched.");
         }
 
@@ -491,7 +495,10 @@ namespace Ectype
                     {
                         a = Capture(session);
                         Attach(session, a);
-                        if (!session.IsHub && a.Keys.Count > 0) SaveSidecar(session.GameSessionID, a.Keys);
+                        // Every save writes the sidecar; without the save hook, mission start is the
+                        // only chance.
+                        if (!_saveHook && !session.IsHub && a.Keys.Count > 0)
+                            SaveSidecar(session.GameSessionID, a.Keys);
                     }
                     else
                     {

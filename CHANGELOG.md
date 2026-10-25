@@ -17,11 +17,11 @@ build.
   Unity types are refused at `Register`. Each key is capped (`SessionDataOptions.MaxBytes`,
   default 4096 bytes) and the whole envelope at 16384 bytes, over which the largest key is left
   out; each refusal logs one error naming its key.
-- A resumed saved run sends the values it started with: they are kept in
-  `BepInEx/config/jack.voidcrew.ectype.sessions/<id>.json`, written by the host at mission start
-  and by whoever saves the run, named by the id the save carries, swapped in atomically, and
-  pruned past 30 days or 64 files. `SessionDataOptions.KeepOnResume` false produces a fresh value
-  instead.
+- A resumed saved run sends the values it started with, in a later game process too: they are
+  kept in `BepInEx/config/jack.voidcrew.ectype.sessions/<id>.json`, written each time the run is
+  saved by whichever machine saves it, named by the id the save carries, swapped in atomically,
+  and pruned past 180 days or 16 files. `SessionDataOptions.KeepOnResume` false produces a fresh
+  value instead.
 - The envelope carries the producing host's actor number. A live delivery must come from that
   actor, and that actor must be the master or have left; a late joiner, whose copy comes from
   the room cache with no sender, accepts it only when it names the master or a departed actor.
