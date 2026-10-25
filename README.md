@@ -36,6 +36,7 @@ it; a mismatched version bounces the joiner.
 - [Role mods](docs/reference/roles.md)
 - [Configuration](docs/reference/config.md)
 - [Session data and host-synced settings](docs/reference/session-data.md)
+- [Host room values](docs/reference/host-room-values.md)
 - [Mutator safety](docs/reference/mutator-safety.md)
 - [Loot tables](docs/reference/loot-tables.md)
 - [Content registry](docs/reference/content-registry.md)

@@ -6,6 +6,8 @@ A mod that lets players punch or hit each other can count the attacker's perks, 
 
 Mods that limit what players may use aboard a ship can tell a system's power switch from the whole ship's, a power line's or a breaker, and an airlock's pressurise lever from its safety override.
 
+Mods can keep choices only the host makes, such as fleet or team picks, in sync on every player's game for as long as the room lasts. A value changed by any other player is ignored and the host's is put back, and a player who takes over as host carries on with the same choices.
+
 ## 0.30.0
 
 Mods can add mutators to the game's Mutators menu that change run-wide numbers, such as how many hostiles spawn. Select one before a run, or have a mission force it on, and every player gets the same numbers, late joiners included. Players need the mod that adds a mutator to join a host who has it installed.
