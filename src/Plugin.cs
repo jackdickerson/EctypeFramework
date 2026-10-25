@@ -41,10 +41,6 @@ namespace Ectype
             DevTools.Awake(Config);
 #endif
 
-            // Not role machinery: dependents call the gate whether or not roles are enabled.
-            try { SelectionGate.EnsureBound(); }
-            catch (Exception e) { Log.LogError("Ectype: binding the selection gate failed: " + e); }
-
             if (!EctypeConfig.Enabled.Value)
             {
                 Log.LogWarning("Ectype: disabled via config ([General] Enabled = false).");
@@ -117,7 +113,6 @@ namespace Ectype
             GUILayout.Label("Stats  : " + SafeStatCount() + " vanilla aliases, " +
                             "framework-owned " + FrameworkStats.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
-            GUILayout.Label("Host suppress: " + HostSuppression.Status);
             GUILayout.Space(8f);
 
             if (RoleRegistry.Roles.Count == 0)
@@ -127,16 +122,10 @@ namespace Ectype
             }
             foreach (RoleRecord rec in RoleRegistry.Roles)
             {
-                GUILayout.BeginHorizontal();
-                DrawSuppressToggle(rec);
                 GUILayout.Label(rec.Manifest.roleName + "  (tree " + rec.Ordinal + ", " +
                                 rec.SourceAssembly.GetName().Name + ")");
-                GUILayout.EndHorizontal();
                 GUILayout.Label("   " + rec.Status);
             }
-            GUILayout.Label("Host suppress checkboxes above: yours only, applied while " +
-                            "everyone is in the hub. See the [RoleSuppression] section " +
-                            "of this mod's .cfg for the full explanation.");
             GUILayout.Space(8f);
 
             GUILayout.Label("Config: BepInEx/config/" + EctypePluginInfo.PLUGIN_GUID + ".cfg");
@@ -150,21 +139,6 @@ namespace Ectype
         {
             try { return StatRegistry.VanillaCount.ToString(); }
             catch { return "?"; }
-        }
-
-        /// <summary>The toggle isn't bound until EnsureRoleToggles has run at least once
-        /// after this role was discovered (usually the same frame) - draw nothing rather
-        /// than throw on that first frame.</summary>
-        private static void DrawSuppressToggle(RoleRecord rec)
-        {
-            BepInEx.Configuration.ConfigEntry<bool> entry;
-            if (!EctypeConfig.RoleSuppressToggles.TryGetValue(rec.Manifest.roleId, out entry) ||
-                entry == null)
-            {
-                GUILayout.Label("[ ]", GUILayout.Width(24f));
-                return;
-            }
-            entry.Value = GUILayout.Toggle(entry.Value, "", GUILayout.Width(24f));
         }
     }
 
@@ -189,8 +163,6 @@ namespace Ectype
 #if ECTYPE_DEV
             Step("layout poll", DevLayout.Poll);
 #endif
-            Step("role toggles", EctypeConfig.EnsureRoleToggles);
-            Step("room sync", RoomSync.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.
             Step("enemy abilities", EnemyAbilities.Poll);

@@ -121,10 +121,10 @@ namespace Ectype
         }
 
         /// <summary>
-        /// True while a role is registered and nothing suppresses it in the current room:
-        /// neither the host's per-role toggle nor another active role's suppressRoles. The
-        /// host's toggle travels as a room property applied on every client and the rest is
-        /// manifest data, so every client in the room gives the same answer.
+        /// True while a role is registered and no other active role lists it in its
+        /// manifest's suppressRoles. Both halves come from the installed role mods, so every
+        /// client running the same mod set gives the same answer. False for an unknown roleId
+        /// or a role that has not registered yet.
         /// </summary>
         public static bool IsAvailableInRoom(string roleId)
         {

@@ -25,8 +25,16 @@ namespace Ectype
     ///
     /// Entries that do not name a vanilla tree are ignored with a named warning: a single
     /// perk (removal is stock-tree edit surface, not suppression), a framework role
-    /// (uninstall the mod instead), or nothing at all (a game update moved it). An ignored
-    /// entry never fails the role - suppression degrades to "tree still present".
+    /// (suppressRoles is the field for that), or nothing at all (a game update moved it). An
+    /// ignored entry never fails the role - suppression degrades to "tree still present".
+    ///
+    /// A role mod may also list other framework roles by roleId in suppressRoles. A role
+    /// suppressed that way loses its tree and perks the same as a suppressed vanilla tree,
+    /// except that its perks stay in the save (see IsScrubbedPerk), and its own suppress and
+    /// suppressRoles entries stop counting.
+    ///
+    /// Everything here is manifest data, so the result is fixed for the process once Resolve
+    /// settles, and every client with the same mod set derives the same answer.
     /// </summary>
     internal static class Suppression
     {
@@ -51,8 +59,7 @@ namespace Ectype
         /// terminal documents. The game names each tree's PerkTreeVE by its EPerkTree.</summary>
         internal static readonly List<string> TreeElementNames = new List<string>();
 
-        /// <summary>roleIds suppressed by another active role's suppressRoles. Host
-        /// suppression lives in HostSuppression; IsRoleSuppressed is the union.</summary>
+        /// <summary>roleIds suppressed by another active role's suppressRoles.</summary>
         private static readonly HashSet<string> _roleSuppressed =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -74,9 +81,9 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Container-gated and re-runnable; settles once the perk-tree refs are populated,
-        /// which the registration retry loop reaches long before the first terminal build
-        /// consumes it. Deriving more than once is Rederive's job, not this gate's.
+        /// Container-gated and re-runnable until it settles, once the perk-tree refs are
+        /// populated, which the registration retry loop reaches long before the first
+        /// terminal build consumes it. It derives once; after that every call is a no-op.
         /// </summary>
         public static void Resolve()
         {
@@ -95,39 +102,19 @@ namespace Ectype
             foreach (PerkTreeRef r in tc.GetPerkRefs()) { if (r != null) { populated = true; break; } }
             if (!populated) return;
 
-            Rederive(tc, pc);
+            Derive(tc, pc);
             _resolved = true;
         }
 
         /// <summary>
-        /// Called by HostSuppression whenever the host-suppressed role set changes, so a
-        /// vanilla tree that role X's manifest suppresses stops being suppressed while X
-        /// itself is host-suppressed, unless some other still-active role also claims it.
-        /// No-ops before the first Resolve(), which reads current HostSuppression state itself.
+        /// Fills _trees / _perks / _perkAdopter / TreeElementNames from _requested (the
+        /// manifest-declared vanilla-tree suppressions, skipping any whose requesting role is
+        /// itself suppressed) plus each suppressed framework role's own tree and perk GUIDs.
+        /// A framework role's own perks get no adopter entry - there is no replacement role
+        /// to re-home onto, so those payloads go dead.
         /// </summary>
-        public static void OnHostSuppressionChanged()
+        private static void Derive(PerkTreeContainer tc, PerkBuffContainer pc)
         {
-            if (!_resolved) return;
-            PerkTreeContainer tc = PerkTreeContainer.Instance;
-            PerkBuffContainer pc = PerkBuffContainer.Instance;
-            if (tc == null || pc == null) return;
-            Rederive(tc, pc);
-        }
-
-        /// <summary>
-        /// Rebuilds _trees / _perks / _perkAdopter / TreeElementNames from _requested (the
-        /// manifest-declared vanilla-tree suppressions, skipping any whose requesting role
-        /// is currently host-suppressed) plus every host-suppressed ectype role's own tree
-        /// and perk GUIDs, folded into the SAME sets so every consumer treats the two cases
-        /// alike. An ectype role's own perks get no adopter entry - there is no replacement
-        /// role to re-home onto, so those payloads go dead.
-        /// </summary>
-        private static void Rederive(PerkTreeContainer tc, PerkBuffContainer pc)
-        {
-            _trees.Clear();
-            _perks.Clear();
-            _perkAdopter.Clear();
-            TreeElementNames.Clear();
             DeriveRoleSuppression();
 
             List<string> suppressedNames = new List<string>();
@@ -191,43 +178,42 @@ namespace Ectype
 
             // GUIDs come from the manifest, not the record: this can run before the role
             // has registered, while rec.TreeGuid and rec.PerkGuids are still empty.
-            int hostSuppressedTrees = 0;
+            int suppressedRoles = 0;
             foreach (RoleRecord rec in RoleRegistry.Roles)
             {
                 RoleManifest m = rec.Manifest;
                 if (!IsRoleSuppressed(m.roleId)) continue;
                 _trees.Add(new GUIDUnion(Guids.TreeGuid(m.roleId)).AsHex());
-                hostSuppressedTrees++;
+                suppressedRoles++;
                 if (m.hero != null) _perks.Add(PerkHex(m.roleId, m.hero));
                 foreach (PerkSpec p in m.perks)
                     if (p != null) _perks.Add(PerkHex(m.roleId, p));
             }
 
             // The two populations are reported separately, so the count is over the named
-            // trees only - _trees also holds the host-suppressed ones the suffix covers.
+            // vanilla trees only - _trees also holds the suppressed roles the suffix covers.
             string ignoredSuffix = ignored > 0 ? " (" + ignored + " ignored)" : "";
-            string hostSuffix = hostSuppressedTrees > 0
-                ? hostSuppressedTrees + " suppressed role(s)" : "";
+            string roleSuffix = suppressedRoles > 0
+                ? suppressedRoles + " suppressed role(s)" : "";
             if (_trees.Count == 0)
                 Status = "no trees suppressed" +
                          (ignored > 0 ? " (" + ignored + " entr" +
                                         (ignored == 1 ? "y" : "ies") + " ignored)" : "");
             else if (suppressedNames.Count == 0)
-                Status = hostSuffix + ignoredSuffix;
+                Status = roleSuffix + ignoredSuffix;
             else
                 Status = suppressedNames.Count + " tree(s) suppressed: " +
                          string.Join(", ", suppressedNames.ToArray()) +
-                         (hostSuffix.Length > 0 ? " + " + hostSuffix : "") +
+                         (roleSuffix.Length > 0 ? " + " + roleSuffix : "") +
                          ignoredSuffix;
         }
 
-        /// <summary>True when the host suppressed this role, or a role that is not itself
-        /// suppressed lists it in suppressRoles. The manifest half is known only once
-        /// Resolve has run.</summary>
+        /// <summary>True when a role that is not itself suppressed lists this role in
+        /// suppressRoles. Known only once Resolve has run; false before.</summary>
         public static bool IsRoleSuppressed(string roleId)
         {
             if (string.IsNullOrEmpty(roleId)) return false;
-            return HostSuppression.IsRoleSuppressed(roleId) || _roleSuppressed.Contains(roleId);
+            return _roleSuppressed.Contains(roleId);
         }
 
         private static bool AnyRoleRequests()
@@ -244,15 +230,13 @@ namespace Ectype
         }
 
         /// <summary>
-        /// A role is suppressed when the host suppressed it, or when a role that is itself
-        /// active lists it. Each answer depends on its requesters' answers, so it is resolved
+        /// A role is suppressed when a role that is itself active lists it. Each answer depends on its requesters' answers, so it is resolved
         /// depth-first over the request graph in roleId order. A cycle (A lists B, B lists
         /// A) is broken by treating the role re-entered first as active; the walk order is
         /// the sorted role list, so every client breaks it the same way.
         /// </summary>
         private static void DeriveRoleSuppression()
         {
-            _roleSuppressed.Clear();
             Dictionary<string, bool> state =
                 new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             HashSet<string> visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -266,7 +250,6 @@ namespace Ectype
         {
             bool known;
             if (state.TryGetValue(id, out known)) return known;
-            if (HostSuppression.IsRoleSuppressed(id)) { state[id] = true; return true; }
             if (!visiting.Add(id))
             {
                 Plugin.Log.LogWarning("Ectype: suppressRoles cycle through '" + id +
@@ -305,8 +288,8 @@ namespace Ectype
         /// <summary>
         /// True for a perk of a suppressed vanilla tree - the only suppressed perks the
         /// load-time scrub removes from a saved loadout. A suppressed framework role's perks
-        /// stay in the save, because that suppression can lift mid-session; SuppressionOverlay
-        /// hides them instead.
+        /// stay in the save, so removing the role mod that suppresses it restores the build;
+        /// SuppressionOverlay hides them instead.
         /// </summary>
         public static bool IsScrubbedPerk(GUIDUnion g)
         {

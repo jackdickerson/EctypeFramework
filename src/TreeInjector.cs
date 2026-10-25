@@ -65,7 +65,7 @@ namespace Ectype
             foreach (RoleRecord rec in RoleRegistry.Roles)
             {
                 if (!rec.TreeDefPublished) continue;
-                // Suppressed (by the host or another role's suppressRoles): skip injection
+                // Suppressed by another role's suppressRoles: skip injection
                 // rather than build-then-hide, so an element with no def reaching the ctor never
                 // exists even transiently; routed through the same `missing` degrade path as a
                 // failed build.

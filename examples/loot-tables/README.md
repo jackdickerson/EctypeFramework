@@ -4,8 +4,7 @@ Adds one more entry for an item to the stock loot rolls that already drop weapon
 
 Shows:
 
-- `LootTables.Register(new LootDrop { ... })` with an item GUID, a rarity from `LootTables.ToLootRarity`, an anchor (`AnyCarryableTagged("Carryable_WeaponMod")`), `RequireRarityInTable` and a `Gate`.
-- A gate built on `SelectionGate`: it answers false for a room where a member fails the build check.
+- `LootTables.Register(new LootDrop { ... })` with an item GUID, a rarity from `LootTables.ToLootRarity`, an anchor (`AnyCarryableTagged("Carryable_WeaponMod")`) and `RequireRarityInTable`.
 - `MultiplayerType.Session`: changing what drops changes what a run contains.
 
 The item in this sample is a stock weapon mod, chosen so the sample needs no asset of its own. A mod that adds a new item registers that asset separately and passes its GUID here; that registration is not part of this API.
@@ -14,7 +13,8 @@ Rules:
 
 - An item joins a roll only when the table holds an authored entry that the anchor accepts. It takes the smallest anchor amount and the union of the anchors' spawn locations, at its own rarity. Entries added at runtime are never anchors.
 - An item alone in its rarity drops every time that rarity is asked for. Set `RequireRarityInTable = true` to keep it out of tables that offer nothing at its rarity.
-- A registered item must resolve on every client. Close the `Gate` for any room where a member cannot resolve it. A gate that returns false or throws leaves the item out of that roll.
+- A registered item must resolve on every client. A stock item always does. An item your mod adds resolves only where your mod is installed, so a mod that adds one declares `MultiplayerType.All`, which makes VoidManager refuse a joiner who lacks it.
+- `Gate` is optional and asked at each roll; a gate that returns false or throws leaves the item out of that roll. An item that belongs to a role passes `Gate = () => RoleRegistry.IsAvailableInRoom(roleId)`, which closes the roll while that role is not registered or another installed role suppresses it. This sample's stock item needs no gate.
 - `Register` is idempotent and returns false, with a log line, when the item or anchor is missing or another owner registered the item first.
 - Rolls that spawn items run on the host.
 

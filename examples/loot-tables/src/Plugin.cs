@@ -46,9 +46,8 @@ namespace ExampleLootTables
                     // Only into tables that already offer Common entries, so the item
                     // cannot become the only Common drop of a table that has none.
                     RequireRarityInTable = true,
-                    // Asked at each roll. Close it for any room where a member could not
-                    // resolve the item.
-                    Gate = RoomCanResolveItem,
+                    // No Gate: a stock item resolves on every client. A role-owned item
+                    // would pass Gate = () => RoleRegistry.IsAvailableInRoom(roleId).
                 });
                 if (!ok) Log.LogWarning("Loot registration was refused; see the Ectype log lines.");
                 Log.LogInfo("Example Loot Tables v" + PLUGIN_VERSION + " loaded.");
@@ -61,23 +60,6 @@ namespace ExampleLootTables
 
         // Stock weapon mod "Heatsink MkI".
         private const string ItemGuid = "67819aed3fd8de240a7e3f610f1d3267";
-
-        private static bool RoomCanResolveItem()
-        {
-            try
-            {
-                // A stock item resolves everywhere. A mod's own item resolves only for
-                // members running that mod, which is what the selection gate reports.
-                // The verdict is NotHost off the host, and Fail only for a real mismatch.
-                GateResult r = SelectionGate.Current(PLUGIN_GUID);
-                return r == null || r.Verdict != GateVerdict.Fail;
-            }
-            catch (Exception e)
-            {
-                Log.LogError("Loot gate failed: " + e);
-                return false;
-            }
-        }
     }
 
     /// <summary>Session: the extra drop changes what a run contains, so presence flags the
