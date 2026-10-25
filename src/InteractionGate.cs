@@ -298,12 +298,12 @@ namespace Ectype
         }
 
         /// <summary>The kind the shared classifier gives a component (an item in a socket is
-        /// the socket). A socket reads as <see cref="InteractionKind.SocketRelease"/>; the
+        /// the socket, and an item is its CarryableObject, as every chokepoint presents them). A socket reads as <see cref="InteractionKind.SocketRelease"/>; the
         /// framework's own chokepoints know whether the player is carrying something and say
         /// <see cref="InteractionKind.SocketInsert"/> when they are.</summary>
         public static InteractionKind Classify(Component component)
         {
-            return InteractionClassifier.Classify(InteractionClassifier.Resolve(component), false);
+            return InteractionClassifier.Classify(InteractionClassifier.Canonical(component), false);
         }
 
         internal static Refusal EvaluateWithId(GateQuery query, out string gateId)

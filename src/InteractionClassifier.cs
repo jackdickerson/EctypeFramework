@@ -32,11 +32,15 @@ namespace Ectype
     /// Everything else is read from the component's type or the types above it.
     ///
     /// A switch is judged by what it switches: a power switch when a module mediator above it
-    /// names it, else the kind of the component that holds the value it controls (the same
-    /// component the owner side judges when the switch's request arrives). A switch with no
-    /// module above it (a breaker, a line switch) is a power switch; one met while its module is
-    /// still being assembled keeps that answer and is read again after
-    /// <see cref="RetrySeconds"/>, at most <see cref="MaxRetries"/> times.
+    /// names it, else the full classification of the component that holds the value it controls
+    /// (the same component, through the same computation, as the owner side when the switch's
+    /// request arrives). A switch with no module above it and no value holder (a breaker, a line
+    /// switch) is a power switch; one met while its module is still being assembled keeps that
+    /// answer, re-read after <see cref="RetrySeconds"/>, computed <see cref="MaxRetries"/> times
+    /// in all.
+    ///
+    /// Every query starts from <see cref="Canonical"/>, so an item or a socket reaches a gate as
+    /// the same component from every chokepoint.
     /// </summary>
     internal static class InteractionClassifier
     {
@@ -78,19 +82,30 @@ namespace Ectype
         private static AccessTools.FieldRef<TerminalModuleMediator, ClickerInteractable> _terminalClicker;
         private static AccessTools.FieldRef<RepairObject, ClickerInteractable> _repairClicker;
 
-        /// <summary>An item in a socket becomes the socket's interactable, as the game's own
-        /// raycast does; everything else is returned as it is.</summary>
-        internal static Component Resolve(Component c)
+        /// <summary>
+        /// The one component a gate sees for a thing, whichever chokepoint met it: an item is its
+        /// <c>CarryableObject</c> (from its grab handle too), an item sitting in a socket is that
+        /// <c>CarryablesSocket</c>, as the game's own raycast reads it, and a socket's interactable
+        /// is its <c>CarryablesSocket</c>. Everything else is returned as it is. Every query the
+        /// framework builds, on either side, starts from this.
+        /// </summary>
+        internal static Component Canonical(Component c)
         {
-            Grabbable grabbable = c as Grabbable;
-            if (grabbable == null) return c;
+            if (c == null) return null;
             try
             {
-                CarryableObject item = grabbable.Carryable;
-                CarryablesSocket socket = item != null ? item.Carrier as CarryablesSocket : null;
-                if (socket == null) return c;
-                SocketInteractable si = socket.GetComponentInChildren<SocketInteractable>();
-                return si != null ? (Component)si : socket;
+                SocketInteractable si = c as SocketInteractable;
+                if (si != null)
+                {
+                    CarryablesSocket own = si.SocketActor != null ? si.SocketActor.Socket : null;
+                    if (own == null) own = si.GetComponentInParent<CarryablesSocket>(true);
+                    return own != null ? own : c;
+                }
+                Grabbable grabbable = c as Grabbable;
+                CarryableObject item = grabbable != null ? grabbable.Carryable : c as CarryableObject;
+                if (item == null) return c;
+                CarryablesSocket socket = item.Carrier as CarryablesSocket;
+                return socket != null ? (Component)socket : item;
             }
             catch (Exception) { return c; }
         }
@@ -190,16 +205,14 @@ namespace Ectype
                 IShipModuleMediator[] mediators = sw.GetComponentsInParent<IShipModuleMediator>(true);
                 foreach (IShipModuleMediator m in mediators)
                     if (ReferenceEquals(PowerSwitchOf(m), sw)) return InteractionKind.PowerSwitch;
+                // The component the owner judges when this switch's request arrives: the same
+                // computation from the same component, so both sides read the same kind.
                 Component holder = HolderOf(sw);
-                if (holder != null && holder != sw)
-                {
-                    kind = ByType(holder);
-                    if (kind != InteractionKind.Other) return kind;
-                }
+                if (holder != null && holder != sw && !(holder is SwitchClicker)) return Compute(holder, out settled);
                 if (mediators.Length == 0)
                 {
-                    // Outside any module: a breaker or a line switch. A module still being
-                    // assembled has no mediator yet either, so the answer is read again later.
+                    // Outside any module, holding no value: a breaker or a line switch. A module
+                    // still being assembled has no mediator yet either, so it is read again later.
                     settled = false;
                     return InteractionKind.PowerSwitch;
                 }
@@ -319,15 +332,24 @@ namespace Ectype
         private static void Postfix(Harmony harmony, Type type, string method, string hook, bool usable,
                                     string consequence)
         {
-            MethodInfo target = AccessTools.DeclaredMethod(type, method, Type.EmptyTypes) ??
-                                AccessTools.DeclaredMethod(type, method);
-            if (target == null || !usable)
+            // Each registration on its own: a failure costs that control's classification only.
+            try
+            {
+                MethodInfo target = AccessTools.DeclaredMethod(type, method, Type.EmptyTypes) ??
+                                    AccessTools.DeclaredMethod(type, method);
+                if (target == null || !usable)
+                {
+                    Plugin.Log.LogWarning("Ectype: interaction gate: " + type.Name + "." + method +
+                                          " not usable (game update?); " + consequence + ".");
+                    return;
+                }
+                harmony.Patch(target, postfix: new HarmonyMethod(typeof(InteractionClassifier), hook));
+            }
+            catch (Exception e)
             {
                 Plugin.Log.LogWarning("Ectype: interaction gate: " + type.Name + "." + method +
-                                      " not usable (game update?); " + consequence + ".");
-                return;
+                                      " not usable (game update?); " + consequence + ": " + e.Message);
             }
-            harmony.Patch(target, postfix: new HarmonyMethod(typeof(InteractionClassifier), hook));
         }
 
         private static void DoorActorStart(DoorActor __instance)
