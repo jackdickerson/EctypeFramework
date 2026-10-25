@@ -107,10 +107,14 @@ namespace ExampleCharacterStatuses
                     // client's own checks is in before Request returns.
                     string name = mate.name;
                     CharacterStatuses.Request(mate, SlowKey, seconds: 3f).OnCompleted(r =>
-                        Log.LogInfo(r.Applied
-                                        ? "Slowed " + name + "."
-                                        : "Slow on " + name + " refused " +
-                                          (r.Sent ? "by their client" : "here") + ": " + r.Refusal + "."));
+                    {
+                        if (r.Applied) Log.LogInfo("Slowed " + name + ".");
+                        else if (r.Refusal == CharacterStatusRefusal.NoAnswer)
+                            Log.LogInfo("No answer from " + name + "'s client; the slow may or may not have landed.");
+                        else
+                            Log.LogInfo("Slow on " + name + " refused " +
+                                        (r.Sent ? "by their client" : "here") + ": " + r.Refusal + ".");
+                    });
                 }
             }
             catch (Exception e)
