@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Gameplay.Utilities;
+using HarmonyLib;
 using Photon.Pun;
 using UnityEngine;
 
@@ -138,8 +139,16 @@ namespace Ectype
     /// through every field and clones MonoBehaviours, so a value that held the contribution would
     /// drag the target collection and its Unity holder into the copy. The value and the source
     /// therefore hold only an integer handle into a static table, filled at start and cleared at
-    /// the end. A copy shares the handle, reads the same curve while the contribution runs, and
-    /// contributes the neutral amount once it has ended.
+    /// the end.
+    ///
+    /// A copy follows the curve too. The game recalculates a dynamic value only at its first
+    /// application (Init) and when its owner refreshes it, and the copier copies the "already
+    /// initialised" flag, so nothing would refresh a copy on its own. Every value is therefore
+    /// tracked by handle and refreshed with the original: a copy made before application registers
+    /// when it initialises, and a copy of a value already applied is caught when a tag collection
+    /// applies it and recalculated at once. Each update refreshes every tracked value; the end
+    /// refreshes them once more with the handle gone, so they read the neutral amount. A copy that
+    /// is never applied to a tag collection contributes nothing anywhere and is not tracked.
     /// </summary>
     public static class TimedStatContributions
     {
@@ -149,6 +158,10 @@ namespace Ectype
         private static readonly List<TimedStatContribution> Live = new List<TimedStatContribution>();
         private static readonly Dictionary<int, TimedStatContribution> ByHandle =
             new Dictionary<int, TimedStatContribution>();
+        /// <summary>Every value initialised against a live handle: the original and any copy that
+        /// was initialised after copying. Weak, so a copy its owner dropped is not kept alive.</summary>
+        private static readonly Dictionary<int, List<WeakReference>> Values =
+            new Dictionary<int, List<WeakReference>>();
         private static int _lastHandle;
         private static readonly HashSet<string> WarnedOnce = new HashSet<string>();
         private static float _nextUpdate;
@@ -315,6 +328,77 @@ namespace Ectype
             return ByHandle.TryGetValue(handle, out c) ? c : null;
         }
 
+        /// <summary>From a value's initialisation, or its application to a collection: refreshed
+        /// with the original from now on, and once more, to the neutral amount, when the
+        /// contribution ends. Returns false for a value already tracked or a handle with nothing
+        /// live behind it (such a value reads neutral at its next recalculation).</summary>
+        internal static bool Track(int handle, CurveValue value)
+        {
+            if (value == null || !ByHandle.ContainsKey(handle)) return false;
+            List<WeakReference> list;
+            if (!Values.TryGetValue(handle, out list))
+            {
+                list = new List<WeakReference>();
+                Values[handle] = list;
+            }
+            for (int i = 0; i < list.Count; i++)
+                if (ReferenceEquals(list[i].Target, value)) return false;
+            list.Add(new WeakReference(value));
+            return true;
+        }
+
+        /// <summary>
+        /// A collection applied a StatMod. A copy of an already-applied value arrives here without
+        /// ever initialising again (the copier copies the initialised flag), so this is where it is
+        /// found: it is tracked and recalculated at once, which brings it onto the curve, or to the
+        /// neutral amount when its contribution has ended.
+        /// </summary>
+        /// <summary>True once any contribution has started this process.</summary>
+        internal static bool AnyStarted { get { return _lastHandle != 0; } }
+
+        private static bool _copyCheckFailed;
+
+        internal static void CopyCheckFailed(Exception e)
+        {
+            if (_copyCheckFailed) return;
+            _copyCheckFailed = true;
+            Plugin.Log.LogError("Ectype: timed stat copy check on apply failed (reported once): " + e);
+        }
+
+        internal static void OnApplied(StatMod mod)
+        {
+            CurveValue v = mod != null ? mod.DynamicValue as CurveValue : null;
+            if (v == null || !v.IsInitialized) return;
+            bool live = ByHandle.ContainsKey(v.Handle);
+            if (live && !Track(v.Handle, v)) return;   // already known: nothing to catch up
+            v.Refresh();
+        }
+
+        /// <summary>Recalculates every live value on a handle; drops the collected ones.</summary>
+        /// <summary>A throw from the original propagates (the caller ends the contribution); a
+        /// throw from a copy drops that copy.</summary>
+        private static void RefreshAll(TimedStatContribution c, bool includeOriginal)
+        {
+            List<WeakReference> list;
+            if (!Values.TryGetValue(c.Handle, out list)) return;
+            for (int i = list.Count - 1; i >= 0; i--)
+            {
+                CurveValue v = list[i].Target as CurveValue;
+                if (v == null) { list.RemoveAt(i); continue; }
+                bool original = ReferenceEquals(v, c.Value);
+                if (original && !includeOriginal) continue;
+                try { v.Refresh(); }
+                catch (Exception e)
+                {
+                    if (original) throw;
+                    list.RemoveAt(i);
+                    if (Plugin.Verbose)
+                        Plugin.Log.LogInfo("Ectype: timed stat '" + c.Label + "': refreshing a copy threw; " +
+                                           "the copy is no longer refreshed: " + e.Message);
+                }
+            }
+        }
+
         internal static float ProgressAt(int startMs, int durationMs, int nowMs)
         {
             if (durationMs <= 0) return 1f;
@@ -371,7 +455,7 @@ namespace Ectype
                 if (!alive) { Finish(c, "keep-alive returned false", true); return; }
             }
             if (unchecked(now - c.StartServerMs) >= c.DurationMs) { Finish(c, "expired", true); return; }
-            c.Value.Refresh();
+            RefreshAll(c, true);
         }
 
         private static void Finish(TimedStatContribution c, string reason, bool removeFromTarget)
@@ -382,6 +466,11 @@ namespace Ectype
             Live.Remove(c);
             ByHandle.Remove(c.Handle);
             if (removeFromTarget && c.Target != null) c.Target.RemoveModifier(c.Source);
+            // With the handle gone every value reads neutral, so copies applied elsewhere stop
+            // contributing. The original is left alone when its target is destroyed: a refresh
+            // would run the destroyed collection's change handlers.
+            try { RefreshAll(c, removeFromTarget); }
+            finally { Values.Remove(c.Handle); }
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: timed stat '" + c.Label + "' on " + HolderName(c) + " ended (" +
                                    reason + ") at " + (c.Progress * 100f).ToString("0") + "% of " +
@@ -430,6 +519,8 @@ namespace Ectype
 
         internal CurveValue(int handle, string label) { _handle = handle; _label = label; }
 
+        internal int Handle { get { return _handle; } }
+
         /// <summary>Rewrites the amount in place and tells every subscribed collection.</summary>
         internal void Refresh() { RecalculateValue(); }
 
@@ -446,10 +537,43 @@ namespace Ectype
             get { FloatModifier m = ModifierPrimitive as FloatModifier; return m != null ? m.Amount : 0f; }
         }
 
-        protected override void OnInitialize() { }
+        /// <summary>Runs once per value, when it is first applied: the original inside Start, and a
+        /// copy made before application when its new collection applies it.</summary>
+        protected override void OnInitialize() { TimedStatContributions.Track(_handle, this); }
 
         protected override void OnDestroy() { }
 
         public override string Description() { return _label; }
+    }
+
+    /// <summary>
+    /// Postfixes: every StatMod a tag collection applies, child collections included, passes here,
+    /// so a copy of a timed-stat modifier is found when it is applied. Nothing to do until the first
+    /// contribution has started.
+    /// </summary>
+    [HarmonyPatch]
+    internal static class StatTagCollection_Apply_TimedStats
+    {
+        [HarmonyPatch(typeof(StatTagCollection), "ApplyModifier", typeof(StatMod))]
+        [HarmonyPostfix]
+        private static void One(StatMod mod)
+        {
+            if (!Plugin.PatchesApplied || !TimedStatContributions.AnyStarted) return;
+            try { TimedStatContributions.OnApplied(mod); }
+            catch (Exception e) { TimedStatContributions.CopyCheckFailed(e); }
+        }
+
+        [HarmonyPatch(typeof(StatTagCollection), "ApplyModifiers",
+                      typeof(IEnumerable<StatMod>), typeof(IModifierSource), typeof(bool))]
+        [HarmonyPostfix]
+        private static void Many(IEnumerable<StatMod> mods)
+        {
+            if (!Plugin.PatchesApplied || !TimedStatContributions.AnyStarted) return;
+            // Only a materialised collection: enumerating a deferred query again would run it again.
+            ICollection<StatMod> list = mods as ICollection<StatMod>;
+            if (list == null) return;
+            try { foreach (StatMod m in list) TimedStatContributions.OnApplied(m); }
+            catch (Exception e) { TimedStatContributions.CopyCheckFailed(e); }
+        }
     }
 }

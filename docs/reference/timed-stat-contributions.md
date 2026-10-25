@@ -25,9 +25,12 @@ TimedStatContributions.Find(ship.Stats, "mymod.afterburn");  // + c.Active, Prog
 - **A copy of the modifier is harmless.** The game deep-copies stat modifiers, and other mods
   copy dynamic values before applying them. The copier recurses through every field, so the
   mod's dynamic value and its source hold only an integer handle and a label, never the
-  contribution or its target collection. A copy reads the same curve while the contribution
-  runs and contributes nothing once it ends. The stat tooltip still shows the label and the
-  progress.
+  contribution or its target collection. The game recalculates a dynamic value only when it is
+  first applied and when its owner refreshes it, and a copy carries the "already applied" flag,
+  so the framework tracks every value by handle: a copy registers when it is first applied, or,
+  if it was copied from an applied value, when a stat collection applies it. From then on it is
+  refreshed with the original, follows the same curve, and reads the neutral amount once the
+  contribution ends. The stat tooltip still shows the label and the progress.
 - **Nothing is networked.** Progress is time on `PhotonNetwork.ServerTimestamp` since
   `startServerMs`, so machines that each start the same contribution from the same replicated
   signal and stamp agree without messages. A stamp in the past starts part-way along the

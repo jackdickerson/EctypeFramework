@@ -15,21 +15,25 @@ namespace Ectype
     /// Self-tests that need a running game, run once per process from the driver in a dev tools
     /// build.
     ///
-    /// Timed stat copy safety: starts a contribution with a zero curve on the first stat
-    /// collection available (the player ship's, else a character's), builds a StatMod carrying
-    /// a CurveValue bound to that live handle with the contribution's source token, initialises
-    /// it, and deep-copies it through the game's own ObjectExtensions.DeepCopy, the copier the
-    /// perk loader runs on every reapply. The copy must return, and a walk of every field
-    /// reachable from it must find no StatCollection and no UnityEngine.Object other than a
-    /// ScriptableObject (which the copier shares rather than clones).
+    /// Timed stat copies. Starts a contribution with a constant curve of 0.25 on a character's
+    /// collection, naming a ship-only stat so it changes nothing there, and builds two probe
+    /// StatMods bound to that live handle with the contribution's source token:
+    /// - an applied-shape probe (initialised), deep-copied through the game's own
+    ///   ObjectExtensions.DeepCopy, the copier the perk loader runs on every reapply. The copy must
+    ///   return, and a walk of every field reachable from it must find no StatCollection and no
+    ///   UnityEngine.Object other than a ScriptableObject (which the copier shares).
+    /// - a template probe (not initialised), deep-copied, then initialised as a collection would.
+    /// Both copies must read the curve (the applied-shape copy once a collection applies it, which
+    /// the test stands in for), and both must read 0 after the contribution ends.
     ///
-    /// The probe is never applied to a collection: an applied modifier's AffectedMod leads to
-    /// the stat it sits in and from there to every other modifier on it, which is the game's
-    /// structure, not this value's. A copier sees the StatMod before application.
+    /// The probes are never applied to a collection: an applied modifier's AffectedMod leads to the
+    /// stat it sits in and from there to every other modifier on it, which is the game's structure,
+    /// not this value's.
     /// </summary>
     internal static class DevSelfTest
     {
         private const int WalkLimit = 20000;
+        private const float Curve = 0.25f;
         private static bool _done;
         private static float _nextTry;
 
@@ -39,21 +43,18 @@ namespace Ectype
             if (Time.unscaledTime < _nextTry) return;
             _nextTry = Time.unscaledTime + 5f;
 
-            StatTagCollection target = AnyCollection();
+            StatTagCollection target = AnyCharacterCollection();
             if (target == null) return;
             _done = true;
             TimedStatCopy(target);
         }
 
-        private static StatTagCollection AnyCollection()
+        private static StatTagCollection AnyCharacterCollection()
         {
             ClientGame game = ClientGame.Current;
-            if (game == null) return null;
-            // Any collection serves; the test needs a live target, not a particular player's ship.
-            if (game.PlayerShip != null && game.PlayerShip.Stats != null) return game.PlayerShip.Stats;
-            if (game.Players != null)
-                foreach (CG.Game.Player.Player p in game.Players)
-                    if (p != null && p.Stats != null) return p.Stats;
+            if (game == null || game.Players == null) return null;
+            foreach (CG.Game.Player.Player p in game.Players)
+                if (p != null && p.Stats != null) return p.Stats;
             return null;
         }
 
@@ -62,8 +63,9 @@ namespace Ectype
             TimedStatContribution c = null;
             try
             {
-                c = TimedStatContributions.Start("ectype.dev.copytest", target, "MaxHitPoints",
-                                                 ModifierType.AdditiveMultiplier, u => 0f, 2f,
+                c = TimedStatContributions.Start("ectype.dev.copytest", target,
+                                                 FrameworkStats.IncomingProjectileSpeed,
+                                                 ModifierType.AdditiveMultiplier, u => Curve, 5f,
                                                  PhotonNetwork.ServerTimestamp, null,
                                                  "Ectype copy self-test");
                 if (c == null)
@@ -72,32 +74,51 @@ namespace Ectype
                     return;
                 }
 
-                StatMod probe = new StatMod(new FloatModifier(0f, ModifierType.AdditiveMultiplier), c.StatId)
-                {
-                    DynamicValue = new CurveValue(c.Handle, c.Label)
-                };
-                probe.SetSource(c.Source);
-                probe.InitDynamicElements();
-
-                StatMod copy = probe.DeepCopy();
-                if (copy == null)
+                StatMod applied = Probe(c);
+                applied.InitDynamicElements();
+                StatMod appliedCopy = applied.DeepCopy();
+                StatMod template = Probe(c);
+                StatMod templateCopy = template.DeepCopy();
+                if (appliedCopy == null || templateCopy == null)
                 {
                     Plugin.Log.LogError("Ectype: dev self-test: timed stat copy FAILED - DeepCopy returned null.");
                     return;
                 }
 
                 string found;
-                int walked = Walk(copy, out found);
+                int walked = Walk(appliedCopy, out found);
                 if (found != null)
+                {
                     Plugin.Log.LogError("Ectype: dev self-test: timed stat copy FAILED - the copy reaches " +
                                         found + " (" + walked + " objects walked).");
-                else if (walked >= WalkLimit)
+                    return;
+                }
+                if (walked >= WalkLimit)
+                {
                     Plugin.Log.LogError("Ectype: dev self-test: timed stat copy FAILED - the copy's graph " +
                                         "exceeds " + WalkLimit + " objects.");
-                else
+                    return;
+                }
+
+                // What a collection does when it applies each copy.
+                TimedStatContributions.OnApplied(appliedCopy);
+                templateCopy.InitDynamicElements();
+                float during1 = Amount(appliedCopy), during2 = Amount(templateCopy);
+
+                TimedStatContributions.End(c, "self-test done");
+                c = null;
+                float after1 = Amount(appliedCopy), after2 = Amount(templateCopy);
+
+                bool ok = Near(during1, Curve) && Near(during2, Curve) && Near(after1, 0f) && Near(after2, 0f);
+                string amounts = "copy of applied value " + during1.ToString("0.###") + " then " +
+                                 after1.ToString("0.###") + ", copy of template " + during2.ToString("0.###") +
+                                 " then " + after2.ToString("0.###") + " (expected " + Curve + " then 0)";
+                if (ok)
                     Plugin.Log.LogInfo("Ectype: dev self-test: timed stat copy passed - DeepCopy returned; " +
                                        walked + " objects walked, no StatCollection, no Unity object " +
-                                       "other than a ScriptableObject.");
+                                       "other than a ScriptableObject; " + amounts + ".");
+                else
+                    Plugin.Log.LogError("Ectype: dev self-test: timed stat copy FAILED - " + amounts + ".");
             }
             catch (Exception e)
             {
@@ -108,6 +129,24 @@ namespace Ectype
                 if (c != null) TimedStatContributions.End(c, "self-test done");
             }
         }
+
+        private static StatMod Probe(TimedStatContribution c)
+        {
+            StatMod probe = new StatMod(new FloatModifier(0f, ModifierType.AdditiveMultiplier), c.StatId)
+            {
+                DynamicValue = new CurveValue(c.Handle, c.Label)
+            };
+            probe.SetSource(c.Source);
+            return probe;
+        }
+
+        private static float Amount(StatMod mod)
+        {
+            FloatModifier f = mod.Mod as FloatModifier;
+            return f != null ? f.Amount : float.NaN;
+        }
+
+        private static bool Near(float a, float b) { return Math.Abs(a - b) < 0.0001f; }
 
         /// <summary>Breadth-first over every instance field, base types included. Returns the
         /// number of objects visited; <paramref name="found"/> names the first forbidden one
