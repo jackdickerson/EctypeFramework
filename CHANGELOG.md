@@ -37,23 +37,35 @@ build.
 
 - `SessionData`: values the host decides for a whole session, carried inside the game's own
   session data. `Register<T>(key, hostProduce, apply, options)`: the host produces each value
-  once per session, as it starts the session (the hub included); every client, the host and
-  late joiners included, gets `apply` when a session carrying the key arrives. The values sit
-  under one `"ectype"` key of the session JSON, which clients without the framework ignore.
-  `Current<T>`, `TryGetCurrent<T>`, `Has`, `SessionId`, `Changed`. Each key is capped
-  (`SessionDataOptions.MaxBytes`, default 4096 bytes) and the whole envelope at 16384 bytes;
-  a value over either is left out with one error naming its key.
-- A resumed saved run sends the values it started with: the host keeps them in
-  `BepInEx/config/jack.voidcrew.ectype.sessions/<session id>.json`, written at mission start and
-  on each save, and pruned past 30 days or 64 files. `SessionDataOptions.KeepOnResume` false
-  produces a fresh value instead.
-- Session data raised by a player who is in the room and is not the master client is ignored.
-- `SessionData.HostValue(configEntry, key)` returns a `HostValue<T>` whose `Value` is the host's
-  setting on every client: the host's own config on the host; in the hub, the room property
-  `Ectype.<key>` the host publishes, accepted only when stamped with the master's actor number
-  and not written by another player; from the start of a mission, the value frozen into the
-  session data on every client, the host included; the client's own config before any host
-  value arrives (`IsFromHost` false). `Source`, `Changed`.
+  once per session, as its new session object becomes active (the hub included), after the
+  previous scene is unloaded and before the quest is generated; every machine, the host and late
+  joiners included, gets `apply` at that same point of its own session start, so all hold the
+  same values while generating the quest. The values sit under one `"ectype"` key of the
+  session JSON, which clients without the framework ignore. `Current<T>`, `TryGetCurrent<T>`,
+  `Has`, `SessionId` (the host's id for the session), `Changed`. `T` must be plain JSON data;
+  `Register` refuses Unity types, delegates and abstract types, also inside arrays, generic
+  arguments and the public members of a class. Date-shaped strings arrive unchanged and a
+  `decimal` keeps every digit. Each key is capped (`SessionDataOptions.MaxBytes`,
+  default 4096 bytes) and the whole envelope at 16384 bytes, over which the largest key is left
+  out; each refusal logs one error naming its key.
+- A resumed saved run sends the values it started with, in a later game process too: they are
+  kept in `BepInEx/config/jack.voidcrew.ectype.sessions/<id>.json`, written each time the run is
+  saved by whichever machine saves it, named by the id the save carries, swapped in atomically,
+  and pruned past 180 days or 16 files. `SessionDataOptions.KeepOnResume` false produces a fresh
+  value instead.
+- The envelope carries the producing host's actor number. A live delivery must come from that
+  actor, and that actor must be the master or have left; a late joiner, whose copy comes from
+  the room cache with no sender, accepts it only when it does not name a present player other
+  than the master, so the master or any actor number not in the room passes. A forged cached
+  session can therefore still pass for joiners until the host starts its next session, as it
+  does for the game itself.
+- `SessionData.HostValue(configEntry, key)` returns a `HostValue<T>` (bool, number, enum or
+  string) whose `Value` is the host's setting on every client: the host's own config on the
+  host; in the hub, the host's values in the room property `Ectype.HostValues`
+  (`SessionData.HostValuesRoomProperty`), accepted only when stamped with the master's actor
+  number, not written by another player, and of the setting's kind; from the start of a mission,
+  the value frozen into the session data on every client, the host included; the client's own
+  config before any host value arrives (`IsFromHost` false). `Source`, `Changed`.
 - No change to network contract 1.
 
 ## 0.22.0
