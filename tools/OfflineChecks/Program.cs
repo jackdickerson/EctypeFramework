@@ -246,6 +246,13 @@ namespace OfflineChecks
                         .Where(g => alias[g] != alias[l] && g.Names.Contains(name))
                         .Select(g => checker.Get(alias[g], name))
                         .FirstOrDefault(o => o != null && o.Ok);
+                    // Several names tried in one call (a renamed member, a backing field under
+                    // another name) are a chain too: one resolving name, as either kind, covers
+                    // the others.
+                    if (other == null && l.Names.Length > 1)
+                        other = groups[l.GroupKey]
+                            .SelectMany(g => l.Names.Where(n => n != name).Select(n => checker.Get(alias[g], n)))
+                            .FirstOrDefault(o => o != null && o.Ok);
                     waived[own] = (!waived.TryGetValue(own, out Outcome w) || w != null) ? other : null;
                 }
             foreach (KeyValuePair<Outcome, Outcome> kv in waived)
