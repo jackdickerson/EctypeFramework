@@ -10,7 +10,8 @@ Three things share one mechanism here:
   value 1. The framework registers them and reads none of them. The mod that owns the action
   multiplies its own constant by the composed value.
 - **A run-wide session collection.** A stat collection that belongs to no player and no ship,
-  one per session, decided by the host and delivered to every client with the session.
+  one per session, decided by the host and delivered to every client with the session. It takes
+  contributions from code on the host and from mutators in the game's Mutators menu.
 
 Every stat here is read by id from the game's own `StatCollection`. The id is a pure function of
 two strings, so a mod that never references the framework computes it and reads the stat with
@@ -193,11 +194,13 @@ stats file's.
 
 - **Host.** As the host starts a session, at the moment session data produces its values, the
   framework drops the previous session's collection, builds a fresh one with every session stat
-  at its base, raises `SessionStats.Opening`, and publishes the composed value of every float
-  stat in it under the session data key `framework/sessionStats` as `{"<id>": value}`. Inside
-  `Opening`, `SessionStats.Collection` is the new collection and `SessionStats.SessionId` is
-  null. This happens before the quest is generated and before the first sector exists, so a
-  reader in the first sector already sees the new values.
+  at its base, contributes the effects of the session-stat mutators the session is about to
+  activate (see [Contributions from mutators](#contributions-from-mutators)), raises
+  `SessionStats.Opening`, and publishes the composed value of every float stat in it under the
+  session data key `framework/sessionStats` as `{"<id>": value}`. Inside `Opening`,
+  `SessionStats.Collection` is the new collection and `SessionStats.SessionId` is null. This
+  happens before the quest is generated and before the first sector exists, so a reader in the
+  first sector already sees the new values.
 - **Every other client.** When session data applies the host's values, at the same point of the
   client's own session start, the framework builds its own collection and
   sets each stat's base to the host's value, which reproduces it exactly. A stat the host
@@ -213,9 +216,10 @@ stats file's.
 
 ### Contributing
 
-Session stats take contributions only through `SessionStats.Contribute` on the host. No perk
-target reaches the session collection, and a manifest effect naming a session stat is refused.
-Subscribe at plugin `Awake`, on every client:
+Session stats take contributions from two places: `SessionStats.Contribute` on the host, and a
+mutator registered through `SessionStatMutators` (next section). No perk target reaches the
+session collection, and a perk effect naming a session stat is refused. To contribute from code,
+subscribe at plugin `Awake`, on every client:
 
 ```csharp
 SessionStats.Opening += () =>
@@ -240,6 +244,156 @@ SessionStats.Opening += () =>
 
 **Host migration.** The new master keeps the values it received. Its later contributions change
 its own collection only, as above, until it starts the next session.
+
+### Contributions from mutators
+
+A mutator is the game's own layer for a rule that applies to a whole run. It is a card in the
+game's Mutators menu that the crew selects before a run, and a quest asset can force it on
+through its `ForcedMutators` list. `SessionStatMutators.Register(MutatorSpec)` registers a
+mutator whose rule is a list of session-stat modifiers. While a run has it active, those
+modifiers are in the session collection and in the values every client receives.
+
+```csharp
+MutatorSpec spec = new MutatorSpec
+{
+    Owner = PLUGIN_GUID,
+    Key = "hostile-surge",
+    DisplayName = "Hostile Surge",
+    Description = "Hostile spawn groups are half again as large.",
+};
+spec.Effects.Add(new SessionStatEffect
+{
+    Stat = "ectype/HostileSpawnScale", Kind = SessionStatModifierKind.Factor, Amount = 1.5f,
+});
+MutatorHandle surge = SessionStatMutators.Register(spec);   // from Awake
+```
+
+A role manifest declares the same thing in its `mutators` block; see
+[../manifest.md](../manifest.md#mutatorspec).
+
+| `MutatorSpec` field | Meaning |
+| --- | --- |
+| `Owner` | Namespace of the key, conventionally the registering plugin's GUID. 1 to 128 characters, no `/`, no surrounding whitespace. |
+| `Key` | Stable key within the owner: letters, digits, `_`, `.` and `-`, starting with a letter or digit, at most 64 characters. |
+| `Guid` | Optional explicit GUID, 32 hex digits with dashes allowed. Absent: derived, see below. |
+| `DisplayName` | The card's title. Required. |
+| `Description` | The card's body. Rich text is allowed. |
+| `Icon` | The card's icon, a `Sprite`. Optional. |
+| `IconDonor` | A registered mutator's GUID whose icon the card borrows when `Icon` is null. Without either, the card shows the framework's placeholder. |
+| `Effects` | 1 to 16 `SessionStatEffect`s: `Stat`, `Kind`, `Amount`. |
+
+`Stat` names a session stat: `"owner/Name"` for a stats file's stat, or a framework stat as
+`"ectype/Name"` or its bare name. `Kind` decides how `Amount` composes:
+
+| Kind | Amount | The game's modifier |
+| --- | --- | --- |
+| `Flat` (`"flat"`) | Added to the base. | `PrimaryAddend`, amount as given. |
+| `Percent` (`"percent"`) | 0.25 is +25%. | `AdditiveMultiplier`, amount as given. |
+| `Factor` (`"factor"`) | 1.5 is x1.5. Above 0. | `ExponentialMultiplier`, amount `factor - 1`. |
+
+The game composes a stat as `(base + flats) × (1 + percents) × factor × factor ...`. Percents add
+to each other before they multiply. Factors multiply each other, so two mutators each with a
+factor of 1.5 on one stat give 2.25.
+
+The GUID, when not given, is the 32 lower-case hex digits of MD5 over the UTF-8 string
+`ectype:mutator:<owner>/<key>`. For owner `fleet` and key `pilgrimage` that is
+`2bfef27d74e984361edac3fedcd19523`. A saved run records its mutators by GUID, so renaming the owner
+or the key orphans the mutator in every saved run that used it. The run then loads without it
+(see [mutator-safety.md](mutator-safety.md)).
+
+#### Registration
+
+`Register` checks the spec at once, in this order: owner, key, GUID, name, icon donor, effects
+(count, then each effect's stat, kind and amount). A refused spec returns a handle whose
+`State` is `Failed` with a `Reason`, and logs one error. Registering the same owner and key again
+returns the first handle. Another spec under a GUID already registered is refused.
+
+An accepted spec is `Pending` until the game's asset tables exist and the stats files have been
+read. Then each effect's stat must resolve to a session stat, or the mutator is refused. The
+framework registers pending mutators in GUID order, so one set of mods registers in one order on
+every machine. Each registration is this walk, every step skipped when the game already holds it:
+
+1. A `Mutator` asset under the GUID, carrying one `SessionStatMutatorEffect` with the resolved
+   modifiers. The game's activation iterates `Effects` without a null check, so the list is never
+   null.
+2. Its card (`ContextInfo`) and its `MutatorDef`, whose reference is marked runtime.
+3. An entry in the game's runtime-asset register with the Required effect.
+4. An entry in the mutator container, and the def in the container's authored list, placed among
+   the runtime entries in GUID order. The Mutators menu lists only the authored list. The
+   container's runtime list is then put in the authored list's order: the shared unlocks below
+   name an entry by its index in the authored list and read it back by index in the runtime list.
+5. An unlock entry with a manual criterion, in the unlock container and its authored list. The
+   menu reads every row's unlock entry while it refreshes, and one missing entry blanks every row.
+6. A walk back: the container resolves the GUID, the def's asset resolves and carries the effect
+   and the GUID, the card has a title, the def is in the authored list, the unlock entry exists.
+
+A failed attempt is retried on the next registration pass, about every 2 seconds, up to 200
+attempts. Every 10 seconds, and before each session start, the walk back runs again on every
+registered mutator. One that no longer holds, because the game rebuilt a container, is
+registered again.
+
+The menu draws a row as selectable only when its index is in the union, across the room's
+players, of a player property holding each player's unlocked mutator indices. The game writes
+that property in full when the player's profile initialises, from the unlock check, which the
+framework answers as unlocked for its mutators. The profile can initialise before the
+registration, and it rebuilds the property on every profile rebuild, so every 2 seconds the
+framework reads the local player's property back and adds a missing index. The game's write
+adds to the property; nothing is unlocked in the player's profile. An index past 255 cannot be
+written, and that mutator shows locked.
+
+**The join cost.** Every framework mutator is registered with the Required effect. The game
+compares the Required assets of host and joiner at join, so a player without the registering
+mod is refused at the join screen, which names the missing asset, in every room hosted with
+it, whether or not the run uses the mutator. The same set of Required assets marks every hosted
+room as modded. A framework build made with `-p:NoProgressionFlag=true` registers with no effect:
+the mutator is then left out of the join comparison. A player who has the framework and not the
+mod joins, the framework drops the mutator from that player's starting list, and that player
+still reads the host's session values, effects included.
+
+#### When the effects apply
+
+The game starts a hosted session in this order:
+
+1. The previous session ends. Its mutators are deactivated.
+2. The new session object becomes active. Its starting list holds the mutators selected in
+   the menu, or the saved run's list on resume. The framework re-verifies its registrations
+   first. Then session data captures the session's values: the session collection opens,
+   the mutator effects are contributed, `Opening` is raised, and the values are composed.
+3. The quest is generated, and the game activates the quest's forced mutators.
+4. The first sector is entered.
+5. The session is sent to the room, cached for late joiners, with the values captured at step 2.
+6. The game activates the starting list.
+
+No mutator is active when the values are captured at step 2, and the menu-selected ones
+activate only after the session has been sent. A value read from the game's active mutators at
+capture time would miss all of them, and contributing at activation would reach the host only.
+So, at step 2, the framework works out which mutators the game will activate, from the same
+inputs and by the same rules the game uses:
+
+- The quest asset's `ForcedMutators`, in order. A resumed run's quest asset is the saved one.
+- Then the session's starting list, skipping a GUID already taken, one the quest's whitelist
+  leaves out when the quest uses one (`UseMutatorWhitelist`), and one this client's mutator
+  container does not hold.
+- The hub has no quest: only its starting list counts.
+
+Every `SessionStatMutatorEffect` on each of those mutators is contributed, with the mutator itself
+as the source. After step 6 the host
+compares this set with the game's active mutators and logs an error for any mutator it
+contributed that the game did not activate.
+
+A mutator the game activates any other way, such as a mod calling the game's `AddMutator` later
+in the session, contributes when it activates. That reaches the host's collection only, with a
+warning, like any contribution made after the session started.
+
+Every other client applies the host's values at step 2 of its own start, as for any session
+stat. No mutator code contributes on a client. A late joiner gets the values with the cached
+session.
+
+A resumed run recomposes from its saved starting list and quest, so it carries the same mutator
+contributions as when it was saved, together with whatever the code contributors add at resume.
+
+A mod may put a `SessionStatMutatorEffect` in a `Mutator` asset it registers itself, with the stat
+ids resolved. It is contributed the same way as one the framework registered.
 
 ### Why there is no live path
 
@@ -291,6 +445,8 @@ ship.
 | `Ectype: mod stats: <character\|ship\|session> surface installed on <type> (<owner/name>=<base>, ...).` | The first collection of that kind received the stats. Logged once per kind. |
 | `Ectype: session stats: opened for session <id> <as host\|with the host's values\|at the declared defaults> (<name>=<value>, ...).` | A session collection opened with these values. |
 | `Ectype: session stats: <name> changed after the session started; clients keep the session-start value until the next session.` | A contribution outside `Opening`. |
+| `Ectype: mutators: '<name>' registered (<guid>, effect Required): <stat> <amount>, ...` | A session-stat mutator registered. Amounts read `+2`, `+25%` or `x1.5`. |
+| `Ectype: mutators: <name>, ... contributed <n> modifier(s) to the session stats.` | Host, at session start: the mutators the session is about to activate contributed. |
 
 [../troubleshooting.md](../troubleshooting.md) lists every line with its cause.
 
@@ -316,5 +472,20 @@ ship.
 - **A tag-filtered modifier in the session collection.** Never active: the collection has no
   tags.
 - **Reading the session collection in the main menu.** Null: it exists only inside a session.
+- **Reading `ActiveMutators` inside `Opening` to decide a contribution.** Empty: the game activates
+  no mutator before the values are captured. Register the mutator through `SessionStatMutators`,
+  or read the session's starting list and its quest's forced list.
+- **Contributing from a mutator effect's own activation.** Reaches the host only: the game
+  activates mutators after the values are captured.
+- **A mutator effect on a character or ship stat.** The mutator is refused. A mutator contributes
+  to session stats only.
+- **`"kind": "Factor"` in a manifest.** Refused: the kinds are lower case.
+- **A factor meant as a change.** A factor of 0.5 halves the stat. +50% is a factor of 1.5 or a
+  percent of 0.5. A factor of 0 is refused.
+- **Selecting Hostile Surge, or any mutator on `HostileSpawnScale`, with no spawn mod installed.**
+  The published value changes and nothing reads it. The framework reads none of its generic
+  stats.
+- **Renaming a mutator's key.** A new GUID: a saved run that used the old one loads without it.
 
-Sample: [examples/mod-stats](../../examples/mod-stats/).
+Samples: [examples/mod-stats](../../examples/mod-stats/) (stats file and reader),
+[examples/framework-stats](../../examples/framework-stats/) (the Hostile Surge mutator).

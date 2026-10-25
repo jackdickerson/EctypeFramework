@@ -9,7 +9,8 @@ data-only example under [../examples/](../examples/).
 
 A manifest that fails validation rejects its role by name in the log and nothing else
 breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`, `roleId`,
-`roleName`, `hero`, then each perk, custom stat and `suppress` entry.
+`roleName`, `hero`, then each perk, custom stat and `suppress` entry. A `mutators` entry is
+checked when the role registers, and a bad one refuses only that mutator.
 [troubleshooting.md](troubleshooting.md) lists each message.
 
 ## Top level
@@ -28,6 +29,7 @@ breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`,
 | `customStats` | no | List of CustomStatSpec. A custom stat is inert until code reads it, so do not ship one in a data-only role. Role code gets the id from `RoleStats.Id(roleId, name)`. `RoleStats.RegisterAbilityTiming` registers an ability's own duration and cooldown under two of them, scoping a perk to that ability where `ClassAbilityDuration` and `ClassAbilityCooldown` reach every role ability on the character. |
 | `suppress` | no | List of vanilla perk-tree GUIDs (32 hex chars; dashes allowed) whose trees should not exist while this role is installed: the "this role replaces Gunner" mechanism. The union across every installed role mod applies. A suppressed tree is removed from both terminal documents (freeing its layout slot), skipped by the role tally, and its perks are scrubbed from saved loadouts with vanilla refund semantics: the spent points return as unspent on the next profile write. An entry that names a single perk, a framework-registered role (use `suppressRoles`), or nothing in this game version is ignored with a named warning, and an ignored entry never fails the role. An entry that is not a GUID at all (not 32 hex chars once dashes are removed) rejects the role. A dev tools build of the framework ([CONTRIBUTING.md](../CONTRIBUTING.md#dev-tools-build)) writes each tree's `guid` to `BepInEx\EctypeDump\vanilla-roles.json` with the `[Dev] WriteVanillaDump` switch on. The stock four: Gunner `b03e6f1f9a2ec3c4cae3b5027026e4e1`, Pilot `1bfec4ad20c77c34cbb1b77834afd960`, Engineer `382e55cd4fc760e4ab8bc79b09f23063`, Scavenger `7a490a7247bc6334fbeb24a0ddc48a80`. |
 | `suppressRoles` | no | List of other framework roles, by `roleId`, whose trees should not exist while this role is installed and not itself suppressed. The tree is kept out of both terminals, its perks stop applying and their points count as unspent (the perks stay in each saved loadout, read as absent, so removing this role restores the build), and its payloads are not re-homed. An id that is not installed is ignored with a warning. The role's own id is logged as an error and ignored, and the role still registers. A cycle (A lists B, B lists A) is broken in `roleId` order with a warning. |
+| `mutators` | no | List of MutatorSpec: mutators the role adds to the game's Mutators menu, each a set of session-stat modifiers. See [MutatorSpec](#mutatorspec). |
 
 ## PerkSpec
 
@@ -79,6 +81,44 @@ reaches one of those by naming it in an effect.
 | `icon` | Icon key. |
 | `lowerIsBetter` | Colours reductions as buffs in tooltips. |
 | `displayType` | `"value"`, `"percentage"` (default) or `"bool"`. |
+
+## MutatorSpec
+
+A mutator the role adds to the game's Mutators menu. The crew selects it before a run, or a
+quest forces it on through its `ForcedMutators`. While a run has it active, its effects are
+contributed to the session collection before the host publishes the session's values, so
+every client, late joiners included, reads the result. Requires framework 0.30.0; set
+`minFrameworkVersion` to `"0.30.0"`, or an older framework ignores the block without a word.
+
+```json
+"mutators": [
+  {
+    "key": "surge",
+    "name": "Hostile Surge",
+    "description": "Hostile spawn groups are half again as large.",
+    "effects": [ { "stat": "ectype/HostileSpawnScale", "kind": "factor", "amount": 1.5 } ]
+  }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `key` | Required. Stable key within the role: letters, digits, `_`, `.` and `-`, starting with a letter or digit, at most 64 characters. The GUID derives from MD5 of `ectype:mutator:<roleId>/<key>`, so renaming the key or the `roleId` makes a new mutator, and a saved run that used the old one loads without it. |
+| `guid` | Explicit GUID (32 hex, dashes allowed) overriding the derivation. |
+| `name` | Required. The card's title. |
+| `description` | The card's body. Rich text is allowed. |
+| `icon` | Icon key (see Icon keys below). |
+| `iconDonor` | A registered mutator's GUID whose icon the card borrows when `icon` names nothing loadable. Without either, the card shows the framework's placeholder. |
+| `effects` | Required. 1 to 16 entries, each `stat`, `kind` and `amount`, all required. |
+| `effects[].stat` | A session stat: `"owner/Name"` for a stats file's stat with `"collection": "session"`, or a framework session stat (`"ectype/HostileSpawnScale"` or `"HostileSpawnScale"`). A character or ship stat, or one no stats file declares, refuses the mutator. |
+| `effects[].kind` | `"flat"`: added to the base. `"percent"`: 0.25 is +25%. `"factor"`: 1.5 is x1.5, and must be above 0. Lower case; any other value refuses the mutator. |
+| `effects[].amount` | A JSON number. |
+
+A refused mutator logs one error naming `<roleId>/<key>` and the reason; the role and its other
+mutators still register. Every mutator is registered with the game's Required effect, so a
+player without the role mod is refused at the join screen of a room hosted with it.
+[reference/mod-stats.md](reference/mod-stats.md#contributions-from-mutators) has the composition
+rule, the registration walk and the exact point in the session start where the effects apply.
 
 ## Icon keys
 

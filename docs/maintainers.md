@@ -18,6 +18,7 @@ Paths are relative to the framework project folder.
 | Framework-owned stat declarations | `src/FrameworkStats.cs` |
 | Field-backed stat wrapper | `src/FieldStat.cs` |
 | Mutator safety | `src/MutatorSafety.cs` |
+| Session-stat mutators (registration walk, opening contribution, shared-unlock republish) | `src/SessionStatMutators.cs` |
 | Loot tables | `src/LootTables.cs` |
 | Enemy statuses | `src/EnemyStatus.cs`, `src/EnemyStatusFx.cs`, `src/EnemyStatusOutbox.cs` |
 | Enemy abilities and suspension | `src/EnemyAbilities.cs` |
@@ -148,6 +149,10 @@ column.
 | Room property `Ectype.HostValues` (written by the master in the hub, read), `LoadBalancingClient.EventReceived` event 253 (subscribed: `Sender`, parameter 253 target actor, parameter 251 properties) | `HostValue<T>`'s hub channel, one property for every key. `EventReceived` runs after `LoadBalancingClient` has merged the change into the room's copy, so the writer and the merged value are seen together. A join response carries properties with no writer |
 | `GameSession.InitStartingMutators` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 | `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
+| `GameSessionManager.PrepareNextSession(bool)` prefix, `GameSession.InitStartingMutators` postfix, `UnlockContainer.IsUnlocked(GUIDUnion)` postfix, all patched by name after the attribute pass | `SessionStatMutators`. The prefix re-verifies every registered mutator before the host snapshots its required assets and before a joiner compares them. The postfix compares the mutators the opening contributed with the session's `ActiveMutators`. The unlock postfix answers true for a registered framework mutator, which `PhotonPlayerUnlockSync`'s constructor reads when it writes the `P_SM` player property in full |
+| `GameSessionManager.HostGameSession` order: `PrepareNextSession`, `LoadQuest` (`GameSession.LoadQuestMutators`: the quest asset's `ForcedMutators` through `AddMutator`), `LoadInitialSector`, `DistributeSessionData` (event 9), `LoadGameSessionPassiveAssets` (`InitStartingMutators`: `StartingMutators`, whitelist-filtered when `QuestAsset.UseMutatorWhitelist`) | why the opening predicts the active set instead of reading `ActiveMutators`: no mutator is active at the `PrepareNextSession` capture. The prediction mirrors both methods: forced list first, then the starting list skipping a GUID already active, one outside the whitelist and one the container cannot resolve; the hub (`IsHub`) has no `ActiveQuest`, so only its starting list counts. A reordering, or a new activation route, changes what clients receive |
+| `GameSession.SessionQuestAsset`, `GameSession.StartingMutators` (read at `PrepareNextSession`) | the prediction's inputs. `HubQuestManager.StartQuest` sets both on a fresh session (`StartingMutators` is the hub's `SelectedMutators`); `PreservedGameSession.GenerateGameSession` sets both from the save |
+| `ResourceAssetContainer.GetAssetIndex` (indexes `AssetDescriptions`), `GetAllItems` (returns `RuntimeDescriptions`), `PhotonPlayerUnlockSync.SetSharedUnlock` / `GetSharedUnlockIndices`, the profile's `UnlockedItems` chain (`ChainOfResponsibility.source`) | the shared-unlock republish and the runtime-list alignment: `P_SM` holds `GetAssetIndex` values and `GetSharedUnlocks` reads them back through `GetAllItems`, so the two lists must agree in order |
 
 ## Dev tools build
 
@@ -209,6 +214,15 @@ What it adds:
   stamp and token kinds, and the type checks. The capture at `PrepareNextSession` needs a live
   session start and is not covered. It logs `dev self-test: session data passed` or `FAILED`
   with each difference.
+- A session-stat mutator self-test at load, offline: the GUID vector of `fleet/pilgrimage`,
+  every spec refusal, the kind mapping, the manifest form, the activation prediction for the
+  hub, a mission and a quest whitelist, and a synthetic active mutator (through the dev-only
+  activation-input override) run through the real opening handler, whose effects must be in the
+  values the opening returns for publication. Once the stats files are read, a session stat must
+  resolve and a character stat and an undeclared one must be refused. The live order of the
+  game's activation against the capture needs a session start and is not covered. It logs
+  `dev self-test: session-stat mutators passed` and `dev self-test: session-stat mutator stats
+  passed`, or `FAILED` with each difference.
 - A content-registry self-test at load, offline: the ordered insert gives one list from four
   publish orders and leaves authored entries in place; a carryable and a component carryable
   without crafting data are refused with a reason naming the GUID; an entry reads back through
