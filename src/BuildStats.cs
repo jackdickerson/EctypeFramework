@@ -44,10 +44,12 @@ namespace Ectype
         private static Action<BuildProcess, float> _setTimer;
         private static bool _accessorsFailed;
 
-        /// <summary>The player each process was started by, resolved once.</summary>
+        /// <summary>The player each process was started by. Looked up again, at most once a
+        /// second, while no live character is found.</summary>
         private sealed class Installer
         {
             public Player Player;
+            public float NextLookup;
         }
 
         private static readonly ConditionalWeakTable<BuildProcess, Installer> _installers =
@@ -114,19 +116,36 @@ namespace Ectype
                 if (!(process is ConstructionProcess) && !(process is DeconstructionProcess) &&
                     !(process is UpgradeProcess)) return;
 
+                GameSession session = GameSessionManager.ActiveSession;
+                if (!ReferenceEquals(session, _session))
+                {
+                    _session = session;
+                    _reportedFailure = false;
+                }
+
                 Installer who;
                 if (!_installers.TryGetValue(process, out who))
                 {
-                    // Cached even when no character is found, so a process is looked up once.
                     // Not the game's GetByActorId: its single-match query throws while the
                     // player list still holds a destroyed character as a match ends.
-                    who = new Installer { Player = Topology.CharacterOf(process.RequesterActorId) };
+                    who = new Installer
+                    {
+                        Player = Topology.CharacterOf(process.RequesterActorId),
+                        NextLookup = Time.unscaledTime + 1f,
+                    };
                     _installers.Add(process, who);
                     if (Plugin.Verbose)
                         Plugin.Log.LogInfo("Ectype: " + process.Type + " started by actor " +
                                            process.RequesterActorId + " at " +
                                            FrameworkStats.SystemModuleConstructionSpeed + " " +
                                            Factor(who.Player).ToString("0.###") + ".");
+                }
+
+                else if (who.Player == null && Time.unscaledTime >= who.NextLookup)
+                {
+                    // The requester's character may not exist yet on the first frame.
+                    who.NextLookup = Time.unscaledTime + 1f;
+                    who.Player = Topology.CharacterOf(process.RequesterActorId);
                 }
 
                 float factor = Factor(who.Player);
@@ -136,7 +155,7 @@ namespace Ectype
             catch (Exception e)
             {
                 // Run is called every frame per process, so a fault would otherwise log every
-                // frame.
+                // frame. Reported again in the next session.
                 if (_reportedFailure) return;
                 _reportedFailure = true;
                 Plugin.Log.LogError("Ectype: applying " + FrameworkStats.SystemModuleConstructionSpeed +
@@ -145,6 +164,7 @@ namespace Ectype
         }
 
         private static bool _reportedFailure;
+        private static GameSession _session;
     }
 
     /// <summary>
