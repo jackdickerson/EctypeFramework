@@ -432,6 +432,37 @@ namespace Ectype
             return with;
         }
 
+        private static readonly HashSet<string> ReportedMismatch = new HashSet<string>();
+
+        /// <summary>The contract number a player published, or null when it published none.</summary>
+        internal static int? ContractOf(Player player)
+        {
+            object v;
+            if (player == null || player.CustomProperties == null ||
+                !player.CustomProperties.TryGetValue(PropertyKey, out v) || !(v is int)) return null;
+            return (int)v;
+        }
+
+        /// <summary>
+        /// False when the player published a different network contract: such a peer is never
+        /// a recipient and its messages are dropped. Logs once per player and contract number.
+        /// A player with no property is not judged here.
+        /// </summary>
+        internal static bool ContractCompatible(Player player)
+        {
+            int? theirs = ContractOf(player);
+            if (!theirs.HasValue || theirs.Value == EctypePluginInfo.NET_CONTRACT_VERSION)
+                return true;
+            if (ReportedMismatch.Add(player.ActorNumber + "/" + theirs.Value))
+                Plugin.Log.LogWarning("Ectype: player '" + player.NickName + "' (actor " +
+                                      player.ActorNumber + ") runs a framework on network " +
+                                      "contract " + theirs.Value + ", this one speaks " +
+                                      EctypePluginInfo.NET_CONTRACT_VERSION + ": no ability or " +
+                                      "status messages are exchanged with them. Install the " +
+                                      "same framework version on both sides.");
+            return false;
+        }
+
         /// <summary>Whether a player published this build's network contract.</summary>
         internal static bool HasFramework(Player player)
         {
@@ -450,6 +481,8 @@ namespace Ectype
         {
             if (UnityEngine.Time.unscaledTime < _nextPublish) return;
             _nextPublish = UnityEngine.Time.unscaledTime + PublishInterval;
+
+            foreach (Player p in PhotonNetwork.PlayerListOthers) ContractCompatible(p);
 
             Player me = PhotonNetwork.LocalPlayer;
             if (me == null || HasFramework(me)) return;

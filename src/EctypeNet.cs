@@ -49,6 +49,46 @@ namespace Ectype
         /// (op 0 adds int startTs, int durationMs, float magnitude, int attackerView).</summary>
         internal const byte EnemyStatus = 2;
 
+        /// <summary>
+        /// Every message's field types, in order: the network contract in data. A subtype may
+        /// have several layouts (enemy status remove and apply). The sender refuses to send,
+        /// and the receiver drops, arguments that match none of their subtype's layouts, and
+        /// the dev build's self-test round-trips each layout through Photon's serializer. A
+        /// change here is a change of contract: raise
+        /// <see cref="EctypePluginInfo.NET_CONTRACT_VERSION"/> with it.
+        /// </summary>
+        internal static readonly Dictionary<byte, Type[][]> Layouts = new Dictionary<byte, Type[][]>
+        {
+            { AbilityActive, new[]
+                {
+                    new[] { typeof(int), typeof(string), typeof(bool), typeof(object[]),
+                            typeof(object[]), typeof(bool) },
+                } },
+            { EnemyStatus, new[]
+                {
+                    new[] { typeof(byte), typeof(int), typeof(string) },
+                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
+                            typeof(float), typeof(int) },
+                } },
+        };
+
+        /// <summary>Whether the arguments match one of the subtype's layouts exactly: same
+        /// count, and each element non-null and of that exact type.</summary>
+        internal static bool MatchesLayout(byte subtype, object[] args)
+        {
+            Type[][] layouts;
+            if (args == null || !Layouts.TryGetValue(subtype, out layouts)) return false;
+            foreach (Type[] layout in layouts)
+            {
+                if (layout.Length != args.Length) continue;
+                bool ok = true;
+                for (int i = 0; i < layout.Length && ok; i++)
+                    ok = args[i] != null && args[i].GetType() == layout[i];
+                if (ok) return true;
+            }
+            return false;
+        }
+
         private sealed class Channel
         {
             internal string Name;
@@ -84,14 +124,27 @@ namespace Ectype
             foreach (Player p in to)
                 if (p != null) actors.Add(p.ActorNumber);
             if (actors.Count == 0) return;
+            if (!MatchesLayout(subtype, args))
+            {
+                if (Warned.Add("send-layout:" + subtype))
+                    Plugin.Log.LogError("Ectype: net " + NameOf(subtype) + " (subtype " + subtype +
+                                        ") not sent: its arguments match no declared layout " +
+                                        "(reported once per subtype).");
+                return;
+            }
 
             object[] payload = Pack(subtype, args);
-            PhotonNetwork.RaiseEvent(EventCode, payload,
+            bool sent = PhotonNetwork.RaiseEvent(EventCode, payload,
                                      new RaiseEventOptions { TargetActors = actors.ToArray() },
                                      reliable ? SendOptions.SendReliable : SendOptions.SendUnreliable);
+            if (!sent && Warned.Add("send-failed:" + subtype))
+                Plugin.Log.LogWarning("Ectype: net " + NameOf(subtype) + " (subtype " + subtype +
+                                      ") send refused by Photon (not connected?); reported once " +
+                                      "per subtype.");
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: net send " + NameOf(subtype) + " (subtype " + subtype +
-                                   ") to actor(s) " + string.Join(",", actors) + ".");
+                                   ") to actor(s) " + string.Join(",", actors) +
+                                   (sent ? "." : ": FAILED, Photon refused the send."));
         }
 
         /// <summary>The wire payload for one message: the subtype, then the arguments.</summary>
@@ -159,6 +212,9 @@ namespace Ectype
                                           senderActor + " (no subtype byte).");
                 return;
             }
+            Room room = PhotonNetwork.CurrentRoom;
+            if (!PeerPresence.ContractCompatible(room != null ? room.GetPlayer(senderActor) : null))
+                return;   // logged once per peer by PeerPresence
             Channel channel;
             if (!Channels.TryGetValue(subtype, out channel))
             {
@@ -166,6 +222,15 @@ namespace Ectype
                     Plugin.Log.LogWarning("Ectype: ignored net subtype " + subtype + " from actor " +
                                           senderActor + ": this build has no handler for it " +
                                           "(a different network contract?).");
+                return;
+            }
+            if (!MatchesLayout(subtype, args))
+            {
+                if (Warned.Add("recv-layout:" + senderActor + "/" + subtype))
+                    Plugin.Log.LogWarning("Ectype: ignored net " + channel.Name + " (subtype " +
+                                          subtype + ") from actor " + senderActor + ": its fields " +
+                                          "match no declared layout (reported once per sender " +
+                                          "and subtype).");
                 return;
             }
             if (Plugin.Verbose)

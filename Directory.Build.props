@@ -6,8 +6,8 @@
     build configuration: nothing above this folder applies. The examples carry their own
     file in examples\, which stops this one from applying to them.
 
-    References come from a Void Crew install with BepInEx 5 and VoidManager, never from
-    NuGet: a NuGet build of BepInEx is not the build the game runs. The one package is
+    References come from a Void Crew install with BepInEx 5 (and VoidManager, for a dev
+    tools build only), never from NuGet: a NuGet build of BepInEx is not the build the game runs. The one package is
     Microsoft.NETFramework.ReferenceAssemblies, which supplies the net472 targeting pack.
   -->
 
@@ -111,7 +111,9 @@
     <!-- loader and manager -->
     <Reference Include="BepInEx"                               HintPath="$(BepInExCoreDir)\BepInEx.dll" />
     <Reference Include="0Harmony"                              HintPath="$(BepInExCoreDir)\0Harmony.dll" />
-    <Reference Include="VoidManager"                           HintPath="$(VoidManagerDll)" />
+    <!-- Only the dev tools build's F5 developer section reads VoidManager; a release build
+         compiles nothing that names it. -->
+    <Reference Include="VoidManager" Condition="'$(DevTools)' == 'true'" HintPath="$(VoidManagerDll)" />
 
     <!-- game -->
     <Reference Include="Assembly-CSharp"                       HintPath="$(ManagedDir)\Assembly-CSharp.dll" />
@@ -186,8 +188,8 @@
            Text="Void Crew not found at '$(VoidCrewDir)'. Set the folder that holds Void Crew.exe with -p:VoidCrewDir=&quot;&lt;path&gt;&quot;, a VoidCrewDir in Local.props beside Directory.Build.props (copy Local.props.example), or the VOID_CREW_DIR environment variable." />
     <Error Condition="!Exists('$(BepInExCoreDir)\BepInEx.dll')"
            Text="BepInEx not found at '$(BepInExCoreDir)'. Install BepInEx 5 into the game folder." />
-    <Error Condition="!Exists('$(VoidManagerDll)')"
-           Text="VoidManager.dll not found in '$(PluginsDir)' or its VoidManager subfolder. Install VoidManager, or set VoidManagerDll to its path." />
+    <Error Condition="'$(DevTools)' == 'true' and !Exists('$(VoidManagerDll)')"
+           Text="VoidManager.dll not found in '$(PluginsDir)' or its VoidManager subfolder. A dev tools build needs it: install VoidManager, or set VoidManagerDll to its path." />
   </Target>
 
 </Project>

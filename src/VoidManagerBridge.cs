@@ -7,6 +7,8 @@ using BepInEx;
 using BepInEx.Bootstrap;
 using HarmonyLib;
 
+using Hashtable = ExitGames.Client.Photon.Hashtable;
+
 namespace Ectype
 {
     /// <summary>
@@ -22,20 +24,30 @@ namespace Ectype
     /// call, so a single VoidManager-derived type would spam the log of every player without
     /// VoidManager, and break any other mod that scans assemblies without catching it.
     ///
-    /// VoidManager finds a mod's <c>VoidPlugin</c> and <c>ModSettingsMenu</c> only by scanning
-    /// that mod's own assembly, so the two are provided another way when VoidManager is loaded:
-    ///  * Multiplayer type. VoidManager gives a plugin without a <c>VoidPlugin</c> a generated
-    ///    entry whose type comes from its "Unspecified Mod Overrides" table, rebuilt by
-    ///    <c>Configs.LoadModListOverride</c> at the start of plugin discovery. A postfix adds
-    ///    this plugin's GUID as <c>All</c> unless the player already listed the framework by
-    ///    GUID or name. The generated entry carries the plugin's version and DLL hash, so
-    ///    VoidManager's join check and its modded-session flag treat the framework exactly as
-    ///    a declared <c>All</c> mod.
-    ///  * Settings page. A <c>ModSettingsMenu</c> subclass is emitted at runtime, after
-    ///    VoidManager's assembly is known to be loaded, and appended to VoidManager's menu
-    ///    list by a postfix on <c>PluginHandler.DiscoverPlugins</c>. Its <c>Name</c> and
-    ///    <c>Draw</c> call <see cref="SettingsPage"/>.
-    /// Each binding resolves by name and logs one line naming what is lost when it misses.
+    /// The framework declares no multiplayer type to VoidManager, so VoidManager lists it as
+    /// <c>Unmanaged</c>: shown in its mod list, never compared at join, never raising its
+    /// session level. VoidManager's host kicks a joiner without VoidManager whenever its own
+    /// highest declared type is <c>All</c>, so a framework declared <c>All</c> would make every
+    /// VoidManager host refuse every player without VoidManager. <c>Unmanaged</c> rather than
+    /// <c>Client</c>: the Void Crew Mod Launcher takes a mod's need from VoidManager's type
+    /// when one is declared and would advertise a <c>Client</c> framework as client-side
+    /// only; for <c>Unmanaged</c> it falls back to the package's <c>All Required</c> category.
+    /// What keeps framework peers compatible is the contract marker and the role mods'
+    /// required assets, both compared by the game itself.
+    ///
+    /// With VoidManager loaded, two hooks, each resolved by name and logging one line naming
+    /// what is lost when it misses:
+    ///  * Join check. VoidManager's client-side check reads the host's mod list from the room
+    ///    property <c>Mods</c> whenever the room is tagged modded, and throws when a host
+    ///    without VoidManager tagged the room through the game's own property alone. A prefix
+    ///    treats a tagged room with no <c>Mods</c> property as a host without VoidManager and
+    ///    passes the check; the game's asset check still runs.
+    ///  * Settings page. VoidManager finds a <c>ModSettingsMenu</c> only by scanning a mod's
+    ///    own assembly, so a subclass is emitted at runtime, after VoidManager is known to be
+    ///    loaded, and inserted into VoidManager's menu list by a postfix on
+    ///    <c>PluginHandler.DiscoverPlugins</c>. That method runs from VoidManager's postfix on
+    ///    the game's <c>PlayerProfileLoader.Awake</c>, after every plugin's Awake, so the hook
+    ///    is in place in time. Its <c>Name</c> and <c>Draw</c> call <see cref="SettingsPage"/>.
     /// </summary>
     internal static class VoidManagerBridge
     {
@@ -43,19 +55,15 @@ namespace Ectype
         internal const string Guid = "VoidCrewModdingTeam.VoidManager";
 
         private static Assembly _vm;
-        private static FieldInfo _overrides;
-        private static Type _mpType;
-        private static bool _menuAdded;
+        private static Type _menuType;
+        private static bool _loggedHostWithoutVoidManager;
 
-        /// <summary>True when BepInEx loaded VoidManager. Plugins load in dependency order, so
-        /// the soft dependency puts VoidManager's entry here before this plugin's Awake.</summary>
-        internal static bool Present
-        {
-            get { return Chainloader.PluginInfos.ContainsKey(Guid); }
-        }
+        /// <summary>True once <see cref="Install"/> found VoidManager loaded.</summary>
+        internal static bool Loaded { get { return _vm != null; } }
 
-        /// <summary>Called from the plugin's Awake, before the Enabled switch is read: VoidManager
-        /// lists the framework, and the F5 page reports its state, whatever that switch says.</summary>
+        /// <summary>Called from the plugin's Awake, before the Enabled switch is read, so the F5
+        /// page reports the framework's state whatever that switch says. The soft dependency
+        /// makes BepInEx load VoidManager first, so its entry is already registered here.</summary>
         internal static void Install(Harmony harmony)
         {
             PluginInfo info;
@@ -66,11 +74,11 @@ namespace Ectype
             }
             _vm = info.Instance.GetType().Assembly;
 
-            try { PatchModType(harmony); }
+            try { PatchJoinCheck(harmony); }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: VoidManager mod-type hook failed, so VoidManager " +
-                                    "lists the framework as Unmanaged: " + e);
+                Plugin.Log.LogError("Ectype: VoidManager join-check guard failed; joining a host " +
+                                    "without VoidManager will fail in VoidManager's check: " + e);
             }
             try { PatchMenu(harmony); }
             catch (Exception e)
@@ -80,44 +88,63 @@ namespace Ectype
             }
         }
 
-        // ------------------------------------------------------------- multiplayer type
+        // ------------------------------------------------------------------ join check
 
-        private static void PatchModType(Harmony harmony)
+        private static void PatchJoinCheck(Harmony harmony)
         {
-            Type configs = _vm.GetType("VoidManager.Configs");
-            MethodInfo load = configs != null ? AccessTools.Method(configs, "LoadModListOverride") : null;
-            _overrides = configs != null ? AccessTools.Field(configs, "ModOverrideDictionary") : null;
-            _mpType = _vm.GetType("VoidManager.MPModChecks.MultiplayerType");
-            if (load == null || _overrides == null || _mpType == null)
+            Type manager = _vm.GetType("VoidManager.MPModChecks.MPModCheckManager");
+            MethodInfo check = manager != null
+                ? AccessTools.Method(manager, "ModChecksClientside",
+                                     new[] { typeof(Hashtable), typeof(bool) })
+                : null;
+            if (check == null)
             {
-                Plugin.Log.LogWarning("Ectype: VoidManager's mod-override table not found " +
-                                      "(VoidManager update?). VoidManager lists the framework " +
-                                      "as Unmanaged and its join check skips the framework; " +
-                                      "the game's asset check still refuses a peer on another " +
-                                      "network contract.");
+                Plugin.Log.LogWarning("Ectype: VoidManager.MPModChecks.MPModCheckManager." +
+                                      "ModChecksClientside not found (VoidManager update?); " +
+                                      "joining a host without VoidManager may fail in " +
+                                      "VoidManager's own check.");
                 return;
             }
-            harmony.Patch(load, postfix: new HarmonyMethod(typeof(VoidManagerBridge),
-                                                           nameof(AfterLoadModListOverride)));
+            harmony.Patch(check, prefix: new HarmonyMethod(typeof(VoidManagerBridge),
+                                                           nameof(BeforeClientJoinCheck)));
         }
 
-        private static void AfterLoadModListOverride()
+        /// <summary>
+        /// A room tagged modded with no <c>Mods</c> property was hosted without VoidManager:
+        /// there is no host mod list to compare, so the check passes. Any other room goes to
+        /// VoidManager's check unchanged.
+        /// </summary>
+        private static bool BeforeClientJoinCheck(Hashtable __0, ref bool __result)
         {
             try
             {
-                IDictionary table = _overrides.GetValue(null) as IDictionary;
-                if (table == null) return;
-                // VoidManager looks the GUID up first, then the name: a player's own entry
-                // under either wins.
-                if (table.Contains(EctypePluginInfo.PLUGIN_GUID) ||
-                    table.Contains(EctypePluginInfo.USERS_PLUGIN_NAME)) return;
-                table.Add(EctypePluginInfo.PLUGIN_GUID, Enum.Parse(_mpType, "All"));
+                if (__0 == null || __0.ContainsKey("Mods") || !TaggedModded(__0)) return true;
+                if (!_loggedHostWithoutVoidManager)
+                {
+                    _loggedHostWithoutVoidManager = true;
+                    Plugin.Log.LogInfo("Ectype: the host runs no VoidManager (modded room with no " +
+                                       "mod list); VoidManager's join check is skipped and the " +
+                                       "game's asset check decides.");
+                }
+                __result = true;
+                return false;
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: declaring the framework's VoidManager mod type " +
-                                    "failed: " + e);
+                Plugin.Log.LogError("Ectype: VoidManager join-check guard threw: " + e);
+                return true;
             }
+        }
+
+        /// <summary>The game's modded tag: room property <c>R_Mod</c> equal to
+        /// <c>ModdingType.mod_session</c>.</summary>
+        internal static bool TaggedModded(Hashtable roomProperties)
+        {
+            object v;
+            if (roomProperties == null || !roomProperties.TryGetValue("R_Mod", out v) || v == null)
+                return false;
+            try { return Convert.ToInt32(v) == (int)ModdingType.mod_session; }
+            catch { return false; }
         }
 
         // --------------------------------------------------------------- settings page
@@ -138,7 +165,6 @@ namespace Ectype
 
         private static void AfterDiscoverPlugins()
         {
-            if (_menuAdded) return;
             try
             {
                 Type menuBase = _vm.GetType("VoidManager.CustomGUI.ModSettingsMenu");
@@ -152,7 +178,12 @@ namespace Ectype
                     ? AccessTools.Field(guiType, "settings").GetValue(gui) as IList : null;
                 if (settings == null) throw new Exception("GUIMain has no settings list");
 
-                object menu = Activator.CreateInstance(EmitMenuType(menuBase));
+                // Once per list: a second discovery into the same list adds nothing, one into
+                // a new list adds the page again.
+                if (_menuType == null) _menuType = EmitMenuType(menuBase);
+                foreach (object existing in settings)
+                    if (existing != null && existing.GetType() == _menuType) return;
+                object menu = Activator.CreateInstance(_menuType);
 
                 // The per-mod "Settings menus" button matches by this reference.
                 object plugin = FindVoidPlugin(handler, "ActiveVoidPlugins") ??
@@ -166,7 +197,6 @@ namespace Ectype
                     if (string.Compare(NameOf(settings[i]), SettingsPage.Name(),
                                        StringComparison.CurrentCulture) > 0) { at = i; break; }
                 settings.Insert(at, menu);
-                _menuAdded = true;
             }
             catch (Exception e)
             {

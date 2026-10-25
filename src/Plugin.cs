@@ -77,6 +77,12 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
+            // VoidManager has its own progression switch on the same methods.
+            if (!VoidManagerBridge.Loaded)
+            {
+                try { ProgressionGuard.Install(harmony); }
+                catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
+            }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }
@@ -162,6 +168,7 @@ namespace Ectype
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
+            Step("progression guard", ProgressionGuard.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.
             Step("enemy abilities", EnemyAbilities.Poll);

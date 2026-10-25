@@ -7,9 +7,9 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <!-- The framework loads without VoidManager: src\shared files leave out their
          VoidManager-typed members, and no compiled type names a VoidManager type.
-         VoidManager.dll stays a compile reference for the dev build's MenuKit, whose
-         debug-mode read runs only inside VoidManager's own F5 menu. It is never copied:
-         Directory.Build.props sets Private=false on every reference. -->
+         Directory.Build.props references VoidManager.dll in a dev tools build only, for
+         MenuKit's debug-mode read, which runs only inside VoidManager's own F5 menu. It is
+         never copied: every reference is Private=false. -->
     <DefineConstants>$(DefineConstants);VOIDMANAGER_OPTIONAL</DefineConstants>
   </PropertyGroup>
 
