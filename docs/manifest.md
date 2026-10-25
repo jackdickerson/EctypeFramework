@@ -9,8 +9,9 @@ data-only example under [../examples/](../examples/).
 
 A manifest that fails validation rejects its role by name in the log and nothing else
 breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`, `roleId`,
-`roleName`, `hero`, each perk, the hero's target, distribution and conditions, each other perk's
-(a bad one skips that perk), `abilityWhen`, then each custom stat and `suppress` entry. A `mutators` entry is
+`roleName`, `hero`, each perk (its `unlocks` included), the hero's target, distribution and
+conditions, each other perk's (a bad one skips that perk), `abilityWhen`, the hero's `unlocks`,
+then each custom stat and `suppress` entry. A `mutators` entry is
 checked when the role registers, and a bad one refuses only that mutator.
 [troubleshooting.md](troubleshooting.md) lists each message.
 
@@ -62,10 +63,15 @@ perk: one copy of the held level's effects per ship it names, each modifier with
 every ship module tree the game leaves detached from the ship's own collection, such as the
 Fabricator's. Which ships a holder's perk names is resolved on every client from data every
 client shares: never from the game's player-ship getter, which in a room with several ships
-names the ship the viewing client looks at. The resolution is repeated four times a second and
-the frame after a ship spawns, starts dying or is destroyed and after anyone sits or stands, and
-only a holder whose ships changed is rebuilt. A holder whose target names no ship contributes
-nothing until it names one.
+names the ship the viewing client looks at. Where the holder's character stands is not such
+data: each client samples another player's character against a ship's inertia bubble at its
+own moment, from an interpolated position, and the bubble is entered at a smaller radius than
+it is left at, so two clients can disagree for as long as the character hovers at its edge.
+`characterAboard` therefore lands on the ship the holder's own client names in its condition
+answer ([Conditions](#conditions)). The resolution is repeated four times a second and the
+frame after a ship spawns, starts dying or is destroyed, after anyone sits or stands and after a
+holder's answer changes, and only a holder whose ships changed is rebuilt. A holder whose target
+names no ship contributes nothing until it names one.
 
 "The holder's side": under Void Crew Fleet's team match, the ship's team is the holder's team;
 otherwise, once ships of more than one faction have been seen in the mission, the ship's faction
@@ -76,7 +82,7 @@ ship exists and has not started dying. The crew ship is
 | Target | Ships | With one ship in the room |
 | --- | --- | --- |
 | `characterShip` | The holder's crew ship. | The room's ship, if it is on the holder's side. |
-| `characterAboard` | The ship whose rooms or inertia bubble hold the holder's character, while it is living and on the holder's side. None in open space or aboard another side's ship. | The room's ship while the character is in its rooms or bubble, if it is on the holder's side; none in open space beyond the bubble. |
+| `characterAboard` | The ship the holder's own client says holds their character (its rooms or inertia bubble), while that ship is living and on the holder's side. None in open space, aboard another side's ship, or until the holder's first answer arrives. | The room's ship while the holder's answer says `onOwnShip`: exactly `characterShip` with `when: "onOwnShip"`. |
 | `characterFleet` | Every living ship on the holder's side. In co-op, every living ship. | The room's ship, if it is on the holder's side: exactly `characterShip`. |
 | `seatFleet` | While the holder is seated (a chair, the helm, a turret), every living ship on the side of the ship the seat belongs to. A holder seated aboard another side's ship buffs that side's ships, as `seatShip` buffs the ship of the seat. | The room's ship while seated: exactly `seatShip`. |
 
@@ -109,22 +115,32 @@ entry must hold; `"!name"` requires that condition false. Names are case-insensi
 
 | Condition | True while | With one ship in the room |
 | --- | --- | --- |
-| `onOwnShip` | The holder's character is aboard their own crew ship (its rooms or inertia bubble). | Aboard the ship. |
-| `onAllyShip` | The character is aboard a ship of their side that is not their crew ship. | Never. |
+| `onOwnShip` | The holder's character is aboard their own crew ship (its rooms or inertia bubble), dying or not. | Aboard the ship. |
+| `onAllyShip` | The character is aboard a living ship of their side that is not their crew ship. | Never. |
 | `onEnemyShip` | The character is aboard a ship of another side. | Never. |
 | `inOpenSpace` | The character is aboard no ship. | Outside the ship's bubble. |
 | `teamMatch` | A team match is running: Void Crew Fleet's team match when Fleet is installed (in the hub too), otherwise player ships of more than one faction seen this mission. | Never. |
 | `ownShipAlive` | The holder's crew ship exists and has not started dying. | The ship has not started dying. |
 | `spectating` | The holder has no character, or Void Crew Fleet places them on no ship (spectating, waiting, or crew of a lost ship). | Never while the character exists. |
 
+A character aboard a dying ship of their side that is not their crew ship meets none of
+`onOwnShip`, `onAllyShip`, `onEnemyShip` and `inOpenSpace`: a lost ship buffs no visitor.
+
 The holder's own client decides. It reads its own character four times a second, adopts a new
 answer once two reads in a row agree, and sends it to every other player running this framework
-version, only when it changes. Every client switches that holder's perk contributions on the
-answer it last received, so every client applies the same decision, a fraction of a second after
-the holder's client. Until a holder's first answer arrives, their conditional perks are off on
-other clients. A character perk with `when` is applied by the framework onto the character,
-with the same timing. `seat` and `seatShip` are applied by the game itself on sit and stand and
-cannot carry conditions; `when` on them is refused.
+version when it changes, and once to each player who joins the room later. The answer is the
+conditions and the number of the ship the character is aboard (0 for none); `characterAboard`
+lands on that ship once each client has checked that it is living and on the holder's side.
+Every client switches that holder's perk contributions on the answer it last received, so every
+client applies the same decision, a fraction of a second after the holder's client. Until a
+holder's first answer arrives, their conditional and `characterAboard` perks are off on other
+clients. A character perk with `when` is applied by the framework onto the character, with the
+same timing. `seat` and `seatShip` are applied by the game itself on sit and stand and cannot
+carry conditions; `when` on them is refused.
+
+Without Void Crew Fleet's published ship list, ship numbers follow spawn order among the ships a
+client has seen, so a player who joined after a ship was lost can resolve another holder's
+`characterAboard` to a different ship, or to none.
 
 Conditions on other ships' state ("while an allied ship is below 30% hull", "while an enemy ship
 is within 500 m") are refused by name: they need a decision broadcast by whoever observes the

@@ -314,6 +314,25 @@ namespace Ectype
             return null;
         }
 
+        /// <summary>
+        /// The ship has started dying and was the player's crew ship, which the crew-ship rules
+        /// no longer name because they name only living ships. With Fleet active: Fleet still
+        /// names its number for the player (a lost ship keeps its slot in Fleet's list). Without
+        /// it: the character is aboard the ship and of its faction, rule 4 read without the
+        /// living check.
+        /// </summary>
+        internal static bool CrewedDyingShip(PlayerControlledShip ship, int actor, CG.Game.Player.Player character)
+        {
+            if (ship == null || !ship.StartedDeath) return false;
+            if (Fleet.Active)
+            {
+                int number = Fleet.ShipOfPlayer(actor);
+                return number > 0 && number == ShipNumberOf(ship);
+            }
+            return character != null && ship.Faction == character.Faction &&
+                   ReferenceEquals(AboardShipOf(character), ship);
+        }
+
         /// <summary>The ship when it is on the player's side, else null with "other side's ship"
         /// as the source.</summary>
         private static PlayerControlledShip SideChecked(PlayerControlledShip ship, int actor,

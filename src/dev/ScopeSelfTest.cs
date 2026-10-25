@@ -17,16 +17,19 @@ namespace Ectype
     /// B1. Actors: 1 crews A1, stands on A1 and sits in a seat on A2; 2 crews A2 and has boarded
     /// B1; 3 crews B1 and floats in open space; 4 is on side 0 with no character; 5 crews A1 and
     /// stands on A2; 6 is on side 0 and sits in a seat on B1; 7 crews the dying A3 and stands on
-    /// it. A one-ship room (ship S, actor 1 aboard and seated, actor 2 in open space) checks the
-    /// collapse.
+    /// it; 8 crews A1 and stands on the dying A3. Ships are numbered by their order in the room.
+    /// As in the live view, the crew ship of a crew whose ship is dying is none. A one-ship room
+    /// (ship S, actor 1 aboard and seated, actor 2 in open space) checks the collapse.
     ///
     /// - Scope table: each target resolves to the expected ship list for each actor, in both
-    ///   rooms.
+    ///   rooms, characterAboard from the answer the holder's own client would send; and from
+    ///   no answer, an answer naming another side's ship, and one naming a dying ship.
     /// - Distribution: the split factor, and a scaled flat, percent and scalar copy.
     /// - Validation: targets, distributions and conditions accepted and refused as documented.
-    /// - Conditions: each actor's mask; every mask 0-127 survives the condition-mask message's
-    ///   pack, Protocol18 round trip, unpack and layout check, is recorded as the holder's mask,
-    ///   and gates a condition set as its bits say; the debounce adopts on the second read.
+    /// - Conditions: each actor's mask; every mask 0-127, with an aboard ship number, survives
+    ///   the condition-mask message's pack, Protocol18 round trip, unpack and layout check, is
+    ///   recorded as the holder's answer, and gates a condition set as its bits say; the
+    ///   debounce adopts on the second read.
     /// - RoleContext: the crew and aboard ship, side and predicates of a synthetic owner.
     /// </summary>
     internal static class ScopeSelfTest
@@ -63,7 +66,33 @@ namespace Ectype
             }
 
             internal override bool Living(object ship) { Ship s = ship as Ship; return s != null && s.Living; }
-            internal override object CrewShip(int actor) { Actor a = Get(actor); return a != null ? a.Crew : null; }
+
+            /// <summary>With several ships a dying crew ship is none, as the live crew-ship rules
+            /// name only living ships; with one, the room's ship dying or not.</summary>
+            internal override object CrewShip(int actor)
+            {
+                Actor a = Get(actor);
+                if (a == null || a.Crew == null) return null;
+                return a.Crew.Living || !Multi ? a.Crew : null;
+            }
+
+            internal override bool IsCrewShip(object ship, int actor)
+            {
+                Actor a = Get(actor);
+                return ship != null && a != null && ReferenceEquals(a.Crew, ship);
+            }
+
+            internal override object ShipByNumber(int number)
+            {
+                if (number < 1 || number > All.Count) return null;
+                return All[number - 1].Living ? All[number - 1] : null;
+            }
+
+            internal override int NumberOf(object ship)
+            {
+                Ship s = ship as Ship;
+                return s != null ? All.IndexOf(s) + 1 : 0;
+            }
 
             internal override object AboardShip(int actor)
             {
@@ -125,7 +154,7 @@ namespace Ectype
             }
 
             if (failures.Count == 0)
-                Plugin.Log.LogInfo("Ectype: dev self-test: perk scopes passed (4 ship sets over 7 actors in a " +
+                Plugin.Log.LogInfo("Ectype: dev self-test: perk scopes passed (4 ship sets over 8 actors in a " +
                                    "two-side room and the one-ship collapse, split math, validation, 7 " +
                                    "condition masks, 128 mask round trips, RoleContext).");
             else
@@ -156,6 +185,7 @@ namespace Ectype
             v.Actors[5] = new Actor { Side = 0, Crew = A1, Aboard = A2 };
             v.Actors[6] = new Actor { Side = 0, Seat = B1, Aboard = B1 };
             v.Actors[7] = new Actor { Side = 0, Crew = A3, Aboard = A3 };
+            v.Actors[8] = new Actor { Side = 0, Crew = A1, Aboard = A3 };
             return v;
         }
 
@@ -169,16 +199,27 @@ namespace Ectype
             return v;
         }
 
-        private static void Expect(List<string> failures, View v, ShipSet set, int actor, params Ship[] want)
+        /// <summary>Resolves with the answer the holder's own client would send from this view.</summary>
+        private static void Expect(List<string> f, View v, ShipSet set, int actor, params Ship[] want)
+        {
+            int answer;
+            using (TopologyView.UseTestView(v)) answer = HolderConditions.Read(TopologyView.Current, actor);
+            ExpectFrom(f, v, set, actor, answer, want);
+        }
+
+        /// <summary>Resolves with a given packed answer (-1 for none received).</summary>
+        private static void ExpectFrom(List<string> f, View v, ShipSet set, int actor, int answer, params Ship[] want)
         {
             List<object> got = new List<object>();
             using (TopologyView.UseTestView(v))
-                PerkScopes.Resolve(TopologyView.Current, set, actor, got);
+                PerkScopes.Resolve(TopologyView.Current, set, actor, HolderConditions.MaskPart(answer),
+                                   HolderConditions.ShipPart(answer), got);
             bool same = got.Count == want.Length;
             for (int i = 0; same && i < want.Length; i++) same = ReferenceEquals(got[i], want[i]);
             if (!same)
-                failures.Add(PerkScopes.TargetOf(set) + " for actor " + actor + " gave [" + Join(got) +
-                             "], expected [" + Join(want) + "]");
+                f.Add(PerkScopes.TargetOf(set) + " for actor " + actor + " (answer " +
+                      HolderConditions.DescribeAnswer(answer) + ") gave [" + Join(got) + "], expected [" +
+                      Join(want) + "]");
         }
 
         private static string Join(IEnumerable<object> items)
@@ -197,11 +238,20 @@ namespace Ectype
             Expect(f, v, ShipSet.Crew, 2, A2);
             Expect(f, v, ShipSet.Crew, 3, B1);
             Expect(f, v, ShipSet.Crew, 4);
+            Expect(f, v, ShipSet.Crew, 7);            // their ship is dying
             Expect(f, v, ShipSet.Aboard, 1, A1);
             Expect(f, v, ShipSet.Aboard, 2);          // boarded the other side's ship
             Expect(f, v, ShipSet.Aboard, 3);          // open space
             Expect(f, v, ShipSet.Aboard, 5, A2);      // an ally ship of their side
             Expect(f, v, ShipSet.Aboard, 7);          // their ship is dying
+            Expect(f, v, ShipSet.Aboard, 8);          // an ally ship that is dying
+            int own = HolderConditions.Pack((int)HolderCondition.OnOwnShip, 1);
+            ExpectFrom(f, v, ShipSet.Aboard, 1, -1);  // no answer received yet
+            ExpectFrom(f, v, ShipSet.Aboard, 1, own, A1);
+            // The receiver checks side and life itself, whatever the answer's bits say.
+            ExpectFrom(f, v, ShipSet.Aboard, 1, HolderConditions.Pack((int)HolderCondition.OnAllyShip, 4));
+            ExpectFrom(f, v, ShipSet.Aboard, 1, HolderConditions.Pack((int)HolderCondition.OnAllyShip, 3));
+            ExpectFrom(f, v, ShipSet.Aboard, 1, HolderConditions.Pack((int)HolderCondition.OnAllyShip, 9));
             Expect(f, v, ShipSet.Force, 1, A1, A2);   // the dying A3 is left out
             Expect(f, v, ShipSet.Force, 2, A1, A2);
             Expect(f, v, ShipSet.Force, 3, B1);
@@ -218,6 +268,10 @@ namespace Ectype
             Expect(f, v, ShipSet.Force, 2, S);
             Expect(f, v, ShipSet.Aboard, 1, S);
             Expect(f, v, ShipSet.Aboard, 2);
+            // One ship: characterShip gated by onOwnShip, whatever ship number the answer carries.
+            ExpectFrom(f, v, ShipSet.Aboard, 1, -1);
+            ExpectFrom(f, v, ShipSet.Aboard, 2, HolderConditions.Pack((int)HolderCondition.OnOwnShip, 0), S);
+            ExpectFrom(f, v, ShipSet.Aboard, 1, HolderConditions.Pack((int)HolderCondition.InOpenSpace, 1));
             Expect(f, v, ShipSet.SeatForce, 1, S);
             Expect(f, v, ShipSet.SeatForce, 2);
         }
@@ -332,7 +386,8 @@ namespace Ectype
             Mask(f, v, 4, team | (int)HolderCondition.Spectating);
             Mask(f, v, 5, team | alive | (int)HolderCondition.OnAllyShip);
             Mask(f, v, 6, team | (int)HolderCondition.OnEnemyShip);   // no crew ship
-            Mask(f, v, 7, team | (int)HolderCondition.OnOwnShip);     // crew ship dying
+            Mask(f, v, 7, team | (int)HolderCondition.OnOwnShip);     // crew ship dying, crew ship none
+            Mask(f, v, 8, team | alive);                              // on a dying ally ship: no position
             View one = OneShipRoom();
             Mask(f, one, 1, alive | (int)HolderCondition.OnOwnShip);
             Mask(f, one, 2, alive | (int)HolderCondition.InOpenSpace);
@@ -366,18 +421,22 @@ namespace Ectype
             };
             for (int mask = 0; mask <= HolderConditions.AllBits; mask++)
             {
-                object[] args = HolderConditions.Message(mask);
+                // Ship numbers 0-6 and the highest an answer may carry.
+                int ship = mask == HolderConditions.AllBits ? HolderConditions.MaxShipNumber : mask % 7;
+                object[] args = HolderConditions.Message(mask, ship);
                 if (!EctypeNet.MatchesLayout(EctypeNet.ConditionMask, args))
                 { f.Add("mask " + mask + ": the message matches no layout"); return; }
                 object back = protocol.Deserialize(protocol.Serialize(EctypeNet.Pack(EctypeNet.ConditionMask, args)));
                 byte subtype;
                 object[] got;
                 if (!EctypeNet.TryUnpack(back, out subtype, out got) || subtype != EctypeNet.ConditionMask ||
-                    !EctypeNet.MatchesLayout(subtype, got) || (int)got[0] != mask)
-                { f.Add("mask " + mask + " did not survive the round trip"); return; }
-                HolderConditions.Record(TestActor, (int)got[0]);
-                int recorded = HolderConditions.ReceivedMask(TestActor);
-                if (recorded != mask) { f.Add("mask " + mask + " recorded as " + recorded); return; }
+                    !EctypeNet.MatchesLayout(subtype, got) || (int)got[0] != mask || (int)got[1] != ship)
+                { f.Add("mask " + mask + " ship " + ship + " did not survive the round trip"); return; }
+                HolderConditions.Record(TestActor, HolderConditions.Pack((int)got[0], (int)got[1]));
+                int answer = HolderConditions.ReceivedAnswer(TestActor);
+                int recorded = HolderConditions.MaskPart(answer);
+                if (recorded != mask || HolderConditions.ShipPart(answer) != ship)
+                { f.Add("mask " + mask + " ship " + ship + " recorded as " + HolderConditions.DescribeAnswer(answer)); return; }
                 bool holds = (mask & (int)HolderCondition.OnEnemyShip) != 0 &&
                              (mask & (int)HolderCondition.Spectating) == 0;
                 if (set.Holds(recorded) != holds) { f.Add("onEnemyShip, !spectating on mask " + mask + " gave " + !holds); return; }

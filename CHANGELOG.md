@@ -33,16 +33,17 @@ build.
 
 ## 0.29.0
 
-- Manifest perk targets `characterAboard` (the ship whose rooms or inertia bubble hold the
-  holder's character, while it is living and on the holder's side), `characterFleet` (every
-  living ship on the holder's side) and `seatFleet` (while seated, every living ship on the
-  seat's side). Applied by the framework on every client, one copy per ship with its own source,
-  resolved per holder from shared data and rebuilt only when that holder's ships change: four
-  times a second, the frame after a ship spawns, starts dying or is destroyed, and after anyone
-  sits or stands. With one ship in the room `characterFleet` is `characterShip` and `seatFleet`
-  is `seatShip`; `characterAboard` names the room's ship while the character is in its rooms or
-  bubble. The perk asset carries value 4, as `characterShip` does: the game's perk loader skips
-  it and the gene-tree tooltip never shows a target, and the framework keeps each perk's meaning
+- Manifest perk targets `characterAboard` (the ship the holder's own client says holds their
+  character, in its rooms or inertia bubble, while that ship is living and on the holder's side),
+  `characterFleet` (every living ship on the holder's side) and `seatFleet` (while seated, every
+  living ship on the seat's side). Applied by the framework on every client, one copy per ship
+  with its own source, resolved per holder from shared data, `characterAboard` from the
+  holder's condition answer, and rebuilt only when that holder's ships change: four times a
+  second, the frame after a ship spawns, starts dying or is destroyed, after anyone sits or
+  stands, and after a holder's answer changes. With one ship in the room `characterFleet` is
+  `characterShip`, `seatFleet` is `seatShip`, and `characterAboard` is `characterShip` while the
+  holder's answer says `onOwnShip`. The perk asset carries value 4, as `characterShip` does:
+  the game's perk loader skips it and the gene-tree tooltip never shows a target, and the framework keeps each perk's meaning
   in a table keyed by its GUID.
 - Perk field `distribution`: `each` (default) or `split`, which divides a float `flat`, `flat2` or
   `percent` amount evenly among the ships a `characterFleet` or `seatFleet` perk names. Validation
@@ -53,7 +54,10 @@ build.
   `spectating`, each negatable with `!`. The holder's own client decides four times a second,
   adopts a value it reads twice in a row, and sends it to every peer on a change and once to each
   later peer; every client switches that holder's conditional perks on the answer it received,
-  and a perk stays off until the first answer arrives. A `character` perk with `when` is applied
+  and a perk stays off until the first answer arrives. The answer also carries the number of the
+  ship the character is aboard, which `characterAboard` resolves from. `onOwnShip` holds aboard
+  one's own crew ship while it dies; aboard a dying ship of one's side that is not one's own,
+  none of the four position conditions holds. A `character` perk with `when` is applied
   by the framework onto the character. `abilityWhen` makes a role ability unusable on its owner
   while a condition does not hold, before `OwnerCanUse`. Refused: an unknown condition, a
   condition on other ships' state (named as such), conditions written as objects, a condition
@@ -64,8 +68,8 @@ build.
   names the same ship as the owner.
 - `Topology.TeamMatch`: Void Crew Fleet's `IsTeamMatch` when bound, else ships of more than one
   faction seen this mission. The Fleet binding probes `bool IsTeamMatch`.
-- Network contract 5: a new message subtype carries each player's condition answer. A framework
-  on contract 4 or earlier is refused at join.
+- Network contract 5: a new message subtype carries each player's condition answer,
+  `[int mask, int aboardShip]`. A framework on contract 4 or earlier is refused at join.
 - The verbose route lines are now `<target> - actor <n> → ship(s) ...` and `perk route - actor
   <n> contributes ...`; the `characterShip` resolution line keeps its format. The route's error
   lines say `perk route` where they said `characterShip`.

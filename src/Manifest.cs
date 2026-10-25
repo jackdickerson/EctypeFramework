@@ -230,6 +230,7 @@ namespace Ectype
                                             asm.GetName().Name + " rejected: " + problem);
                         continue;
                     }
+                    HolderConditions.DeclareFor(m);
                     found.Add(m);
                 }
                 catch (Exception e)
@@ -292,7 +293,6 @@ namespace Ectype
             });
             string abilityProblem = HolderConditions.Parse(m.abilityWhen, out m.AbilityWhen);
             if (abilityProblem != null) return "abilityWhen has " + abilityProblem;
-            if (!m.AbilityWhen.Empty) HolderConditions.Declare();
             string heroUnlocksProblem = NormalizeGuidList(m.hero.unlocks);
             if (heroUnlocksProblem != null) return "hero unlocks entry " + heroUnlocksProblem;
             foreach (CustomStatSpec s in m.customStats)

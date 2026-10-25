@@ -14,7 +14,8 @@ namespace Ectype
         Character,
         /// <summary>The holder's crew ship.</summary>
         Crew,
-        /// <summary>The ship the holder is aboard, when it is on the holder's side.</summary>
+        /// <summary>The ship the holder's own client says they are aboard, when it is living and
+        /// on the holder's side.</summary>
         Aboard,
         /// <summary>Every living ship on the holder's side.</summary>
         Force,
@@ -195,7 +196,6 @@ namespace Ectype
                     return "conditions on target '" + name + "' (conditions need a target the framework " +
                            "applies: character, characterShip, characterAboard, characterFleet, seatFleet)";
                 if (target == PerkBuffTarget.Character) target = CharacterShipRoute.CharacterShip;
-                HolderConditions.Declare();
             }
             scope = new PerkScope(name, target, ships, share, when);
             return null;
@@ -230,13 +230,19 @@ namespace Ectype
 
         /// <summary>
         /// The ships a ship set names for one holder, in ship-number order, into
-        /// <paramref name="into"/>. Pure: everything comes from <paramref name="view"/>.
-        /// With one ship object in the room every set collapses to the stock targets: Crew,
-        /// Force and Aboard name the room's ship when it is on the holder's side (Aboard only
-        /// while the character is aboard it), SeatForce names it while the holder is seated in
-        /// it. Not used for <see cref="ShipSet.Character"/>.
+        /// <paramref name="into"/>. Pure: everything comes from <paramref name="view"/> and the
+        /// holder's own answer, <paramref name="mask"/> (-1 before it arrives) and
+        /// <paramref name="aboardShip"/> (a ship number, 0 for none).
+        /// Aboard is read from that answer, never from this client's copy of the character,
+        /// whose inertia-bubble state each client samples at its own moment: the ship the
+        /// holder's client names, when it is living and on the holder's side here. With one ship
+        /// object in the room every set collapses to the stock targets: Crew and Force name the
+        /// room's ship when it is on the holder's side, Aboard names it too while the answer says
+        /// onOwnShip, SeatForce names it while the holder is seated in it. Not used for
+        /// <see cref="ShipSet.Character"/>.
         /// </summary>
-        internal static void Resolve(TopologyView view, ShipSet set, int actor, List<object> into)
+        internal static void Resolve(TopologyView view, ShipSet set, int actor, int mask, int aboardShip,
+                                     List<object> into)
         {
             into.Clear();
             switch (set)
@@ -249,9 +255,16 @@ namespace Ectype
                 }
                 case ShipSet.Aboard:
                 {
-                    object aboard = view.AboardShip(actor);
-                    if (aboard != null && (!view.Multi || view.Living(aboard)) && view.OnSide(aboard, actor))
-                        into.Add(aboard);
+                    if (mask < 0) return;
+                    if (!view.Multi)
+                    {
+                        if ((mask & (int)HolderCondition.OnOwnShip) == 0) return;
+                        object crew = view.CrewShip(actor);
+                        if (crew != null) into.Add(crew);
+                        return;
+                    }
+                    object aboard = view.ShipByNumber(aboardShip);
+                    if (aboard != null && view.Living(aboard) && view.OnSide(aboard, actor)) into.Add(aboard);
                     return;
                 }
                 case ShipSet.Force:

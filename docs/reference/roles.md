@@ -286,7 +286,8 @@ Both run on every client for every player, so every client carries every holder'
 
 - Which ships each target names, and what it names with one ship in the room, is in
   [manifest.md](../manifest.md#ship-targets). With several ships the sets are resolved per holder
-  on every client from shared data ([topology.md](topology.md)); a set that names no ship
+  on every client from shared data ([topology.md](topology.md)), and `characterAboard` from the
+  ship the holder's own client names in its condition answer; a set that names no ship
   contributes nothing until it names one. With `[Debug] VerboseLogging` on, each change of a
   holder's ships logs `<target> - actor <n> → ship <k> (<source>)` (or `ships <k>, <k>`), and
   each change of their totals `perk route - actor <n> contributes <m> modifier(s) to <k>

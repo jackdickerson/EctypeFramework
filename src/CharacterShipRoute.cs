@@ -29,13 +29,14 @@ namespace Ectype
     /// Which ships. With one ship object in the room every set names that ship, as the stock
     /// targets do. With several, the game's player-ship getter can return a different ship on
     /// each client (a multi-ship mod points it at the ship the viewer is looking at), so each
-    /// holder is resolved on its own from data every client shares (TopologyView). A holder whose
+    /// holder is resolved on its own from data every client shares (TopologyView), and the ship
+    /// a holder is aboard from that holder's own answer (HolderConditions). A holder whose
     /// set is empty (spectating, not yet placed, crew ship dying, not seated) contributes nothing
     /// until it is not. Resolution is repeated four times a second, the frame after every topology
     /// change and every seat change, and only a holder whose ships changed is rebuilt.
     ///
     /// A perk with conditions applies only while they hold on the holder's condition mask, which
-    /// the holder's own client decides and publishes (HolderConditions); a change of mask
+    /// the holder's own client decides and publishes (HolderConditions); a change of answer
     /// rebuilds that holder. A character perk with conditions is routed here too, onto the
     /// holder's own character collection.
     ///
@@ -221,7 +222,8 @@ namespace Ectype
         {
             if (set == ShipSet.Character)
                 return h.Player != null && h.Player.Stats != null ? new object[] { h.Player } : new object[0];
-            PerkScopes.Resolve(Topology.View, set, actor, _scratch);
+            PerkScopes.Resolve(Topology.View, set, actor, HolderConditions.MaskOf(actor),
+                               HolderConditions.AboardShipOf(actor), _scratch);
             List<object> ships = new List<object>(_scratch.Count);
             foreach (object o in _scratch)
             {
@@ -310,8 +312,15 @@ namespace Ectype
                     return source;
                 }
                 case ShipSet.Aboard:
+                {
                     if (ships.Length > 0) return "aboard";
-                    return Topology.View.AboardShip(actor) == null ? "open space" : "aboard another side's ship";
+                    if (HolderConditions.MaskOf(actor) < 0) return "no answer from the holder yet";
+                    if (!Topology.View.Multi) return "not on own ship";
+                    int number = HolderConditions.AboardShipOf(actor);
+                    if (number == 0) return "open space";
+                    if (Topology.View.ShipByNumber(number) == null) return "ship " + number + " not alive";
+                    return "aboard another side's ship";
+                }
                 case ShipSet.Force:
                     return ships.Length > 0 ? "holder's side" : "no living ship on the holder's side";
                 case ShipSet.SeatForce:
