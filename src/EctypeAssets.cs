@@ -63,6 +63,11 @@ namespace Ectype
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: framework-owned stat registration failed: " + e); }
 
+            // Mod content queued before the containers existed. Independent of roles.
+            try { RuntimeContent.Pump(); }
+            catch (Exception e)
+            { Plugin.Log.LogError("Ectype: content: publication pass failed: " + e); }
+
             RoleRegistry.DiscoverOnce();
 #if ECTYPE_DEV
             DevTools.AfterDiscovery();
@@ -100,7 +105,7 @@ namespace Ectype
 
         /// <summary>DontDestroyOnLoad alone does not survive Resources.UnloadUnusedAssets on
         /// a scene transition; HideAndDontSave does.</summary>
-        private static void Keep(UnityEngine.Object o)
+        internal static void Keep(UnityEngine.Object o)
         {
             if (o == null) return;
             o.hideFlags = HideFlags.HideAndDontSave;

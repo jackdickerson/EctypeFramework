@@ -109,6 +109,7 @@ namespace Ectype
             GUILayout.Label("Stats  : " + SafeStatCount() + " vanilla aliases, " +
                             "framework-owned " + FrameworkStats.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
+            GUILayout.Label("Content : " + RuntimeContent.Status);
             GUILayout.Label("Network : event " + EctypeNet.EventCode + ", contract " +
                             EctypePluginInfo.NET_CONTRACT_VERSION + ", " +
                             ContractMarker.Status);
