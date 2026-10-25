@@ -16,8 +16,9 @@ namespace Ectype
     ///
     /// "Matched nothing" is read the way ApplyModifiers matches: a modifier lands on every
     /// stat keyed by its type in the collection and, recursively, in every child collection.
-    /// So a miss is no Stats key equal to the type anywhere in that tree. Seat effects are
-    /// checked against the player ship's tree, which contains every module a player can man.
+    /// So a miss is no Stats key equal to the type anywhere in that tree. Seat and ship effects
+    /// are checked against the holder's own ship's tree, which contains every module a player
+    /// can man; a holder with no resolved ship (spectating, not yet placed) is not checked.
     ///
     /// Stats join a tree late - a module installed, an ability awake after the first reapply -
     /// so a miss is only reported when a later reapply, ConfirmSeconds on, still misses.
@@ -39,7 +40,7 @@ namespace Ectype
             if (ours.Count == 0) return;
 
             CG.Game.Player.Player player = loader.GetComponent<CG.Game.Player.Player>();
-            PlayerControlledShip ship = ClientGame.Current != null ? ClientGame.Current.PlayerShip : null;
+            PlayerControlledShip ship = HolderShip(loader, player);
 
             foreach (KeyValuePair<GUIDUnion, int> kv in loader.PerkBuffLevels)
             {
@@ -94,6 +95,18 @@ namespace Ectype
             }
         }
 
+
+        /// <summary>The ship the holder's ship-side effects land on: the characterShip route's
+        /// resolution when it holds one, else the holder's crew ship. Never the player-ship
+        /// getter, which with several ships names the ship this client views, not the
+        /// holder's.</summary>
+        private static PlayerControlledShip HolderShip(PlayerPerkLoader loader, CG.Game.Player.Player player)
+        {
+            PlayerControlledShip ship = CharacterShipRoute.ShipOf(loader);
+            if (ship != null) return ship;
+            string source;
+            return Topology.ResolveCrewShip(Topology.ActorOf(player), player, out source);
+        }
 
         /// <summary>characterShip effects also land on module trees detached from the
         /// ship's; see CharacterShipRoute.</summary>

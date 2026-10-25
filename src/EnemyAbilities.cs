@@ -505,7 +505,10 @@ namespace Ectype
         }
 
         /// <summary>Every object an enemy ability can have modified: the sector's ships,
-        /// the players, the player ship and the host itself.</summary>
+        /// the players, every player ship and the host itself. Every player ship, not the
+        /// player-ship getter's answer alone: with several ships that getter can name only the
+        /// ship this client views, and a suspension must lift the same modifiers on every
+        /// client.</summary>
         private static List<OrbitObject> Candidates(Host h)
         {
             List<OrbitObject> list = new List<OrbitObject>();
@@ -519,9 +522,12 @@ namespace Ectype
             ClientGame game = ClientGame.Current;
             if (game != null)
             {
-                add((object)game.PlayerShip as OrbitObject);
+                // Without a second ship object the getter is the room's one ship on every client.
+                if (!Topology.Multi) add((object)game.PlayerShip as OrbitObject);
                 if (game.Players != null) foreach (CG.Game.Player.Player p in game.Players) add(p);
             }
+            IReadOnlyList<PlayerControlledShip> registry = Topology.Ships;
+            for (int i = 0; i < registry.Count; i++) add(registry[i]);
             return list;
         }
 

@@ -37,6 +37,8 @@ namespace Ectype
 
         private static ObjectMarkerRepository _repo;
         private static TargetLockComponent _lock;
+        /// <summary>The player-ship reference _lock was resolved against.</summary>
+        private static OrbitObject _lockShip;
         private static float _nextLockResolve;
         private static readonly Dictionary<EnemyStatusEffect, Entry> Entries =
             new Dictionary<EnemyStatusEffect, Entry>();
@@ -192,22 +194,43 @@ namespace Ectype
             return true;
         }
 
-        /// <summary>Resolve at most every 2s: while the component is missing (hub, ship
-        /// swap) a per-frame GetComponentInChildren over the ship would itself be a cost.</summary>
+        /// <summary>
+        /// Presentation only, so the player-ship getter is the right source: the gate follows
+        /// the ship this client is viewing. A multi-ship mod changes that reference as the
+        /// player walks between ships or spectates, so a different reference drops the old
+        /// subscription and resolves again. Resolve at most every 2s per ship: while the
+        /// component is missing (hub, ship swap) a per-frame GetComponentInChildren over the
+        /// ship would itself be a cost.
+        /// </summary>
         private static void EnsureLockSubscription()
         {
-            if (_lock != null) return;
-            if (Time.unscaledTime < _nextLockResolve) return;
-            _nextLockResolve = Time.unscaledTime + 2f;
             try
             {
                 ClientGame game = ClientGame.Current;
                 OrbitObject ship = game != null ? game.PlayerShip : null;
+                if (!ReferenceEquals(ship, _lockShip))
+                {
+                    _lockShip = ship;
+                    _nextLockResolve = 0f;
+                    if (!ReferenceEquals(_lock, null))
+                    {
+                        try { if (_lock != null) _lock.TargetLockChanged -= OnTargetLockChanged; }
+                        catch (Exception) { }
+                        _lock = null;
+                        OnTargetLockChanged(null);   // ungated until the new ship answers
+                    }
+                }
+                if (_lock != null) return;
+                if (Time.unscaledTime < _nextLockResolve) return;
+                _nextLockResolve = Time.unscaledTime + 2f;
                 if (ship == null) return;
                 TargetLockComponent tlc = ship.GetComponentInChildren<TargetLockComponent>(true);
                 if (tlc == null) return;
                 _lock = tlc;
                 tlc.TargetLockChanged += OnTargetLockChanged;
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status marker lock gate bound to ship " +
+                                       Topology.ShipNumberOf(ship as PlayerControlledShip) + ".");
                 OnTargetLockChanged(null);   // apply the gate now that it is answerable
             }
             catch (Exception e)
@@ -246,18 +269,15 @@ namespace Ectype
             catch { return true; }
         }
 
-        /// <summary>Same resolution the game's NPC cast marker performs: faction split
-        /// (the numeric pair is copied from that method's IL), then the marker table's
-        /// per-asset override.</summary>
+        /// <summary>The game's own marker resolution: the faction helper every object marker
+        /// uses (a multi-ship mod patches it to colour from the viewer's side), then the
+        /// marker table's per-asset override.</summary>
         private static ObjectMarkerData.EAffiliation ResolveAffiliation(OrbitObject target)
         {
-            ObjectMarkerData.EAffiliation aff = (ObjectMarkerData.EAffiliation)8;
+            ObjectMarkerData.EAffiliation aff = ObjectMarkerData.EAffiliation.Enemy;
             try
             {
-                ClientGame game = ClientGame.Current;
-                OrbitObject ship = game != null ? game.PlayerShip : null;
-                if (ship != null && target.IsObjectFromDifferentFaction(ship))
-                    aff = (ObjectMarkerData.EAffiliation)2;
+                aff = ObjectMarkerHelpers.GetAffiliationBasedOnFaction(target);
                 MarkerDataTable table = DataTable<MarkerDataTable>.Instance;
                 if (table != null) aff = table.CheckForOverride(target.ContainerGuid, aff);
             }
