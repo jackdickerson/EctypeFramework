@@ -25,6 +25,7 @@ Paths are relative to the framework project folder.
 | Ship arrivals | `src/ShipArrivals.cs` |
 | Ship registry and per-player ship resolution | `src/Topology.cs` |
 | Crafting-data audit | `src/CraftingAudit.cs` |
+| Content registry (publication, `ModContent`, ordered authored-list insert) | `src/RuntimeContent.cs`, `src/ModContent.cs`, `src/AssetDescriptionOrder.cs` |
 | Timed stat contributions | `src/TimedStatContributions.cs` |
 | Ship speed surge | `src/ShipSpeedSurge.cs` |
 | HUD ability bar | `src/HudAbilityBar.cs` |
@@ -105,6 +106,9 @@ column.
 | `RuntimeAssetsRegister` / `PerkBuffContainer` / `PerkTreeContainer` / `StatTable` | runtime asset + stat surface |
 | `RuntimeAssetsRegister.GetAllIds`, `CarryableContainer.HasItem`, `CraftingDataContainer.HasItem` (called) | the crafting-data audit: a carryable with no crafting definition makes `GetPlayerShipRecycledAlloyValue` throw when it dereferences the missing definition's crafting rules |
 | `Client.Utils.ObjectExtensions.DeepCopy` (called, dev tools build only) | the timed-stat copy self-test runs the game's own copier, the one the perk loader runs on every reapply |
+| `RuntimeAssetConverter.RegisterCarryableToContainers(GUIDUnion, string, string, Sprite)` (called) | a published carryable's spawnable-object, carryable, unlock and crafting defs, the game's own path for a carryable it converts at runtime. Unguarded (`Dictionary.Add` in each container), so it is called once per GUID and a throw part-way refuses the publication |
+| `ResourceAssetContainer<,,>.AssetDescriptions` (public `List<TDef>`, inserted into), `RegisterRuntimeAsset`, `HasItem`, `TryGetByGuid` on the composite-weapon, module, carryable, spawnable-object (`CloneStarObjectContainer`), crafting and unlock containers | the content registry. The authored list is what `GetAssetDefBySelfRef`, `GetAssetIndex`, `GetFullAssetRefList`, the debug spawn menus and catalog mods read; the game sends an index into it over the network for mutators only. Runtime entries are inserted in GUID order after the authored ones; role perk defs by GUID and tree defs by tree ordinal, the order the role argmax breaks ties in |
+| `CompositeWeaponDataDef.contextInfo` / `buildBoxIcon` (written by field), `CraftableItemDef.SetCraftingRules`, `PurchasableResourceAssetDef.SetPurchaseCategory`, `UnlockItemDef.UnlockOptions` / `rarity`, `AbstractCloneStarObject.ContainerGuid`, `CompositeWeaponData.ContainerGuid` (written) | the content registry's per-kind data. The purchasable defs' `ContextInfo` property setter resolves the presentable owner of its own GUID and recurses once the def is published; the framework never calls it |
 | `LootTable.ApplyLimiters` postfix, patched by name after the attribute pass | not role-related - appends registered items to each per-roll table copy; see [reference/loot-tables.md](reference/loot-tables.md). A miss costs loot alone |
 | `LootTable.Loot`, `LootTableEntry` (read, appended on the copy) | the anchor baseline (smallest `Amount`, union of `PossibleSpawnLocationTypes`, authored entries only), the rarities the table offers, and the added entry |
 | `Resources.LoadAll<LootTable>("Loot")`, `Resources.FindObjectsOfTypeAll<LootTable>()` | the loot warm-up's table list: every shipped table sits in `Resources/Loot`, and nothing else does |
@@ -146,6 +150,11 @@ What it adds:
   through Photon's Protocol18 and unpacked as the receive path does, and must come back with
   the same types and values. It logs `dev self-test: net payload round trip passed` or
   `FAILED` with the first difference. Add a layout to it with each new message subtype.
+- A content-registry self-test at load, offline: the ordered insert gives one list from four
+  publish orders and leaves authored entries in place; a carryable and a component carryable
+  without crafting data are refused with a reason naming the GUID; an entry reads back through
+  `TryGet` and `All` as a copy and raises `Changed` on add and removal. It logs
+  `dev self-test: content registry passed` or `FAILED` with each failure.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
   ability disabled while still selected, a channel stopped with time left (with a short

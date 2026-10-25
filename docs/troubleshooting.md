@@ -277,7 +277,10 @@ A mod registered a carryable at runtime without a crafting definition under the 
 game's recycled-alloy count reads the crafting rules of every carryable on the player ship with
 no null check, so it throws on this one. It runs on the host at session start and at the end of
 every run, while rewards are computed, in a one-ship vanilla-rules room too. The line names the
-asset; the mod that registers it needs to register crafting data for it. The framework checks
+asset; the mod that registers it needs to register crafting data for it. When the carryable
+came from a `RuntimeContent.Publish` that failed part-way, the line ends by naming the
+publisher, says whether it was published as a component, and gives the failure. A component
+needs crafting data like any carryable. The framework checks
 each runtime asset once, after its own roles have settled, and logs nothing in an install with
 no such carryable.
 
@@ -705,6 +708,31 @@ Enemy statuses replicate; late joiners do not receive statuses already running.
 
 An item drops only into a table that holds an authored entry its anchor accepts. A registered
 item that never drops usually has an anchor no table matches.
+
+`Ectype: loot: <owner> <guid> (<rarity>) is published as a component, which never drops on its own; ignored.`
+refuses a loot registration for a component, and
+`Ectype: loot: <owner> <guid> (<rarity>) left out of rolls: <it is published as a component | its content entry is not available in this room>. Logged once.`
+means the item's published entry kept it out of a roll.
+
+### Content registry
+
+Each line starts `Ectype: content: `. `<item>` is `<kind> <guid> from <owner>`.
+
+| Line | Cause and fix |
+| --- | --- |
+| `<item> '<name>' registered (<containers>; listed).` | Registered and listed. `component, not listed` for a component. |
+| `refused <item>: carryable <guid> has no crafting data (ContentAssets.Crafting). The game's end-of-run alloy tally reads ...` | Set `ContentAssets.Crafting`. The `component carryable` form adds that a component is kept out of item lists, not out of the tally. |
+| `refused <item>: weapon module <guid> has no crafting data (ContentAssets.Crafting). ...` | Set `ContentAssets.Crafting` to the weapon's inscription and recycle rules. |
+| `refused <item>: GUID <guid> is already in the <container>, registered by something other than this publication. Publish registers every container itself; remove the mod's own registration.` | The mod, or another mod, registered the GUID in a container before publishing. Delete that registration, or pick an unused GUID. |
+| `refused <item>: GUID <guid> is already published by <owner> as <kind>.` | Two publications of one GUID with a different owner or kind. The first stands. |
+| `refused <item>: a <kind>'s asset must be ...` and `ContentAssets.Asset is null.` | The asset is not what the kind takes: a `CompositeWeaponData`, a prefab with a `CellModule`, or a prefab with a `CarryableObject`. |
+| `refused <item>: the entry has no Owner (the publishing plugin's GUID).`, `the entry has no DisplayName.`, `the GUID is null.`, `no ModContentEntry.`, `no ContentAssets.`, `unknown content kind <n>.` | A required argument is missing. |
+| `refused <item>: the framework is disabled ([General] Enabled = false).` and `the framework is inert this session (patching did not complete).` | Nothing is published in this session. See `FATAL` for the second. |
+| `refused <item>: the game's carryable registration threw part-way, so a retry would collide with what it registered: <message>` | The game's own carryable registration failed. Report it with the log. |
+| `refused <item>: Publish threw: <exception>` | Publish itself failed. Report it with the log. |
+| `<item> attempt <n> failed at [<stage>]: <message>` | One attempt failed and is retried every 2 s. Logged on attempt 1 and every tenth. |
+| `giving up on <item>. Last error: <exception>` | 200 attempts failed. The item is not registered this session. |
+| `publication pass failed: <exception>` and `ModContent.Changed subscriber <type>.<method> threw: <exception>` | The driver pass, or a catalog's `Changed` handler, threw. Other publications and handlers still ran. |
 
 ### Timed stat contributions, ship surge, arrivals
 

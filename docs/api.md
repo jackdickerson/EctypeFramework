@@ -37,6 +37,17 @@ Register them from literals that are identical on every client.
 | `LootTables` | Adds a runtime item to the stock loot rolls. `Register(LootDrop)` is idempotent and returns false when the item or anchor is missing or another owner holds the item. Anchors that decide which stock entries place the item: `AnyCompositeWeapon`, `AnyCarryable<T>()`, `AnyCarryableTagged(tagNames)`, `AnyOf(guids)`. `ToLootRarity` maps the ship rarity enum onto the loot rarity enum. `IsRegistered(guid)` and `Status` report state. |
 | `LootDrop` | The registration: `Owner` (log text), `Item`, `Rarity`, `IsAnchor`, optional `Gate` asked at each roll, `RequireRarityInTable`, `ExcludeTables`. |
 
+## Content
+
+| Type | Purpose |
+| --- | --- |
+| `RuntimeContent` | `Publish(kind, guid, assets, entry)` registers a runtime weapon module, module or carryable in every container its kind needs, lists it in GUID order in its container's authored list, writes its unlock def and records its entry in `ModContent`. Refuses a carryable or weapon module without crafting data. Queued until the containers exist. `Status` counts publications; `Handles` lists them. |
+| `ContentKind` | `WeaponModule`, `Module`, `Carryable`. |
+| `ContentAssets` | The game-side data: `Asset`, `Description`, `Icon`, `BuildBoxIcon`, `Crafting`, `Rarity`, `Unlock` (default `Session`), `ModFlag` (default `IsNetworkSpawned`), `ItemCategory`, `ModuleCategory`. |
+| `ContentHandle` | One publication: `Kind`, `Guid`, `Owner`, `State` (`ContentState.Pending`, `Registered`, `Failed`), `Reason`, `Attempts`. |
+| `ModContent` | The registry of registered items, for catalogs: `ApiVersion` (1), `TryGet(guid, out entry)`, `All`, `IsAvailable(guid)`, event `Changed`. Returns copies. |
+| `ModContentEntry` | `Guid`, `Kind`, `DisplayName`, `Owner`, `Category`, `Tier` (0 unranked), `IsComponent`, `PvpLegal`, `AvailableInRoom`, `IconHint`. BCL fields plus `GUIDUnion`, readable by reflection. |
+
 ## Statuses
 
 | Type | Purpose |
