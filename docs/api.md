@@ -110,8 +110,11 @@ identifier that does not follow it.
 | `InteractionGate` | Refuses players the use of seats, terminals, doors, switches, items and other interactables by registered rules, on the acting player's game (no prompt, a throttled warning) and on the part owner's game (the request is dropped). `Register(id, Func<GateQuery, Refusal>)`, `Unregister(id)`, `SuppressWarningsFor(id)`, `Evaluate(query)`, `Classify(component)`, `Registered`, `AnyRegistered`. Gates only refuse; the first refusal in registration order decides; a gate that throws counts as allowing. See [reference/interaction-gate.md](reference/interaction-gate.md). |
 | `GateQuery` | One interaction: `Actor`, `ActorNumber`, `ActorIsHost`, `Character`, `Interactable`, `Ship`, `Kind`, `Side`. |
 | `Refusal` | `Allowed`, or `Because(reason, text)` / `Silently(reason)`: `Reason` for the log, `Text` for the player, `Silent`, `IsAllowed`. |
-| `InteractionKind` | `Seat`, `Helm`, `Turret`, `Terminal`, `Periscope`, `CloneTube`, `Minigame`, `EnhancementPanel`, `Door`, `AirlockControl`, `PowerSwitch`, `CarryablePickup`, `SocketInsert`, `SocketRelease`, `ModuleUpgrade`, `Other`. |
+| `InteractionKind` | `Seat`, `Helm`, `Turret`, `Terminal`, `Periscope`, `CloneTube`, `Minigame`, `EnhancementPanel`, `Door`, `AirlockPressurize`, `AirlockSafety`, `ModulePowerSwitch`, `ShipPowerSwitch`, `PowerLineSwitch`, `Breaker`, `OtherPowerSwitch`, `CarryablePickup`, `SocketInsert`, `SocketRelease`, `ModuleUpgrade`, `Other`. |
+| `InteractionKinds` | The coarse questions, as extension methods on `InteractionKind`: `IsPowerSwitch(kind)` (the five power kinds), `IsAirlockControl(kind)` (`AirlockPressurize`, `AirlockSafety`). |
 | `GateSide` | `Client` (the acting player's own check) or `Owner` (the part owner's authority check). |
+| `RpcContext` | The sender of the Photon RPC or event being dispatched right now, for a check inside an RPC method that takes no message info. `Enable()` from `Awake`; `Installed`, `Source`, `Sender`, `SenderActor`, `ViewId`, `EventCode`, `TryGetSender(view, out sender)` (the RPC running now on that view), `FromAbsentPlayer(view)`. Valid only on the dispatch's call stack; the hooks go on once the game has loaded. See [reference/rpc-context.md](reference/rpc-context.md). |
+| `RpcSource` | `None`, `Rpc`, `Event`. |
 
 ## Session data
 
