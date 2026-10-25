@@ -54,6 +54,17 @@ namespace Ectype
         /// The count is a delta: each receiver adds that many applications.</summary>
         internal const byte EnemyStatusStacks = 3;
 
+        /// <summary>A request to put a status on the recipient's own character: [int
+        /// targetActor, string key, int durationMs, float magnitude, int attackerView]. Sent to
+        /// the target's client alone, which judges it against its own view.</summary>
+        internal const byte CharacterStatusRequest = 4;
+
+        /// <summary>A character's own client announcing a status on that character for
+        /// presentation: [int targetActor, string key, int endTs, float magnitude] to show or
+        /// extend it until a server timestamp, [int targetActor, string key] when it ended
+        /// before that.</summary>
+        internal const byte CharacterStatusApplied = 5;
+
         /// <summary>
         /// Every message's field types, in order: the network contract in data. A subtype may
         /// have several layouts (enemy status remove and apply). The sender refuses to send,
@@ -79,6 +90,15 @@ namespace Ectype
                 {
                     new[] { typeof(int), typeof(string), typeof(int), typeof(int), typeof(float),
                             typeof(int), typeof(int) },
+                } },
+            { CharacterStatusRequest, new[]
+                {
+                    new[] { typeof(int), typeof(string), typeof(int), typeof(float), typeof(int) },
+                } },
+            { CharacterStatusApplied, new[]
+                {
+                    new[] { typeof(int), typeof(string) },
+                    new[] { typeof(int), typeof(string), typeof(int), typeof(float) },
                 } },
         };
 
