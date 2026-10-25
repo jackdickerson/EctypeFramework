@@ -32,6 +32,7 @@ namespace Ectype
             DevLayout.Reload();
             NetSelfTest.Run();
             StatusSelfTest.RunOutbox();
+            StatusSelfTest.RunPartsOffline();
             InteractionGateDev.SelfTest();
             InteractionGateDev.Bind(cfg);
             ContentSelfTest.Run();

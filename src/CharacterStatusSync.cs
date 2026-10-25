@@ -151,6 +151,8 @@ namespace Ectype
         internal bool SourceSeated;
         internal bool SourceInTube;
         internal bool Hostile;
+        /// <summary>The requester is the master client (judged for Stance MasterOnly).</summary>
+        internal bool SourceIsMaster;
         internal float Distance;
         internal bool LineClear;
     }
@@ -433,7 +435,15 @@ namespace Ectype
             if (!def.AcceptsRequests) return CharacterStatusRefusal.NotAccepted;
             CharacterStatusRefusal bounds = Bound(def, lim, ref seconds, ref magnitude);
             if (bounds != CharacterStatusRefusal.None) return bounds;
+            // MasterOnly is judged by the sender's actor, before anything about its character:
+            // the master's say decides, whether or not it has a living character, and nothing
+            // about that character (seat, clone tube, range, line of sight) is judged.
+            bool masterOnly = def.Stance == StatusStance.MasterOnly;
+            if (masterOnly && !f.SourceIsMaster) return CharacterStatusRefusal.Stance;
             if (!f.VictimAlive) return CharacterStatusRefusal.TargetDead;
+            if (masterOnly)
+                return def.RefuseInTube && f.VictimInTube ? CharacterStatusRefusal.InCloneTube
+                                                          : CharacterStatusRefusal.None;
             if (!f.SourceKnown) return CharacterStatusRefusal.SenderMissing;
             if (!f.SourceAlive) return CharacterStatusRefusal.SenderDead;
             if (def.RefuseSeated && f.SourceSeated) return CharacterStatusRefusal.SenderSeated;
@@ -446,23 +456,32 @@ namespace Ectype
             return CharacterStatusRefusal.None;
         }
 
-        /// <summary>What this client sees of the two characters. The seat, tube and line of
-        /// sight are read only when the template asks for them.</summary>
-        internal static CharacterRequestFacts Gather(Player source, Player victim, CharacterStatusDef def)
+        /// <summary>The stance check of a request on this client's own character, the one check
+        /// such a request takes: MasterOnly from a client that is not the master is refused
+        /// Stance.</summary>
+        internal static CharacterStatusRefusal SelfRequestVerdict(CharacterStatusDef def, bool isMaster)
+        {
+            return def != null && def.Stance == StatusStance.MasterOnly && !isMaster
+                       ? CharacterStatusRefusal.Stance : CharacterStatusRefusal.None;
+        }
+
+        /// <summary>What this client sees of the two characters, and whether the requesting actor
+        /// is the master, which needs no character. The seat, tube and line of sight are read
+        /// only when the template asks for them.</summary>
+        internal static CharacterRequestFacts Gather(int sourceActor, Player source, Player victim,
+                                                     CharacterStatusDef def)
         {
             CharacterRequestFacts f = new CharacterRequestFacts();
+            f.SourceIsMaster = EnemyStatuses.IsMaster(sourceActor);
             f.VictimAlive = Alive(victim);
+            f.VictimInTube = def != null && def.RefuseInTube && InTube(victim);
             f.SourceKnown = source != null;
             if (source == null || victim == null) return f;
             f.SourceAlive = Alive(source);
             f.Hostile = Topology.Hostile(source, victim);
             f.Distance = Vector3.Distance(source.transform.position, victim.transform.position);
             if (def != null && def.RefuseSeated) f.SourceSeated = Seated(source);
-            if (def != null && def.RefuseInTube)
-            {
-                f.SourceInTube = InTube(source);
-                f.VictimInTube = InTube(victim);
-            }
+            if (def != null && def.RefuseInTube) f.SourceInTube = InTube(source);
             f.LineClear = def == null || !def.RequiresLineOfSight || LineClear(source, victim);
             return f;
         }
@@ -567,8 +586,11 @@ namespace Ectype
                 case CharacterStatusRefusal.SenderSeated:
                     return "the requester is seated";
                 case CharacterStatusRefusal.InCloneTube:
-                    return (f.SourceInTube ? "the requester" : "the target") + " is in a clone tube";
+                    return (f.SourceInTube && def.Stance != StatusStance.MasterOnly ? "the requester" : "the target") +
+                           " is in a clone tube";
                 case CharacterStatusRefusal.Stance:
+                    if (def.Stance == StatusStance.MasterOnly)
+                        return "stance MasterOnly and the requester is not the master client";
                     return "stance " + def.Stance + " and the requester is " +
                            (f.Hostile ? "on another side from the target" : "on the target's side");
                 case CharacterStatusRefusal.OutOfRange:
@@ -609,6 +631,18 @@ namespace Ectype
                     handle.Complete(CharacterStatusRefusal.InvalidDuration);
                     return;
                 }
+                // A request on this client's own character is judged by stance alone: MasterOnly
+                // from a client that is not the master is refused here, as every other client's
+                // judge would refuse it.
+                CharacterStatusRefusal own = SelfRequestVerdict(def, EnemyStatuses.IsMaster(EnemyStatuses.LocalActor()));
+                if (own != CharacterStatusRefusal.None)
+                {
+                    if (Plugin.Verbose)
+                        Plugin.Log.LogInfo("Ectype: Request('" + def.Key + "') on " + target.name + " refused: " +
+                                           "stance MasterOnly and the requester is not the master client.");
+                    handle.Complete(own);
+                    return;
+                }
                 if (!Alive(target))
                 {
                     handle.Complete(CharacterStatusRefusal.TargetDead);
@@ -621,8 +655,9 @@ namespace Ectype
 
             int targetActor = Topology.ActorOf(target);
             PhotonPlayer owner = PlayerOf(targetActor);
-            Player me = Topology.CharacterOf(EnemyStatuses.LocalActor());
-            CharacterRequestFacts f = Gather(me, target, def);
+            int meActor = EnemyStatuses.LocalActor();
+            Player me = Topology.CharacterOf(meActor);
+            CharacterRequestFacts f = Gather(meActor, me, target, def);
             CharacterRequestLimits lim = Limits(def, me, me != null);
             // Judged as it will travel, in whole milliseconds, so a duration just above MinSeconds
             // cannot pass here and fail on the target.
@@ -891,7 +926,7 @@ namespace Ectype
             }
 
             Player source = Topology.CharacterOf(sender);
-            CharacterRequestFacts f = Gather(source, victim, def);
+            CharacterRequestFacts f = Gather(sender, source, victim, def);
             CharacterRequestLimits lim = Limits(def, source, source != null);
             float seconds = durationMs / 1000f, rawSeconds = seconds, rawMagnitude = magnitude;
             CharacterStatusRefusal r = Judge(def, ref seconds, ref magnitude, f, lim, false);

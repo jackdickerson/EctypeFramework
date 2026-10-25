@@ -96,7 +96,9 @@ namespace Ectype
             if (fails.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: character status requests passed - the " +
                                    "request, answer, announcement and end messages round-trip, every " +
-                                   "refusal reason fired on its own input, requester limits replaced the " +
+                                   "refusal reason fired on its own input, MasterOnly was judged by the " +
+                                   "actor before the requester's character and on a request to one's own " +
+                                   "character, requester limits replaced the " +
                                    "constants and fell back on bad values, the rate buckets held with " +
                                    "jitter and the per-requester cap, a completed handle ran its callback, " +
                                    "each audience rule chose its viewers, and six bad templates were refused.");
@@ -205,6 +207,37 @@ namespace Ectype
             CharacterStatusDef friendly = Strict();
             friendly.Stance = StatusStance.Friendly;
             Expect("Friendly from another side", friendly, Clear(), 3f, 1f, CharacterStatusRefusal.Stance, fails);
+            CharacterStatusDef masterOnly = Strict();
+            masterOnly.Stance = StatusStance.MasterOnly;
+            Expect("MasterOnly from a requester that is not the master", masterOnly, Clear(), 3f, 1f,
+                   CharacterStatusRefusal.Stance, fails);
+            f = Clear(); f.SourceIsMaster = true; f.Hostile = false;
+            Expect("MasterOnly from the master on the target's side", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.None, fails);
+            // MasterOnly is judged by the actor before the requester's character.
+            f = Clear(); f.SourceKnown = false; f.SourceAlive = false; f.LineClear = false;
+            Expect("MasterOnly from a requester that is not the master and has no character", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.Stance, fails);
+            f.SourceIsMaster = true;
+            Expect("MasterOnly from a master with no character", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.None, fails);
+            f = Clear(); f.SourceIsMaster = true; f.SourceAlive = false; f.SourceSeated = true;
+            f.SourceInTube = true; f.Distance = 1000f; f.LineClear = false;
+            Expect("MasterOnly from a dead, seated, far master in a tube", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.None, fails);
+            f = Clear(); f.SourceIsMaster = true; f.VictimInTube = true;
+            Expect("MasterOnly from the master to a target in a tube", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.InCloneTube, fails);
+            f = Clear(); f.SourceIsMaster = true; f.VictimAlive = false;
+            Expect("MasterOnly from the master to a dead target", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.TargetDead, fails);
+            if (CharacterStatusSync.SelfRequestVerdict(masterOnly, false) != CharacterStatusRefusal.Stance ||
+                CharacterStatusSync.SelfRequestVerdict(masterOnly, true) != CharacterStatusRefusal.None ||
+                CharacterStatusSync.SelfRequestVerdict(d, false) != CharacterStatusRefusal.None)
+                fails.Add("a request on this client's own character answered MasterOnly not master " +
+                          CharacterStatusSync.SelfRequestVerdict(masterOnly, false) + ", master " +
+                          CharacterStatusSync.SelfRequestVerdict(masterOnly, true) + ", Hostile not master " +
+                          CharacterStatusSync.SelfRequestVerdict(d, false) + "; expected Stance, None, None");
             f = Clear(); f.Distance = 5.5f;
             Expect("5.5 m on the target's client", d, f, 3f, 1f, CharacterStatusRefusal.OutOfRange, fails);
             Expect("5.5 m from the requester's view", d, f, 3f, 1f, CharacterStatusRefusal.None, fails, true);

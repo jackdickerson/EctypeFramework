@@ -50,8 +50,7 @@ build.
 - `CharacterStatusDef` and `EnemyStatusDef` keys, `TimedStatContributions.Start` keys,
   `HudButtonSpec.Id`, `RuntimeAbilities.Register` keys and `LootDrop.Owner` that do not follow
   the rule log one warning per id and still work.
-- Nothing that crosses the network changed. A longer key costs one byte per character in each
-  status or ability message that carries it.
+- A longer key costs one byte per character in each status or ability message that carries it.
 - **Breaking for interaction gates.** `InteractionKind.PowerSwitch` is split into
   `ModulePowerSwitch` (a module's own power switch, a power drain), `ShipPowerSwitch` (the
   central computer's switch, the power system), `PowerLineSwitch` (a power propagator), `Breaker`
@@ -93,6 +92,45 @@ build.
   and a copy of the modifier follows the original and reads 0 once withdrawn, at its stat's
   next recalculation for a deep-copied stat. `IsRegistered`,
   `Current(target, id)`. See `docs/reference/stat-contributions.md`.
+- `StatusStance.MasterOnly`: only the master client may apply or remove the status. Every
+  receiver refuses any other sender's message and logs one warning per sender and status;
+  `TryApply` and `TryRemove` on a client that is not the master return the new
+  `StatusRefusal.NotMaster`. A character status with this stance accepts requests from the
+  master alone, judged by the requesting actor before anything about its character: the
+  master's request is accepted with or without a living character, and the requester's seat,
+  clone tube, range and line of sight are not judged. `Request` on a client's own character
+  with this stance is refused `Stance` unless that client is the master.
+- Enemy statuses can target a part of a networked object: `StatusPart` (`ViewId`, `Index`,
+  `Of<T>(component)`, `Resolve<T>()`) and `EnemyStatuses` overloads `Apply`, `TryApply`, `Remove`,
+  `TryRemove`, `IsActive`, `RemainingSeconds`, `Stacks` and `Tag` taking a part. Same server-clock
+  timer, stacking, refresh, stance and removal rules as a space object; no stats, damage, marker
+  or visual. A part status ends when its PhotonView is destroyed. One view holds at most 64 part
+  statuses; a new one past that is refused `Failed`, and one whose index is at or past the
+  number of components under the view is refused `InvalidTarget`.
+- A Tag (`int`) travels with an application: `Apply(target, key, seconds, magnitude, attacker,
+  tag)` and `TryApply` likewise, `Apply(part, key, seconds, tag)`, read with
+  `EnemyStatuses.Tag(...)`. Each accepted application replaces it. With `CoalesceMs`, an
+  application with another Tag than the open batch's starts a new batch, so every receiver runs
+  each application's callbacks with the Tag the applier's ran with.
+- A removal is sent, and remembered against applications in flight, before its
+  `OnRemoved` and `OnInstanceRemoved` run, so a callback that applies the same key again sends
+  that application after the removal and every client keeps the new life. Every client remembers
+  a removal from the remover's server time rather than its own time of arrival, so an
+  application the remover makes just after a removal lands everywhere.
+- `EnemyStatusDef.OnInstanceApplied` and `OnInstanceRemoved` receive a `StatusInstance` (`Key`,
+  `Target`, `Part`, `IsPart`, `Tag`, `Stacks`, `EndServerTime`, `RemainingSeconds`, `Created`) on
+  every client, for space objects and parts. `EnemyStatuses.GetActive(list, key)` lists live
+  statuses for a HUD countdown.
+- **Network contract 6.** A framework on contract 5 and one on 6 do not exchange messages, and
+  the game's join check refuses a peer on the other number. The layouts that changed, all in
+  enemy statuses: subtype 2 op 0 gains a tagged layout `[byte 0, int viewId, string key,
+  int startTs, int durationMs, float magnitude, int attackerView, int tag]`; op 1 (remove from a
+  space object) becomes `[byte 1, int viewId, string key, int removedTs]`; op 2 (apply to a part)
+  is new, `[byte 2, int viewId, string key, int startTs, int durationMs, int index, int tag]`;
+  op 3 (remove from a part) is new, `[byte 3, int viewId, string key, int index,
+  int removedTs]`; subtype 3 (ApplyN) gains a tagged layout ending in `int tag`. An untagged
+  application to a space object keeps its layout. A message whose fields fit another op's layout
+  than the op it names is refused before any field is read.
 
 ## 0.30.0
 
