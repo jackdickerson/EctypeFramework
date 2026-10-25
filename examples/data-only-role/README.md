@@ -1,12 +1,15 @@
 # data-only-role
 
-The smallest role mod that loads. The role is a JSON manifest embedded in the assembly: a hero perk and three perks with stat effects. The plugin only declares the dependencies and the multiplayer posture. No framework type is referenced from code.
+The smallest role mod that loads. The role is a JSON manifest embedded in the assembly: a hero perk and five perks with stat effects. The plugin only declares the dependencies and the multiplayer posture. No framework type is referenced from code.
 
 Shows:
 
 - `[BepInDependency("jack.voidcrew.ectype")]` and `MultiplayerType.All`.
 - An embedded resource whose name ends `ectype-role.json`, which is how the framework finds the assembly.
 - Perk targets `seat` and `seatShip`, a perk with levels, and an integer-valued stat (`"kind": "int"`).
+- `fleet-shields`: target `characterFleet`, every living ship on the holder's side, with `"distribution": "split"`, so the authored +30% is shared among those ships. With one ship it all lands on that ship, as `characterShip` would.
+- `boarding-drill`: a `character` perk with `"when": "onEnemyShip"`. The holder's own client decides whether its character is aboard a ship of another side and tells the other players, and every client applies the bonus only while it is. In a room with one ship it never applies.
+- `"minFrameworkVersion": "0.29.0"`, the version that added the target, the distribution and the condition. An older framework rejects the role by name instead of registering it without those two perks.
 - One embedded icon: `assets/steady-hand.png` (512x512, white on transparent) is the PNG for the `steady-hand` perk, named by that perk's `"icon": "steady-hand"`. The framework matches an embedded resource whose name ends in `<key>.png`, so the key is the file name without the extension. Perk icons in normal and hero cells are square 512x512; the wide cell takes 2048x512. The other perks and the role icon name none, so the framework substitutes its own placeholders.
 
 ## Before you build
