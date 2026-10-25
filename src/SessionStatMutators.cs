@@ -388,22 +388,31 @@ namespace Ectype
         internal static SessionStatModifier ToModifier(SessionStatEffect e, int statId)
         {
             SessionStatModifier m = new SessionStatModifier { Stat = e.Stat, StatId = statId };
-            switch (e.Kind)
+            MapKind(e.Kind, e.Amount, out m.Type, out m.Amount);
+            return m;
+        }
+
+        /// <summary>The game's modifier type and amount for a kind and an amount: flat is
+        /// PrimaryAddend, percent is AdditiveMultiplier, factor is ExponentialMultiplier with an
+        /// amount of factor - 1. Shared by every API that takes a SessionStatModifierKind.</summary>
+        internal static void MapKind(SessionStatModifierKind kind, float amount, out ModifierType type,
+                                     out float modifierAmount)
+        {
+            switch (kind)
             {
                 case SessionStatModifierKind.Flat:
-                    m.Type = ModifierType.PrimaryAddend;
-                    m.Amount = e.Amount;
+                    type = ModifierType.PrimaryAddend;
+                    modifierAmount = amount;
                     break;
                 case SessionStatModifierKind.Percent:
-                    m.Type = ModifierType.AdditiveMultiplier;
-                    m.Amount = e.Amount;
+                    type = ModifierType.AdditiveMultiplier;
+                    modifierAmount = amount;
                     break;
                 default:
-                    m.Type = ModifierType.ExponentialMultiplier;
-                    m.Amount = e.Amount - 1f;
+                    type = ModifierType.ExponentialMultiplier;
+                    modifierAmount = amount - 1f;
                     break;
             }
-            return m;
         }
 
         /// <summary>32 lower-case hex digits, or null.</summary>
