@@ -142,6 +142,9 @@ namespace Ectype
                     InteractionClassifier.RegisterControl(go.transform, InteractionKind.Door);
                     return go.transform;
                 });
+                Probe(failures, skipped, root, "repair", InteractionKind.Minigame, go => go.AddComponent<CG.Ship.Repair.RepairObject>());
+                Probe(failures, skipped, root, "defect", InteractionKind.Minigame, go => go.AddComponent<Gameplay.Defects.Defect>());
+                SwitchConverges(failures, skipped, root);
             }
             catch (Exception e) { failures.Add("classifier threw: " + e.Message); }
             finally { UnityEngine.Object.DestroyImmediate(root); }
@@ -160,6 +163,25 @@ namespace Ectype
             InteractionKind got = InteractionClassifier.Classify(c, false);
             if (got != expected) failures.Add(name + " classified " + got + ", expected " + expected);
             InteractionClassifier.ForgetControl(c);
+        }
+
+        /// <summary>A switch outside any module reads as a power switch, and reads the same again
+        /// while its answer is still provisional (the client and the owner side must agree).</summary>
+        private static void SwitchConverges(List<string> failures, List<string> skipped, GameObject root)
+        {
+            Component sw;
+            try { sw = Child(root, "loose switch").AddComponent<CG.Client.Ship.Interactions.SwitchClicker>(); }
+            catch (Exception e)
+            {
+                skipped.Add("loose switch (" + e.GetType().Name + ")");
+                return;
+            }
+            InteractionKind first = InteractionClassifier.Classify(sw, false);
+            InteractionKind again = InteractionClassifier.Classify(sw, false);
+            if (first != InteractionKind.PowerSwitch || again != first)
+                failures.Add("a switch outside any module classified " + first + " then " + again +
+                             ", expected PowerSwitch both times");
+            InteractionClassifier.ForgetControl(sw);
         }
 
         private static GameObject Child(GameObject parent, string name)
