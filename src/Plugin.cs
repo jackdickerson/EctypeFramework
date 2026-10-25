@@ -164,6 +164,7 @@ namespace Ectype
 #if ECTYPE_DEV
             Step("layout poll", DevLayout.Poll);
             Step("dev self-test", DevSelfTest.Poll);
+            Step("session data self-test", SessionDataSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
