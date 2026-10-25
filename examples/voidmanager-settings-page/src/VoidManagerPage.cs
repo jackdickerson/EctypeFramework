@@ -50,7 +50,7 @@ namespace ExampleSettingsPage
         /// </summary>
         internal static bool TryInstall(Harmony harmony)
         {
-            PluginInfo info;
+            BepInEx.PluginInfo info;
             if (!Chainloader.PluginInfos.TryGetValue(VoidManagerGuid, out info) || info.Instance == null)
                 return false;
             PatchDiscovery(harmony);

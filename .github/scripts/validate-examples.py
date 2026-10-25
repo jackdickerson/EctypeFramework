@@ -5,7 +5,9 @@ every examples/**/*ectype-stats.json against docs/schemas/ectype-stats.schema.js
 Then check each example project against the VoidManager rule: VoidManager is optional, so an
 example names no VoidManager type unless its csproj sets <UseVoidManager>true</UseVoidManager>
 (which adds the reference from examples/Directory.Build.props), never references VoidManager.dll
-directly, depends on VoidManager only softly, and declares no type deriving from a VoidManager
+directly, depends on VoidManager only softly (a dependency attribute is read with comments removed
+and one level of nested parentheses; a dependency through a constant that does not contain the
+text "VoidManager" is not seen), and declares no type deriving from a VoidManager
 type. Such a type cannot load without VoidManager, and a VoidPlugin makes VoidManager a hard
 dependency."""
 import json
@@ -40,6 +42,11 @@ def code_only(text):
     return CS_TOKENS.sub(lambda m: " " if m.group(0).startswith("/") else '""', text)
 
 
+def strip_comments(text):
+    """C# source with comments blanked and string literals kept."""
+    return CS_TOKENS.sub(lambda m: " " if m.group(0).startswith("/") else m.group(0), text)
+
+
 def schema_checks():
     bad = 0
     for schema_path, pattern in SETS:
@@ -66,7 +73,8 @@ def schema_checks():
 
 def voidmanager_checks():
     bad = 0
-    projects = sorted((ROOT / "examples").glob("*/*.csproj"))
+    projects = sorted(p for p in (ROOT / "examples").rglob("*.csproj")
+                      if not {"bin", "obj"} & set(p.relative_to(ROOT / "examples").parts))
     if not projects:
         print("no example projects found under examples/")
         return 1
@@ -77,7 +85,7 @@ def voidmanager_checks():
         opted_in = re.search(r"<UseVoidManager>\s*true\s*</UseVoidManager>", proj, re.I) is not None
         problems = []
 
-        if re.search(r'<Reference\s+Include="VoidManager[",]', proj):
+        if re.search(r'<Reference\s+Include="[^"]*VoidManager', proj):
             problems.append("references VoidManager directly; set <UseVoidManager>true</UseVoidManager> "
                             "instead")
 
@@ -87,6 +95,7 @@ def voidmanager_checks():
                 continue
             raw = path.read_text(encoding="utf-8")
             code = code_only(raw)
+            uncommented = strip_comments(raw)
             where = path.relative_to(ROOT).as_posix()
             if re.search(r"\bVoidManager\b", code):
                 names_vm = True
@@ -94,7 +103,7 @@ def voidmanager_checks():
                 for base in VM_BASES:
                     if re.search(r"\b" + base + r"\b", m.group(1)):
                         problems.append(f"{where}: declares a type deriving from VoidManager's {base}")
-            for m in re.finditer(r"\[\s*BepInDependency\s*\(([^)]*)\)", raw):
+            for m in re.finditer(r"\[\s*BepInDependency\s*\(((?:[^()]|\([^()]*\))*)\)", uncommented):
                 if "VoidManager" in m.group(1) and "SoftDependency" not in m.group(1):
                     problems.append(f"{where}: hard [BepInDependency] on VoidManager; use "
                                     "BepInDependency.DependencyFlags.SoftDependency")

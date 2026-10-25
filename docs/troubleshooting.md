@@ -596,7 +596,7 @@ Which screen says what the problem is:
 | A screen that lists individual assets | The game's asset check | One side registered required content (a role's tree or perks, for example) that the other did not. |
 | The same screen naming `Ectype Framework <version> (network contract <n>)` | The game's asset check | The two frameworks speak different network contracts. The name is the host's framework. |
 | Removed from the room after arriving, with no message from the framework | VoidManager, on the host | Same version, different DLL bytes. Only the host compares hashes. |
-| Removed at once, chat says `Kicked player <name> for not having mods.` | VoidManager, on the host | The joiner has no VoidManager and the host runs a mod declared `All` to VoidManager (a role mod, for example) or has turned VoidManager's progression switch off. VoidManager's policy: install VoidManager, or host without it. |
+| Removed at once, chat says `Kicked player <name> for not having mods.` | VoidManager, on the host | The joiner has no VoidManager and the host runs a mod declared `All` to VoidManager (a role mod that declares one, for example; a role mod that follows the examples declares none) or has turned VoidManager's progression switch off. VoidManager's policy: install VoidManager, or host without it. |
 
 Fix every case the same way: install the host's exact versions. The Void Crew Mod Launcher
 does this for a joiner when the host enabled the mods in it; without the launcher, match each

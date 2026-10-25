@@ -76,18 +76,27 @@ Launcher reads the category to decide what to install for a joiner:
 - A mod that every player has to run for its effect to hold carries `All Required`, and the
   launcher installs it, at the host's version, for every joiner. The game compares nothing of
   such a mod at join unless it registers content in the game's required-asset set.
+- A mod that changes the room only for machines that run it, and that a machine without it
+  ignores or resolves with stock content, carries `Mod_Session Required`: it needs a modded
+  room, which the framework already makes, and the launcher does not install it for joiners.
+
+The dividing rule is what a machine without the mod does. If the simulation, a prompt, a
+registered template or a declared stat reads each machine's own copy, so a missing copy
+produces a different ship or a dropped request, the mod is `All Required`. If a missing copy is
+harmless because the message is ignored or the item is stock, it is `Mod_Session Required`. If
+only the local player sees the result, it is `Client-Side`.
 
 [publishing.md](publishing.md) lists how the launcher reads each category, and
 [multiplayer.md](multiplayer.md) what VoidManager adds for a mod that declares a type to it.
 
 ## What each shape costs players
 
-| | Data-only role | Role with code | Utility-only mod, `Client-Side` | Utility-only mod, `All Required` |
-| --- | --- | --- | --- | --- |
-| Who installs the framework | Everyone in the room | Everyone in the room | Everyone in the room | Everyone in the room |
-| Who installs the mod | Everyone in the room | Everyone in the room | Players who want it | Everyone in the room |
-| Same build required | Yes, of the mod and the framework | Yes, of the mod and the framework | Not for the mod; yes for the framework | Yes, of the mod and the framework. The launcher installs the host's build; the game does not compare it |
-| Marks the session as modded | Yes | Yes | The framework does | The framework does |
+| | Data-only role | Role with code | Utility-only mod, `Client-Side` | Utility-only mod, `All Required` | Utility-only mod, `Mod_Session Required` |
+| --- | --- | --- | --- | --- | --- |
+| Who installs the framework | Everyone in the room | Everyone in the room | Everyone in the room | Everyone in the room | Everyone in the room |
+| Who installs the mod | Everyone in the room | Everyone in the room | Players who want it | Everyone in the room | Players who want it |
+| Same build required | Yes, of the mod and the framework | Yes, of the mod and the framework | Not for the mod; yes for the framework | Yes, of the mod and the framework. The launcher installs the host's build; the game does not compare it | Not for the mod; yes for the framework |
+| Marks the session as modded | Yes | Yes | The framework does | The framework does | The framework does |
 
 [multiplayer.md](multiplayer.md) states each fact behind the table in full.
 

@@ -115,7 +115,7 @@ check for one when a build behaves differently from the examples.
 | `RootNamespace` | your namespace | It prefixes the name of each embedded resource. A manifest is found by the end of that name, so the prefix is free. |
 | `TargetFramework` | `net472` | The game runs on Unity's Mono with the .NET Framework 4.x profile. |
 | `LangVersion` | `latest` | Uses the newest C# the SDK's compiler offers. Features that need runtime types the .NET Framework profile lacks, such as ranges, still do not compile. |
-| `Version` | equal to the plugin's `PLUGIN_VERSION` | Sets the DLL's file and assembly version. `[BepInPlugin]` carries its own version string, which BepInEx logs and VoidManager compares for a mod declared `All` to it, so the two are kept equal by hand. |
+| `Version` | equal to the plugin's `PLUGIN_VERSION` | Sets the DLL's file and assembly version. `[BepInPlugin]` carries its own version string, which BepInEx logs and VoidManager compares only for a mod that declares `All` to it, so the two are kept equal by hand. |
 | `EnableDefaultCompileItems` | `false` | Only the files named in `Compile` build. A stray `.cs` in the folder cannot join the assembly. |
 | `AppendTargetFrameworkToOutputPath` | `false` | Output goes to `bin\Release\`, with no `net472` subfolder. |
 | `DebugType` | `portable` | Writes a `.pdb` beside the DLL. Nothing requires installing it. |
@@ -180,8 +180,9 @@ is copied into a folder above it.
 ### Opting into VoidManager
 
 A mod that wants VoidManager for an F5 page, or to declare a `VoidPlugin`, adds the reference
-itself: `<Reference Include="VoidManager" HintPath="$(PluginsDir)\VoidManager.dll" Private="false" />`,
-or `<UseVoidManager>true</UseVoidManager>` in a project under `examples\`, which adds that
+itself: `<Reference Include="VoidManager" HintPath="$(PluginsDir)\VoidManager.dll" Private="false" />`
+(VoidManager installs either flat in `plugins\` or in a `plugins\VoidManager\` subfolder;
+point the hint at the one you have), or `<UseVoidManager>true</UseVoidManager>` in a project under `examples\`, which adds that
 reference from the shared property file. The build then needs VoidManager installed. Whether
 the built mod needs it is set by the dependency attribute and by where VoidManager types
 appear in the code ([The dependency attribute](#the-dependency-attribute)). The
