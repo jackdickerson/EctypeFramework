@@ -27,7 +27,7 @@ jobs:
       - name: Install jsonschema
         run: python -m pip install jsonschema==4.23.0
 
-      - name: Example manifests match the schema
+      - name: Example manifests match the schema; VoidManager is opt-in
         run: python .github/scripts/validate-examples.py
 
       - name: Relative Markdown links resolve

@@ -9,9 +9,6 @@ using CG.Ship.Object;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleCharacterStatuses
 {
     /// <summary>
@@ -21,7 +18,6 @@ namespace ExampleCharacterStatuses
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Character Statuses", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -142,20 +138,6 @@ namespace ExampleCharacterStatuses
                 }
             }
             return best;
-        }
-    }
-
-    /// <summary>All: the slowed player's client judges and applies the request, and every
-    /// client that should see the slow draws it, so each needs the template. Applying
-    /// statuses changes what a run contains, so the plugin flags the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Halves your damage on F6; slows a nearby crewmate on F7."; } }
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = true };
         }
     }
 }

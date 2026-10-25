@@ -7,9 +7,6 @@ using CG.Game;
 using CG.Space;
 using UnityEngine.InputSystem;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleEnemyStatuses
 {
     /// <summary>
@@ -19,7 +16,6 @@ namespace ExampleEnemyStatuses
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Enemy Statuses", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -100,19 +96,5 @@ namespace ExampleEnemyStatuses
             return best;
         }
 
-    }
-
-    /// <summary>All: every client must register the status key to see its effect, so the mod is
-    /// required for the whole room. Applying a status changes what a run contains, so it flags the
-    /// session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Slows the nearest NPC ship for five seconds on F6."; } }
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = true };
-        }
     }
 }

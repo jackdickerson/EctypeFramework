@@ -12,9 +12,9 @@ in [manifest.md](../manifest.md), and the stat names an effect can use are in
 
 ## What a role mod consists of
 
-1. A plugin with `[BepInDependency("jack.voidcrew.ectype")]` and a `VoidPlugin` that declares
-   `MultiplayerType.All` (see [../multiplayer.md](../multiplayer.md) for why a role mod cannot
-   be anything else).
+1. A plugin with `[BepInDependency("jack.voidcrew.ectype")]`, published with the Thunderstore
+   category `All Required` (see [../multiplayer.md](../multiplayer.md) for why a role mod is
+   required for the whole room). It needs nothing from VoidManager.
 2. An embedded JSON manifest whose resource name ends `ectype-role.json`. That suffix is the
    discovery marker; a data-only role needs no reference to the framework assembly.
 3. Icons as PNGs embedded in the assembly, named by the manifest's icon keys. An icon
@@ -74,8 +74,9 @@ The details are in [manifest.md](../manifest.md). The rules that shape a role:
   and the scan closes at the first terminal build. A role mod's plugin therefore has to
   load before the terminal does, which `[BepInDependency]` on the framework guarantees.
 - **Ordinal allocation.** Roles sort by `roleId` (ordinal comparison) and are numbered
-  from `(EPerkTree)4`. Identical mod sets, which VoidManager's `MPType.All` matching enforces
-  room-wide, give identical ordinals on every client.
+  from `(EPerkTree)4`. Identical role sets, which the game's asset check enforces room-wide
+  because each role's tree and perks are required assets, give identical ordinals on every
+  client.
 - **Registration pipeline.** Registration runs in stages, each step guarded and re-runnable.
   One failed role means one named error and one absent role; the terminal stays intact.
   `[General] RegisterStage` in [config.md](config.md) stops registration after a chosen

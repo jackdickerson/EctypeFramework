@@ -281,7 +281,8 @@ callback; `IsActive` stays false on every client but the owner's.
 - **Every client that should take or see a status registers its template** under the same
   literal key. A client without it ignores requests and announcements for the key, logs a
   throttled warning, and answers a request `NotRegistered`. A mod that requests statuses on
-  other players therefore runs on every client: declare it `MultiplayerType.All`.
+  other players therefore runs on every client: publish it with the Thunderstore category
+  `All Required`.
 
 ## Checking it
 

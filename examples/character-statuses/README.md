@@ -7,7 +7,7 @@ Shows:
 - `CharacterStatuses.Register(new CharacterStatusDef(key) { ... }.AddAllVulnerabilities("flat", -0.5f))`, then `Apply(player, key, seconds)` on this player's own character.
 - A status other players can request: `AcceptsRequests = true` with `Stance = StatusStance.Friendly`, `MaxRange`, `RequiresLineOfSight`, `RefuseInTube`, `MinInterval` and `Burst`, and `Request(crewmate, key, seconds).OnCompleted(...)`, which reports the verdict.
 - `Presented = true`: other players see the slow as a presentation copy, which `CharacterStatuses.IsPresented` answers for.
-- `MultiplayerType.All`: the slowed player's client registers the template to judge and apply the request, and every client that should see the copy registers it too. Applying a status changes what a run contains, so the plugin sets the modded-session flag.
+- Thunderstore category `All Required`: the slowed player's client registers the template to judge and apply the request, and every client that should see the copy registers it too. Nothing in the game compares this mod's version at join; the Void Crew Mod Launcher installs the host's version for each joiner.
 
 Rules:
 
@@ -32,7 +32,7 @@ This example does not build as committed. `src\Plugin.cs` has a `#error` directi
 dotnet build -c Release
 ```
 
-References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` and `VoidManager.dll` are referenced from `BepInEx\plugins`, so both must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game, BepInEx or VoidManager binary comes from NuGet.
+References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` is referenced from `BepInEx\plugins`, so it must already be installed. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game or BepInEx binary comes from NuGet.
 
 The output is `bin\Release\ExampleCharacterStatuses.dll`. Copy it to `<game>\BepInEx\plugins\` to try it.
 

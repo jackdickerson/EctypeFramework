@@ -5,9 +5,6 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using Ectype;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleSessionData
 {
     /// <summary>
@@ -17,7 +14,6 @@ namespace ExampleSessionData
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Session Data", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -83,14 +79,5 @@ namespace ExampleSessionData
                 Log.LogError("Arrival handler failed: " + e);
             }
         }
-    }
-
-    /// <summary>All: a host-owned setting changes behaviour on every client, so every player in
-    /// the room needs the mod at the host's version.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Host-syncs one setting and logs it on every client."; } }
     }
 }

@@ -9,7 +9,7 @@ Shows:
 - `FrameworkStats.EnsureRegistered()`, `FrameworkStats.Id(name)` and the `const string` stat names.
 - Applying a `StatMod` to the character's stat collection with a source object, and removing it by that source.
 - `SessionStatMutators.Register(MutatorSpec)`: a mutator whose rule is one session-stat modifier, a factor of 1.5. The framework registers the asset and makes it selectable. While the host starts a run that has the mutator selected or forced by its quest, the framework contributes the modifier before the host publishes the session's stats.
-- `MultiplayerType.Session`: the modifier changes this character's movement. Loading the mod flags the session.
+- Thunderstore category `All Required`: the mutator is registered with the game's Required effect, so every player in a room hosted with it needs the mod. The Void Crew Mod Launcher installs a mod in this category for every joiner.
 
 Hostile Surge changes a number and nothing reads it here. The framework reads none of its generic stats. A mod that spawns hostiles multiplies its group size by `HostileSpawnScale`, read on the host from `SessionStats.Collection`, and the mutator takes effect through that mod. Without one, selecting Hostile Surge changes the published value and nothing else.
 
@@ -34,7 +34,7 @@ This example does not build as committed. `src\Plugin.cs` has a `#error` directi
 dotnet build -c Release
 ```
 
-References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` and `VoidManager.dll` are referenced from `BepInEx\plugins`, so both must already be installed. The mutator needs Ectype Framework 0.30.0 or newer. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game, BepInEx or VoidManager binary comes from NuGet.
+References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. `EctypeFramework.dll` is referenced from `BepInEx\plugins`, so it must already be installed. The mutator needs Ectype Framework 0.30.0 or newer. The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org; no game or BepInEx binary comes from NuGet.
 
 The output is `bin\Release\ExampleFrameworkStat.dll`. Copy it to `<game>\BepInEx\plugins\` to try it.
 

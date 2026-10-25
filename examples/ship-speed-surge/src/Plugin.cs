@@ -4,9 +4,6 @@ using BepInEx;
 using BepInEx.Logging;
 using Ectype;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleSpeedSurge
 {
     /// <summary>
@@ -16,7 +13,6 @@ namespace ExampleSpeedSurge
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Speed Surge", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -65,15 +61,5 @@ namespace ExampleSpeedSurge
                 Log.LogError("Arrival handler failed: " + e);
             }
         }
-    }
-
-    /// <summary>Session: every machine must start the surge. A machine that joined after the
-    /// arrival has none, and if it then takes the helm the surge ends early for everyone.
-    /// Presence flags the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Session; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Surges the ship's top speed after each normal arrival."; } }
     }
 }

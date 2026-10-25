@@ -1,10 +1,11 @@
 # data-only-role
 
-The smallest role mod that loads. The role is a JSON manifest embedded in the assembly: a hero perk and five perks with stat effects. The plugin only declares the dependencies and the multiplayer posture. No framework type is referenced from code.
+The smallest role mod that loads. The role is a JSON manifest embedded in the assembly: a hero perk and five perks with stat effects. The plugin only declares its dependency on the framework. No framework type is referenced from code.
 
 Shows:
 
-- `[BepInDependency("jack.voidcrew.ectype")]` and `MultiplayerType.All`.
+- `[BepInDependency("jack.voidcrew.ectype")]` as the only dependency. The plugin declares nothing to VoidManager.
+- Thunderstore category `All Required`. The role's tree and perks are registered in the game's required-asset set, so the game's asset check refuses a joiner whose role content differs from the host's, with or without VoidManager. The category is what makes the Void Crew Mod Launcher install the role, at the host's version, for every joiner.
 - An embedded resource whose name ends `ectype-role.json`, which is how the framework finds the assembly.
 - Perk targets `seat` and `seatShip`, a perk with levels, and an integer-valued stat (`"kind": "int"`).
 - `fleet-shields`: target `characterFleet`, every living ship on the holder's side, with `"distribution": "split"`, so the authored +30% is shared among those ships. With one ship it all lands on that ship, as `characterShip` would.
@@ -22,9 +23,9 @@ This example does not build as committed. `src\Plugin.cs` has a `#error` directi
 dotnet build -c Release
 ```
 
-References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. The framework and VoidManager must already be in `BepInEx\plugins`.
+References resolve from the game install. The game folder is the `VoidCrewDir` property in `examples\Directory.Build.props`, which every example inherits, so copy that file together with the example folder. If Void Crew is not in Steam's default library (`steamapps\common\Void Crew` under the Steam folder the registry names), set the folder by `-p:VoidCrewDir="<path>"`, in a `Local.props` beside that file (copy `Local.props.example`), or in the `VOID_CREW_DIR` environment variable. That is the order of precedence. The framework must already be in `BepInEx\plugins`.
 
-The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org. No game, BepInEx or VoidManager binary comes from NuGet.
+The first restore downloads the .NET Framework 4.7.2 reference assemblies from nuget.org. No game or BepInEx binary comes from NuGet.
 
 ## Install
 

@@ -10,9 +10,6 @@ using Opsive.UltimateCharacterController.Character.Abilities;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleRuntimeAbility
 {
     /// <summary>
@@ -23,7 +20,6 @@ namespace ExampleRuntimeAbility
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Runtime Ability", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -124,14 +120,5 @@ namespace ExampleRuntimeAbility
             base.AbilityStopped(force);
             Plugin.Log.LogInfo("Ping stopped on " + m_GameObject.name);
         }
-    }
-
-    /// <summary>Session: a client without the mod has no ability under the key and ignores
-    /// the message, so the room does not need it everywhere. Presence flags the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Session; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Installs a keyed, replicated ability at runtime."; } }
     }
 }

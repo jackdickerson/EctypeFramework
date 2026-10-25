@@ -3,9 +3,6 @@ using System;
 using BepInEx;
 using BepInEx.Logging;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleUtility
 {
     /// <summary>
@@ -15,7 +12,6 @@ namespace ExampleUtility
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Utility", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -57,14 +53,5 @@ namespace ExampleUtility
                 Log.LogError("Arrival handler failed: " + e);
             }
         }
-    }
-
-    /// <summary>Client posture: nothing here changes the game for other players, so a room
-    /// does not require this mod and it does not flag the session.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Client; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Logs ship arrivals through the Ectype Framework."; } }
     }
 }

@@ -7,9 +7,6 @@ using CG.Ship.Object;
 using Gameplay.Loot;
 using ResourceAssets;
 
-using VoidManager;
-using VoidManager.MPModChecks;
-
 namespace ExampleLootTables
 {
     /// <summary>
@@ -19,7 +16,6 @@ namespace ExampleLootTables
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Loot Tables", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
     [BepInDependency("jack.voidcrew.ectype")]
     public class Plugin : BaseUnityPlugin
     {
@@ -60,14 +56,5 @@ namespace ExampleLootTables
 
         // Stock weapon mod "Heatsink MkI".
         private const string ItemGuid = "67819aed3fd8de240a7e3f610f1d3267";
-    }
-
-    /// <summary>Session: the extra drop changes what a run contains, so presence flags the
-    /// session. Rolls that spawn items run on the host.</summary>
-    public class ExampleVoidPlugin : VoidPlugin
-    {
-        public override MultiplayerType MPType { get { return MultiplayerType.Session; } }
-        public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Adds a stock weapon mod to the loot rolls that drop weapon mods."; } }
     }
 }

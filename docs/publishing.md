@@ -18,15 +18,20 @@ Jack_Modding-Ectype_Framework-<version>
 `<version>` is the framework version your mod was built against, written exactly as the
 Thunderstore listing shows it (for example `0.19.7`). Use the
 version you built against: a mod compiled against one version needs that version or newer,
-and the room check requires every player to run the same build (see `versioning.md`).
+and every player in a room runs the same build, which the mod launcher installs for a joiner
+(see `versioning.md`).
 
-Every package also depends on BepInEx, the one package the framework itself needs. A mod
-that declares a `VoidPlugin` or uses any other VoidManager API depends on VoidManager as well:
+Every package also depends on BepInEx, the one package the framework itself needs:
 
 ```
 BepInEx-BepInExPack-5.4.2305
-NihilityShift-VoidManager-1.2.11
 ```
+
+VoidManager is not a dependency of the framework or of a mod built on it. A mod that declares
+a `VoidPlugin` cannot load without VoidManager, so it lists
+`NihilityShift-VoidManager-1.2.11` as well. A mod that uses VoidManager only on a soft
+dependency, for an F5 page, runs without it and leaves it out, so the mod manager does not
+install VoidManager for players who did not choose it.
 
 Check each version on thunderstore.io/c/void-crew before every upload. Packages are updated
 independently of your mod.
@@ -63,17 +68,16 @@ A minimal `manifest.json`:
   "description": "One sentence that says what the role is.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2305",
-    "NihilityShift-VoidManager-1.2.11",
     "Jack_Modding-Ectype_Framework-<version>"
   ]
 }
 ```
 
-Keep the mod's own `PLUGIN_VERSION` and the package's `version_number` identical. VoidManager
-compares the plugin's version across the room, while the mod launcher and a player reading the
-listing go by the package version. Raise both on every build you give to anyone: a joiner can
-download only what is on Thunderstore, and the host refuses a joiner whose DLL differs under
-the same version number.
+Keep the mod's own `PLUGIN_VERSION` and the package's `version_number` identical. The mod
+launcher and a player reading the listing go by the package version; BepInEx logs the plugin
+version, and VoidManager compares it across the room for a mod declared `All` to it. Raise both
+on every build you give to anyone: a joiner can download only what is on Thunderstore, and two
+builds under one version number cannot be told apart by anything but their bytes.
 
 ## Where the files land
 
@@ -92,9 +96,9 @@ register the same plugin GUID.
 Players decide from the listing whether they can join a room, so it states these points in
 plain words.
 
-1. **Everyone in the room needs it.** A role mod and the framework are multiplayer type
-   `All`. A player without them cannot join a room that has them, and a host without them
-   bounces a joiner who has them.
+1. **Everyone in the room needs it.** A role mod's content and the framework's contract
+   marker are registered in the game's required-asset set. A player without them cannot join
+   a room that has them, and a host without them bounces a joiner who has them.
 2. **Everyone needs the same version.** What enforces it at join:
    - The game's asset check, always: it refuses a joiner whose framework speaks another
      network contract, and one whose role content (trees, perks) differs from the host's. It
@@ -119,18 +123,34 @@ plain words.
    package, which the mod manager installs automatically and which a hand installer has
    to add.
 
-The Void Crew community's categories include `All Required`, which describes a role mod's
-requirement. The framework's own package carries `All Required`, written into the DLL's
+The framework's own package carries the Thunderstore category `All Required`, written into the DLL's
 `AssemblyMetadata("ModCategories", "Mods, All Required")`, from which the publish script takes the
 package's categories; a build with `-p:NoProgressionFlag=true` registers nothing in the game's
-required set and carries `Mods` alone. The community also has
-`Disables Progression`; the framework does not disable progression, so a role mod carries that
-category only if its own code does.
-It declares no `VoidPlugin`, so a mod launcher that looks for one in the DLL finds none and
-falls back to the package's categories; the DLL also carries
-`AssemblyMetadata("MPType", "All")` for a reader that inspects assembly metadata. The list changes over time: read the live list
-(`https://thunderstore.io/api/experimental/community/void-crew/category/`) before you set
-categories.
+required set and carries `Mods` alone. It declares no
+`VoidPlugin`, so a mod launcher that looks for one in the DLL finds none and falls back to the
+package's categories; the DLL also carries `AssemblyMetadata("MPType", "All")` for a reader
+that inspects assembly metadata.
+
+A mod that declares no `VoidPlugin` tells the Void Crew Mod Launcher through the same
+categories who in a room needs it. The launcher reads them in this order, first match wins:
+
+| Category | The launcher reads it as |
+| --- | --- |
+| `All Required` | every player: installed for each joiner at the host's version |
+| `Client-Side`, without `Host-Side` | the players who want it; not installed for joiners |
+| `Host-Side`, without `Client-Side` | the host only; not installed for joiners |
+| `Mod_Session Required`, without `Client-Side` | needs a modded room, which the framework already makes; not installed for joiners |
+| `Cosmetics` or `Decorations` | the players who want it; not installed for joiners |
+| none of these | unknown, and installed for joiners |
+
+A role mod carries `All Required`. A mod that declares a `VoidPlugin` with
+`MultiplayerType.All` is read as every player whatever its categories say, and the launcher
+then installs VoidManager for each joiner too.
+
+The community also has `Disables Progression`; the framework does not disable progression, so
+a dependent mod carries that category only if its own code does. The list changes over time:
+read the live list (`https://thunderstore.io/api/experimental/community/void-crew/category/`)
+before you set categories.
 
 A listing skeleton for the multiplayer section:
 
