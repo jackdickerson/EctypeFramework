@@ -20,7 +20,7 @@ Paths are relative to the framework project folder.
 | Mutator safety | `src/MutatorSafety.cs` |
 | Session-stat mutators (registration walk, opening contribution, shared-unlock republish) | `src/SessionStatMutators.cs` |
 | Loot tables | `src/LootTables.cs` |
-| Enemy statuses | `src/EnemyStatus.cs`, `src/EnemyStatusFx.cs`, `src/EnemyStatusOutbox.cs` |
+| Enemy statuses | `src/EnemyStatus.cs`, `src/EnemyStatusParts.cs` (part targets, `StatusInstance`), `src/EnemyStatusFx.cs`, `src/EnemyStatusOutbox.cs` |
 | Enemy abilities and suspension | `src/EnemyAbilities.cs` |
 | Character statuses | `src/CharacterStatus.cs`; requests, validation and presentation copies in `src/CharacterStatusSync.cs` |
 | Session data and host-synced settings | `src/SessionData.cs` |

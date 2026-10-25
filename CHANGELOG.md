@@ -33,6 +33,26 @@ build.
   the rule log one warning per id and still work.
 - Nothing that crosses the network changed. A longer key costs one byte per character in each
   status or ability message that carries it.
+- `StatusStance.MasterOnly`: only the master client may apply or remove the status. Every
+  receiver refuses any other sender's message and logs one warning per sender and status;
+  `TryApply` and `TryRemove` on a client that is not the master return the new
+  `StatusRefusal.NotMaster`. A character status with this stance accepts requests from the
+  master alone.
+- Enemy statuses can target a part of a networked object: `StatusPart` (`ViewId`, `Index`,
+  `Of(component)`, `Resolve<T>()`) and `EnemyStatuses` overloads `Apply`, `TryApply`, `Remove`,
+  `TryRemove`, `IsActive`, `RemainingSeconds`, `Stacks` and `Tag` taking a part. Same server-clock
+  timer, stacking, refresh, stance and removal rules as a space object; no stats, damage, marker
+  or visual. A part status ends when its PhotonView is destroyed.
+- A Tag (`int`) travels with an application: `Apply(target, key, seconds, magnitude, attacker,
+  tag)` and `TryApply` likewise, `Apply(part, key, seconds, tag)`, read with
+  `EnemyStatuses.Tag(...)`. Each accepted application replaces it.
+- `EnemyStatusDef.OnInstanceApplied` and `OnInstanceRemoved` receive a `StatusInstance` (`Key`,
+  `Target`, `Part`, `IsPart`, `Tag`, `Stacks`, `EndServerTime`, `RemainingSeconds`, `Created`) on
+  every client, for space objects and parts. `EnemyStatuses.GetActive(list, key)` lists live
+  statuses for a HUD countdown.
+- **Network.** Enemy status subtype 2 gains a tagged object apply (a trailing `int tag`), a part
+  apply (op 2) and a part remove (op 3); ApplyN (subtype 3) gains a tagged layout. An untagged
+  application to a space object keeps its existing layout.
 
 ## 0.30.0
 
