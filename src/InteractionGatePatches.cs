@@ -79,7 +79,12 @@ namespace Ectype
         internal static void ApplyPatches(Harmony harmony)
         {
             _harmony = harmony;
-            _chairInUse = AccessTools.FieldRefAccess<TakeoverChair, bool>("isUsing");
+            try { _chairInUse = AccessTools.FieldRefAccess<TakeoverChair, bool>("isUsing"); }
+            catch (Exception)
+            {
+                Plugin.Log.LogWarning("Ectype: interaction gate: TakeoverChair.isUsing not found (game update?); " +
+                                      "a seated player is judged again when the game re-asks after a host change.");
+            }
             int ok = 0, total = 0;
 
             // Client side.
@@ -173,13 +178,12 @@ namespace Ectype
             if (_photonPatched || _harmony == null || !GameLoaded()) return;
             _photonPatched = true;
             int ok = 0, total = 0;
-            PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "ExecuteRpc", "RpcSender", "RpcPrefix", "RpcFinalizer",
+            PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "ExecuteRpc", typeof(RpcSender), "RpcPrefix", "RpcFinalizer",
                         "power, panel and synced-switch requests are not refused by the owner");
-            PatchPhoton(ref ok, ref total, typeof(LoadBalancingClient), "OnEvent", "InteractionGatePatches",
+            PatchPhoton(ref ok, ref total, typeof(LoadBalancingClient), "OnEvent", typeof(InteractionGatePatches),
                         "DispatchPrefix", "DispatchFinalizer", "socket requests are not refused by the owner");
-            PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "OnEvent", "InteractionGatePatches",
+            PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "OnEvent", typeof(InteractionGatePatches),
                         "OwnershipEventPrefix", null, "ownership takeovers are not refused");
-            RpcSender.Patched = ok > 0;
             Plugin.Log.LogInfo("Ectype: interaction gate: " + ok + " of " + total + " Photon hooks patched " +
                                "after the game loaded.");
         }
@@ -197,7 +201,7 @@ namespace Ectype
             catch (Exception) { return false; }
         }
 
-        private static void PatchPhoton(ref int ok, ref int total, Type type, string method, string hookClass,
+        private static void PatchPhoton(ref int ok, ref int total, Type type, string method, Type hooks,
                                         string prefix, string finalizer, string consequence)
         {
             total++;
@@ -210,7 +214,6 @@ namespace Ectype
                                           " not found (Photon update?); " + consequence + ".");
                     return;
                 }
-                Type hooks = hookClass == "RpcSender" ? typeof(RpcSender) : typeof(InteractionGatePatches);
                 HarmonyMethod pre = new HarmonyMethod(hooks, prefix);
                 pre.after = new[] { Topology.FleetPluginGuid };
                 HarmonyMethod fin = finalizer != null ? new HarmonyMethod(hooks, finalizer) : null;
@@ -312,7 +315,7 @@ namespace Ectype
             try
             {
                 LocalPlayer local = LocalPlayer.Instance;
-                if (local == null || __instance == null || __instance.gameObject != local.gameObject) return true;
+                if (local == null || __instance == null || !ReferenceEquals(__instance, local.Locomotion)) return true;
                 if (activator is TakeoverChair || activator is Helm || activator is ITakeoverModule ||
                     activator is TerminalModule || activator is TerminalScreen || activator is CrypticCore)
                     return true;
@@ -756,9 +759,6 @@ namespace Ectype
         }
 
         private static Frame _current;
-
-        /// <summary>True once ExecuteRpc has been patched.</summary>
-        internal static bool Patched;
 
         private static void RpcPrefix(ExitGames.Client.Photon.Hashtable rpcData, Photon.Realtime.Player sender,
                                       out Frame __state)
