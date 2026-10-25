@@ -4,6 +4,18 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.24.0
+
+- `InteractionGate`: refuse players the use of seats, the helm, turrets, terminals, doors,
+  airlock controls, power switches, panels, items and sockets by registered rules.
+  `Register(id, Func<GateQuery, Refusal>)`, `Unregister`, `SuppressWarningsFor`, `Evaluate`,
+  `Classify`. Each interaction is judged on the acting player's game (no highlight, no prompt,
+  a warning at most every 3 s and the same text at most every 20 s) and again on the game that
+  owns the part when the request arrives (dropped silently). Gates only refuse, the first
+  refusal in registration order decides, and a gate that throws counts as allowing. With no
+  gate registered nothing changes. The hooks run after Void Crew Fleet's on the same methods and
+  stay silent when Fleet already refused. See `docs/reference/interaction-gate.md`.
+
 ## 0.22.0
 
 - `Topology`: which player ships exist and which is whose, answered the same on every client.
