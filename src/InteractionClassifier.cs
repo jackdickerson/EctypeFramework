@@ -8,37 +8,66 @@ using CG.Client.Ship.Modules.Mediators;
 using CG.Objects;
 using CG.Ship.Hull;
 using CG.Ship.Modules;
+using CG.Ship.Repair;
 using Gameplay.CompositeWeapons;
+using Gameplay.Defects;
 using Gameplay.Enhancements;
 using Gameplay.Power;
 using Gameplay.Terminals;
 using HarmonyLib;
+using Photon.Pun;
 using UnityEngine;
 
 namespace Ectype
 {
     /// <summary>
     /// The interaction gate's shared classifier: what kind of thing a component is, worked out
-    /// once per object and cached by instance id.
+    /// once per object and cached by instance id. The client side and the owner side reach every
+    /// kind through this one path, so both read the same kind for the same part.
     ///
     /// Some controls are not under the object they control (a door's clickers, an airlock
     /// panel's lever and safety switch, a System Enhancement panel's switch and minigame, a
-    /// seat's clicker), so the objects that own them register them as they start, through
-    /// postfixes patched here. Everything else is read from the component's type or the types
-    /// above it. A switch is a power switch when a module mediator above it names it as its
-    /// power switch; a switch seen while its module is still being put together is looked at
-    /// again after <see cref="RetrySeconds"/>.
+    /// seat's clicker, a module terminal's clicker, a repair's or a defect's clicker), so the
+    /// objects that own them register them as they start, through postfixes patched here.
+    /// Everything else is read from the component's type or the types above it.
+    ///
+    /// A switch is judged by what it switches: a power switch when a module mediator above it
+    /// names it, else the kind of the component that holds the value it controls (the same
+    /// component the owner side judges when the switch's request arrives). A switch with no
+    /// module above it (a breaker, a line switch) is a power switch; one met while its module is
+    /// still being assembled keeps that answer and is read again after
+    /// <see cref="RetrySeconds"/>, at most <see cref="MaxRetries"/> times.
     /// </summary>
     internal static class InteractionClassifier
     {
         private const float RetrySeconds = 2f;
+        private const int MaxRetries = 3;
         private const int CacheLimit = 8192;
+        private const float PruneSeconds = 30f;
 
-        /// <summary>Controls registered by their owners as they start.</summary>
-        private static readonly Dictionary<int, InteractionKind> Registered = new Dictionary<int, InteractionKind>();
+        private struct Registration
+        {
+            internal Component Control;
+            internal InteractionKind Kind;
+        }
+
+        private struct Pending
+        {
+            internal InteractionKind Kind;
+            internal float RetryAt;
+            internal int Tries;
+        }
+
+        /// <summary>Controls registered by their owners as they start. Never cleared wholesale:
+        /// an owner registers once, so a dropped live entry would not come back. Entries whose
+        /// control is destroyed are pruned on a slow timer.</summary>
+        private static readonly Dictionary<int, Registration> Registered = new Dictionary<int, Registration>();
         private static readonly Dictionary<int, InteractionKind> Cache = new Dictionary<int, InteractionKind>();
-        private static readonly Dictionary<int, float> RetryAt = new Dictionary<int, float>();
+        private static readonly Dictionary<int, Pending> Unsettled = new Dictionary<int, Pending>();
         private static readonly Dictionary<Type, PropertyInfo> PowerSwitchProperty = new Dictionary<Type, PropertyInfo>();
+        private static readonly List<TakeoverChair> Chairs = new List<TakeoverChair>();
+        private static readonly List<int> Dead = new List<int>();
+        private static float _nextPrune;
 
         private static AccessTools.FieldRef<DoorActor, List<ClickerInteractable>> _doorClickers;
         private static AccessTools.FieldRef<AirlockButtonPanel, ClickerInteractable> _pressurizeLever;
@@ -47,6 +76,7 @@ namespace Ectype
         private static AccessTools.FieldRef<EnhancementCrypticActivator, ClickerInteractable> _panelCrypticClicker;
         private static AccessTools.FieldRef<EnhancementSwitchActivator, SwitchClicker> _panelSwitch;
         private static AccessTools.FieldRef<TerminalModuleMediator, ClickerInteractable> _terminalClicker;
+        private static AccessTools.FieldRef<RepairObject, ClickerInteractable> _repairClicker;
 
         /// <summary>An item in a socket becomes the socket's interactable, as the game's own
         /// raycast does; everything else is returned as it is.</summary>
@@ -75,24 +105,27 @@ namespace Ectype
             if (c is Grabbable || c is CarryableObject) return InteractionKind.CarryablePickup;
 
             int id = c.GetInstanceID();
+            Registration reg;
+            if (Registered.TryGetValue(id, out reg)) return reg.Kind;
             InteractionKind kind;
-            if (Registered.TryGetValue(id, out kind)) return kind;
             if (Cache.TryGetValue(id, out kind)) return kind;
-            float retry;
-            if (RetryAt.TryGetValue(id, out retry) && Time.unscaledTime < retry) return InteractionKind.Other;
+            Pending pending;
+            bool wasPending = Unsettled.TryGetValue(id, out pending);
+            if (wasPending && Time.unscaledTime < pending.RetryAt) return pending.Kind;
 
             bool settled;
             kind = Compute(c, out settled);
-            if (Cache.Count > CacheLimit) Cache.Clear();
-            if (settled)
+            int tries = wasPending ? pending.Tries + 1 : 1;
+            if (settled || tries >= MaxRetries)
             {
+                if (Cache.Count > CacheLimit) Cache.Clear();
                 Cache[id] = kind;
-                RetryAt.Remove(id);
+                Unsettled.Remove(id);
             }
             else
             {
-                if (RetryAt.Count > CacheLimit) RetryAt.Clear();
-                RetryAt[id] = Time.unscaledTime + RetrySeconds;
+                if (Unsettled.Count > CacheLimit) Unsettled.Clear();
+                Unsettled[id] = new Pending { Kind = kind, RetryAt = Time.unscaledTime + RetrySeconds, Tries = tries };
             }
             return kind;
         }
@@ -106,11 +139,23 @@ namespace Ectype
             return InteractionKind.Seat;
         }
 
-        private static InteractionKind Compute(Component c, out bool settled)
+        /// <summary>The seat whose connected network objects include this one, or null. A seat
+        /// hands those objects to whoever sits in it.</summary>
+        internal static TakeoverChair ChairHolding(PhotonView view)
         {
-            settled = true;
-            // The component itself. Only a seat's own component and its registered clicker count
-            // as the seat: a seat can sit on a module's root, above the module's switches.
+            if (view == null) return null;
+            for (int i = 0; i < Chairs.Count; i++)
+            {
+                TakeoverChair chair = Chairs[i];
+                if (chair != null && chair.ConnectedPhotonViews != null && chair.ConnectedPhotonViews.Contains(view))
+                    return chair;
+            }
+            return null;
+        }
+
+        /// <summary>The kind read from a component's own type, or Other.</summary>
+        private static InteractionKind ByType(Component c)
+        {
             TakeoverChair chair = c as TakeoverChair;
             if (chair != null) return ChairKind(chair);
             if (c is Helm) return InteractionKind.Helm;
@@ -119,23 +164,45 @@ namespace Ectype
             if (c is CloneTube) return InteractionKind.CloneTube;
             if (c is TerminalModule || c is TerminalScreen) return InteractionKind.Terminal;
             if (c is Enhancement) return InteractionKind.EnhancementPanel;
+            if (c is RepairObject || c is Defect) return InteractionKind.Minigame;
             if (c is CrypticCore)
                 return c.GetComponentInParent<Enhancement>(true) != null
                     ? InteractionKind.EnhancementPanel : InteractionKind.Minigame;
             if (c is AbstractDoor || c is DoorController) return InteractionKind.Door;
             if (c is Airlock) return InteractionKind.AirlockControl;
             if (c is PowerDrain || c is PowerDistributor || c is PowerBreaker) return InteractionKind.PowerSwitch;
+            return InteractionKind.Other;
+        }
 
-            // A module's power switch: a mediator above it names it. Checked before the parent
-            // lookups below, which would otherwise claim a station module's own power switch.
+        private static InteractionKind Compute(Component c, out bool settled)
+        {
+            settled = true;
+            // The component itself. Only a seat's own component and its registered clicker count
+            // as the seat: a seat can sit on a module's root, above the module's switches.
+            InteractionKind kind = ByType(c);
+            if (kind != InteractionKind.Other) return kind;
+
             SwitchClicker sw = c as SwitchClicker;
             if (sw != null)
             {
+                // Checked before the parent lookups below, which would otherwise claim a station
+                // module's own power switch.
                 IShipModuleMediator[] mediators = sw.GetComponentsInParent<IShipModuleMediator>(true);
-                // A module still being put together has no mediator yet.
-                if (mediators.Length == 0) settled = false;
                 foreach (IShipModuleMediator m in mediators)
                     if (ReferenceEquals(PowerSwitchOf(m), sw)) return InteractionKind.PowerSwitch;
+                Component holder = HolderOf(sw);
+                if (holder != null && holder != sw)
+                {
+                    kind = ByType(holder);
+                    if (kind != InteractionKind.Other) return kind;
+                }
+                if (mediators.Length == 0)
+                {
+                    // Outside any module: a breaker or a line switch. A module still being
+                    // assembled has no mediator yet either, so the answer is read again later.
+                    settled = false;
+                    return InteractionKind.PowerSwitch;
+                }
             }
 
             // Station objects whose whole subtree is the station.
@@ -145,6 +212,17 @@ namespace Ectype
             if (c.GetComponentInParent<TerminalScreen>(true) != null) return InteractionKind.Terminal;
             if (c.GetComponentInParent<CrypticCore>(true) != null) return InteractionKind.Minigame;
             return InteractionKind.Other;
+        }
+
+        /// <summary>The component holding the synced value a switch controls, or null.</summary>
+        private static Component HolderOf(SwitchClicker sw)
+        {
+            try
+            {
+                MemberReference<ChangeResponsiveBool> value = sw.ControlledValue;
+                return value != null ? value.Component : null;
+            }
+            catch (Exception) { return null; }
         }
 
         /// <summary>A module mediator's power switch: each mediator type declares one through its
@@ -168,25 +246,29 @@ namespace Ectype
         internal static void RegisterControl(Component control, InteractionKind kind)
         {
             if (control == null) return;
-            if (Registered.Count > CacheLimit) DropDestroyed();
-            Registered[control.GetInstanceID()] = kind;
+            Registered[control.GetInstanceID()] = new Registration { Control = control, Kind = kind };
         }
 
-        /// <summary>Drops a control registration (dev self-test).</summary>
+        /// <summary>Drops a control registration and its cached kind (dev self-test).</summary>
         internal static void ForgetControl(Component control)
         {
             if (control == null) return;
             int id = control.GetInstanceID();
             Registered.Remove(id);
             Cache.Remove(id);
-            RetryAt.Remove(id);
+            Unsettled.Remove(id);
         }
 
-        private static void DropDestroyed()
+        /// <summary>Driver: every 30 s, drops registrations and seats whose object is gone.</summary>
+        internal static void PollPrune()
         {
-            // Instance ids of destroyed objects are not looked up again; the map is simply
-            // restarted, and live controls re-register as their owners start.
-            Registered.Clear();
+            if (Time.unscaledTime < _nextPrune) return;
+            _nextPrune = Time.unscaledTime + PruneSeconds;
+            Dead.Clear();
+            foreach (KeyValuePair<int, Registration> e in Registered)
+                if (e.Value.Control == null) Dead.Add(e.Key);
+            for (int i = 0; i < Dead.Count; i++) Registered.Remove(Dead[i]);
+            Chairs.RemoveAll(c => c == null);
         }
 
         // ---- registration patches ------------------------------------------------------
@@ -200,6 +282,7 @@ namespace Ectype
             _panelCrypticClicker = FieldRef<EnhancementCrypticActivator, ClickerInteractable>("crypticClicker");
             _panelSwitch = FieldRef<EnhancementSwitchActivator, SwitchClicker>("switchClicker");
             _terminalClicker = FieldRef<TerminalModuleMediator, ClickerInteractable>("clicker");
+            _repairClicker = FieldRef<RepairObject, ClickerInteractable>("clicker");
 
             Postfix(harmony, typeof(DoorActor), "Start", "DoorActorStart", _doorClickers != null,
                     "door clickers classify as Other");
@@ -210,11 +293,15 @@ namespace Ectype
                     _panelCryptic != null || _panelCrypticClicker != null,
                     "a panel's minigame outside the panel's hierarchy classifies as Minigame");
             Postfix(harmony, typeof(EnhancementSwitchActivator), "Awake", "PanelSwitchAwake",
-                    _panelSwitch != null, "a panel's switch outside the panel's hierarchy classifies as Other");
+                    _panelSwitch != null, "a panel's switch outside the panel's hierarchy classifies by what it switches");
             Postfix(harmony, typeof(TakeoverChair), "Awake", "ChairAwake", true,
-                    "a seat's clicker classifies as Other until the seat is used");
+                    "a seat's clicker shows its prompt and the seat is refused on use");
             Postfix(harmony, typeof(TerminalModuleMediator), "Start", "TerminalStart", _terminalClicker != null,
-                    "a module terminal's clicker classifies as Other until the terminal opens");
+                    "a module terminal's clicker shows its prompt and the terminal is refused on use");
+            Postfix(harmony, typeof(RepairObject), "Initialize", "RepairInitialize", _repairClicker != null,
+                    "a repair's clicker shows its prompt and the repair is refused on use");
+            Postfix(harmony, typeof(Defect), "Awake", "DefectAwake", true,
+                    "a defect's clicker shows its prompt and the repair is refused on use");
         }
 
         private static AccessTools.FieldRef<T, F> FieldRef<T, F>(string name)
@@ -293,12 +380,31 @@ namespace Ectype
             catch (Exception e) { LogHookFailure("TerminalModuleMediator.Start", e); }
         }
 
+        private static void RepairInitialize(RepairObject __instance)
+        {
+            try
+            {
+                if (_repairClicker != null) RegisterControl(_repairClicker(__instance), InteractionKind.Minigame);
+            }
+            catch (Exception e) { LogHookFailure("RepairObject.Initialize", e); }
+        }
+
+        private static void DefectAwake(Defect __instance)
+        {
+            try
+            {
+                if (__instance != null) RegisterControl(__instance.clicker, InteractionKind.Minigame);
+            }
+            catch (Exception e) { LogHookFailure("Defect.Awake", e); }
+        }
+
         private static void ChairAwake(TakeoverChair __instance)
         {
             try
             {
-                if (__instance != null && __instance.Clicker != null)
-                    RegisterControl(__instance.Clicker, ChairKind(__instance));
+                if (__instance == null) return;
+                if (!Chairs.Contains(__instance)) Chairs.Add(__instance);
+                if (__instance.Clicker != null) RegisterControl(__instance.Clicker, ChairKind(__instance));
             }
             catch (Exception e) { LogHookFailure("TakeoverChair.Awake", e); }
         }
