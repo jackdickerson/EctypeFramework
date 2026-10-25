@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Ectype role manifest (contract version 2)",
-  "description": "The JSON document a role mod embeds in its assembly under a resource name ending in \"ectype-role.json\". Property names are matched case-insensitively by the framework; this schema uses the canonical spelling. Unknown properties are ignored by the framework and allowed here. String values for \"type\", \"target\", \"kind\", \"displayType\" and the tag criteria are matched case-insensitively and trimmed by the framework; the enums here list the canonical lower-case or documented spelling.",
+  "description": "The JSON document a role mod embeds in its assembly under a resource name ending in \"ectype-role.json\". Property names are matched case-insensitively by the framework; this schema uses the canonical spelling. Unknown properties are ignored by the framework and allowed here. String values for \"type\", \"target\", \"distribution\", conditions, \"kind\", \"displayType\" and the tag criteria are matched case-insensitively and trimmed by the framework; the enums here list the canonical lower-case or documented spelling.",
   "type": "object",
   "required": ["contractVersion", "roleId", "roleName", "hero"],
   "properties": {
@@ -66,6 +66,10 @@
       "type": ["array", "null"],
       "items": { "type": ["string", "null"] }
     },
+    "abilityWhen": {
+      "description": "Conditions that must hold on the owning client for the role's ability to start. An invalid entry rejects the role.",
+      "$ref": "#/$defs/conditions"
+    },
     "classId": { "description": "Contract version 1 name, renamed roleId in version 2.", "not": {} },
     "className": { "description": "Contract version 1 name, renamed roleName in version 2.", "not": {} },
     "classDesc": { "description": "Contract version 1 name, renamed roleDesc in version 2.", "not": {} },
@@ -78,9 +82,27 @@
       "pattern": "^(?:[0-9A-Fa-f]-?){32}$"
     },
     "target": {
-      "description": "Where a perk's effects land. character: the player, always on (default). seat: the manned module, applied on sit and removed on stand. seatShip: the ship's stat collection while seated in any chair. characterShip: the ship's stat collection for every holder, seated or not (added in framework 0.18.1). An unrecognised value skips the perk, or rejects the role when it is on the hero.",
+      "description": "Where a perk's effects land. character: the player, always on (default). seat: the manned module, applied on sit and removed on stand. seatShip: the ship's stat collection while seated in any chair. characterShip: the holder's crew ship, seated or not (framework 0.18.1). characterAboard: the ship whose rooms or inertia bubble hold the holder's character, while it is on the holder's side. characterFleet: every living ship on the holder's side. seatFleet: while seated, every living ship on the seat's side (the last three framework 0.29.0). An unrecognised value skips the perk, or rejects the role when it is on the hero.",
       "type": ["string", "null"],
-      "enum": ["", "character", "seat", "seatShip", "characterShip", null]
+      "enum": ["", "character", "seat", "seatShip", "characterShip", "characterAboard", "characterFleet", "seatFleet", null]
+    },
+    "distribution": {
+      "description": "characterFleet and seatFleet only. each (default): every ship gets the authored amount. split: the amount is divided evenly among the ships, for float flat, flat2 and percent effects only. Framework 0.29.0.",
+      "type": ["string", "null"],
+      "enum": ["", "each", "split", null]
+    },
+    "conditionName": {
+      "description": "An owner-evaluated condition; a leading ! requires it false. The framework also accepts other letter case and surrounding spaces.",
+      "type": "string",
+      "enum": ["onOwnShip", "onAllyShip", "onEnemyShip", "inOpenSpace", "teamMatch", "ownShipAlive", "spectating", "!onOwnShip", "!onAllyShip", "!onEnemyShip", "!inOpenSpace", "!teamMatch", "!ownShipAlive", "!spectating"]
+    },
+    "conditions": {
+      "description": "Conditions on the holder's own situation, all of which must hold: onOwnShip, onAllyShip, onEnemyShip, inOpenSpace, teamMatch, ownShipAlive, spectating. A name or a list of names. Framework 0.29.0.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/conditionName" },
+        { "type": "array", "items": { "$ref": "#/$defs/conditionName" } }
+      ]
     },
     "heroPerk": {
       "type": "object",
@@ -95,6 +117,8 @@
         "col": { "description": "Forced to 0.", "type": "integer" },
         "wide": { "description": "Forced to true.", "type": "boolean" },
         "target": { "$ref": "#/$defs/target" },
+        "distribution": { "$ref": "#/$defs/distribution" },
+        "when": { "$ref": "#/$defs/conditions" },
         "mods": { "$ref": "#/$defs/levels" },
         "levels": { "$ref": "#/$defs/levelCount" },
         "unlocks": { "$ref": "#/$defs/guidList" },
@@ -159,6 +183,8 @@
           "type": "boolean"
         },
         "target": { "$ref": "#/$defs/target" },
+        "distribution": { "$ref": "#/$defs/distribution" },
+        "when": { "$ref": "#/$defs/conditions" },
         "mods": { "$ref": "#/$defs/levels" },
         "levels": { "$ref": "#/$defs/levelCount" },
         "unlocks": { "$ref": "#/$defs/guidList" },

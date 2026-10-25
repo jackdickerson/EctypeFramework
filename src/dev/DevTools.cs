@@ -37,6 +37,7 @@ namespace Ectype
             ContentSelfTest.Run();
             CharacterStatusSelfTest.RunOffline();
             DiscoverySelfTest.Run();
+            ScopeSelfTest.Run();
         }
 
         private static void Bind(ConfigFile cfg)
@@ -134,6 +135,7 @@ namespace Ectype
         {
             if (!Matches(rec.Manifest, spec)) return;
             perk.Target = CharacterShipRoute.CharacterShip;
+            PerkScopes.Set(perk.ContainerGuid, PerkScopes.CharacterShipScope);
             perk.Levels = Levels(rec, spec);
         }
 

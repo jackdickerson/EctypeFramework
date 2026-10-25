@@ -5,7 +5,7 @@ namespace Ectype
         public const string PLUGIN_GUID = "jack.voidcrew.ectype";
         public const string PLUGIN_NAME = "EctypeFramework";
         public const string USERS_PLUGIN_NAME = "Ectype Framework";
-        public const string PLUGIN_VERSION = "0.28.0";
+        public const string PLUGIN_VERSION = "0.29.0";
         public const string PLUGIN_DESCRIPTION =
             "Role framework and gameplay utilities for Void Crew mods: playable roles from a " +
             "JSON manifest, plus stats, statuses, loot and HUD helpers.";
@@ -27,7 +27,7 @@ namespace Ectype
         /// renumbered or a message's fields change, and name the new value in the changelog.
         /// Independent of <see cref="CONTRACT_VERSION"/>, which gates role manifests.
         /// </summary>
-        public const int NET_CONTRACT_VERSION = 4;
+        public const int NET_CONTRACT_VERSION = 5;
 
         /// <summary>
         /// A role mod self-identifies by embedding a JSON manifest whose resource name ends

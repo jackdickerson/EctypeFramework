@@ -76,6 +76,7 @@ namespace Ectype
                                CharacterStatusMessage.ReceiveApplied);
             EctypeNet.Register(EctypeNet.CharacterStatusResult, "character-status-result",
                                CharacterStatusMessage.ReceiveResult);
+            EctypeNet.Register(EctypeNet.ConditionMask, "condition-mask", HolderConditions.Receive);
 
             // Resolved and patched gate by gate, so a renamed game member costs only the
             // system that needs it.
@@ -95,6 +96,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
             try { SessionStats.Install(); }
             catch (Exception e) { Log.LogError("Ectype: session stats install failed: " + e); }
+            try { CharacterShipRoute.ApplyPatches(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: perk route seat hooks failed: " + e); }
             try { CharacterStatusLife.ApplyPatch(harmony); }
             catch (Exception e) { Log.LogError("Ectype: character status death hook failed: " + e); }
             SessionData.SessionStarted += CharacterStatusSync.ExpirePendingAtSessionStart;
@@ -195,6 +198,7 @@ namespace Ectype
             Step("session data", SessionData.Poll);
             Step("session stats", SessionStats.Poll);
             Step("topology", Topology.Poll);
+            Step("holder conditions", HolderConditions.Poll);
             Step("characterShip", CharacterShipRoute.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.

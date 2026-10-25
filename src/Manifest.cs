@@ -64,6 +64,14 @@ namespace Ectype
         /// and stable identity; roleName is display text. Resolution lives in
         /// Suppression.</summary>
         public List<string> suppressRoles = new List<string>();
+
+        /// <summary>Conditions, in the same form as a perk's "when", that must hold on the owning
+        /// client for the role's ability to start. An unrecognised condition rejects the
+        /// role.</summary>
+        public object abilityWhen;
+
+        /// <summary>The parsed ability conditions, set by validation.</summary>
+        internal ConditionSet AbilityWhen;
     }
 
     public class PerkSpec
@@ -91,9 +99,26 @@ namespace Ectype
         /// "seat" (the module being manned, applied on sit / removed on stand), or
         /// "seatShip" (the ship's stat collection while seated in any chair - the
         /// all-installed-weapons pattern), or "characterShip" (the ship's stat collection for
-        /// every holder, seated or not). Default: character. An unrecognised value skips the
-        /// perk with a named error.</summary>
+        /// every holder, seated or not), "characterAboard" (the ship the holder is aboard, when
+        /// it is on the holder's side), "characterFleet" (every living ship on the holder's
+        /// side), "seatFleet" (while seated, every living ship on the seat's side). Default:
+        /// character. An unrecognised value skips the perk with a named error.</summary>
         public string target;
+
+        /// <summary>How an amount is shared among the ships a characterFleet or seatFleet perk
+        /// lands on: "each" (default, every ship gets the full amount) or "split" (divided
+        /// evenly; flat and percent float effects only). An unrecognised value skips the
+        /// perk with a named error.</summary>
+        public string distribution;
+
+        /// <summary>Conditions on the holder's own situation that must hold for the effects to
+        /// apply: a name or a list of names (onOwnShip, onAllyShip, onEnemyShip, inOpenSpace,
+        /// teamMatch, ownShipAlive, spectating), each optionally prefixed with '!' to require it
+        /// false. Not allowed on seat or seatShip. An unrecognised condition skips the perk.</summary>
+        public object when;
+
+        /// <summary>The parsed routing, set by validation.</summary>
+        internal PerkScope Scope;
 
         /// <summary>One entry per level; each entry is that level's effect list. A missing or
         /// short list pads with empty levels (they cost a point and do nothing - logged).</summary>
@@ -248,21 +273,21 @@ namespace Ectype
                 if (unlocksProblem != null)
                     return "perk '" + p.key + "' unlocks entry " + unlocksProblem;
             }
-            // Targets fail closed: a target this build does not know would otherwise register
-            // as a perk whose effects land somewhere nobody authored.
-            Gameplay.Perks.PerkBuffTarget target;
-            if (!EctypeAssets.TryParseTarget(m.hero.target, out target))
-                return "hero perk has unrecognised target '" + m.hero.target + "' (this " +
-                       "framework knows " + EctypeAssets.KnownTargets + ")";
+            // Targets, distributions and conditions fail closed: one this build does not know
+            // would otherwise register as a perk whose effects land somewhere nobody authored.
+            string heroProblem = PerkScopes.Parse(m.hero, out m.hero.Scope);
+            if (heroProblem != null) return "hero perk has " + heroProblem;
             m.perks.RemoveAll(p =>
             {
-                Gameplay.Perks.PerkBuffTarget t;
-                if (EctypeAssets.TryParseTarget(p.target, out t)) return false;
+                string problem = PerkScopes.Parse(p, out p.Scope);
+                if (problem == null) return false;
                 Plugin.Log.LogError("Ectype: role '" + m.roleName + "' perk '" + p.key +
-                                    "' skipped: unrecognised target '" + p.target + "' (this " +
-                                    "framework knows " + EctypeAssets.KnownTargets + ").");
+                                    "' skipped: " + problem + ".");
                 return true;
             });
+            string abilityProblem = HolderConditions.Parse(m.abilityWhen, out m.AbilityWhen);
+            if (abilityProblem != null) return "abilityWhen has " + abilityProblem;
+            if (!m.AbilityWhen.Empty) HolderConditions.Declare();
             string heroUnlocksProblem = NormalizeGuidList(m.hero.unlocks);
             if (heroUnlocksProblem != null) return "hero unlocks entry " + heroUnlocksProblem;
             foreach (CustomStatSpec s in m.customStats)

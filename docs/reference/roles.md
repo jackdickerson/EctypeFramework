@@ -55,8 +55,9 @@ The details are in [manifest.md](../manifest.md). The rules that shape a role:
   loadout slots and role UI all colour through the game's own functions.
 - **`roleId` and every perk `key` are GUID seeds.** Renaming one orphans saved selections
   exactly like deleting the perk. A perk may pin an explicit `guid` to survive a rename.
-- **A perk's `target` picks where its effects land**: `character`, `seat`, `seatShip` or
-  `characterShip`.
+- **A perk's `target` picks where its effects land**: `character`, `seat`, `seatShip`,
+  `characterShip`, `characterAboard`, `characterFleet` or `seatFleet`. A perk's `when` and the
+  role's `abilityWhen` gate effects and the ability on the holder's own situation.
 - **Custom stats** get deterministic ids under bit `0x20000000` (space the game never uses)
   and a `StatStructure` in the live `StatTable`, so tooltips render them. A custom stat is
   inert until code reads it.
@@ -134,6 +135,47 @@ and costs that crewmate the effect.
 
 Role code never writes `AbilityUsable`. The framework decides it again on the next idle tick,
 and the two writes alternate, each raising the HUD event.
+
+The manifest's `abilityWhen` conditions ([manifest.md](../manifest.md#conditions)) are checked
+first, on the same tick, against the owning client's own condition answer; `OwnerCanUse` runs
+only while they hold. A role whose usability rule is one of those conditions needs no code for
+it.
+
+### Ships in role code
+
+Role code reads ships and sides through `RoleContext`, never through `ClientGame.PlayerShip`.
+An ability runs on every client: on the owner's, and as a replica on each crewmate's, started by
+the owner's replicated start. With several ships in a room the game's player-ship getter
+returns the ship the viewing client looks at, so a replica that places an effect through it
+puts it on a different ship on each client. `RoleContext` resolves every answer from the
+owner's actor number through [Topology](topology.md), so every client names the same ship.
+
+| Member | Answer |
+| --- | --- |
+| `ShipOf(ability)` | The owner's crew ship; null while none can be named. |
+| `ShipOf(ability, aboard: true)` | The ship whose rooms or inertia bubble hold the owner's character, of any side; null in open space. |
+| `ForceOf(ability)` | The owner's side (their character's faction); -1 when unknown. |
+| `IsOnOwnShip`, `IsOnAllyShip`, `IsOnEnemyShip`, `IsInOpenSpace`, `OwnShipAlive`, `IsSpectating` | The conditions of the same names ([manifest.md](../manifest.md#conditions)), for the owner. |
+| `IsTeamMatch` | A team match is running. |
+
+```csharp
+protected override bool OwnerCanUse()
+{
+    return RoleContext.IsOnEnemyShip(this);
+}
+
+protected override void OnApplyEffect()
+{
+    PlayerControlledShip ship = RoleContext.ShipOf(this);
+    if (ship != null) ApplyTo(ship.Stats);
+}
+```
+
+The predicates read this client's copy of the owner's character, whose platform replicates a few
+frames late, so a replica can disagree with the owner for that long. Decide on the owner, in
+`OwnerCanUse` or in `OnApplyEffect` on the owning client, when every client must act on one
+answer. In a room with one ship, `ShipOf` names that ship and the ally, enemy and team-match
+answers are false.
 
 ### Cancel policy
 
@@ -224,26 +266,38 @@ A role with its own ability factory keeps its own ability instead. A capstone `S
 payload on an adopted ability is taken over if the adopting role authors its own capstone
 effects, and otherwise left untouched.
 
-## The characterShip target
+## Framework-routed targets
 
-`characterShip` is `PerkBuffTarget` value 4. It needs framework 0.18.1 or newer, so a role
-that uses it sets `minFrameworkVersion` to at least `0.18.1`. The effects stay on the perk asset's levels,
-where the tooltip renders them. The game's perk loader skips the value, so the game never
-applies them itself. After `ReApplyPerks` the framework deep-copies the holder's level into
-the holder's ship's collection with the perk as `InformationSource`, one contribution per
-holder, and `ResetPerks` takes it off again. Both run on every client for every player, so
-every client carries every holder's effects.
+`characterShip`, `characterAboard`, `characterFleet`, `seatFleet`, and any `character` perk with
+`when` conditions, are applied by the framework, not by the game. Each such perk asset carries
+`PerkBuffTarget` value 4, the one value the game's perk loader skips, and a table keyed by perk
+GUID records what the value means for that perk: its ship set, its distribution and its
+conditions. The gene-tree tooltip renders a perk's description and its levels' effects and never
+reads the target, so no value would change what it shows; 4 is chosen because the loader
+applies 1 (seat), 2 (character) and 3 (seatShip) itself, which would apply the effects a second
+time. `characterShip` needs framework 0.18.1 or newer and the others 0.29.0, so a role that uses
+them sets `minFrameworkVersion` to at least that.
 
-- The holder's ship is the room's ship when there is one. With several ships it is the
-  holder's crew ship, resolved on every client from shared data ([topology.md](topology.md));
-  a holder with no crew ship yet contributes nothing until one exists. With `[Debug]
-  VerboseLogging` on, each resolution logs `characterShip - actor <n> → ship <k> (<source>)`.
+The effects stay on the perk asset's levels, where the tooltip renders them. After
+`ReApplyPerks` the framework deep-copies the holder's level once per ship (or onto the
+character) with the perk as `InformationSource`, and `ResetPerks` takes the copies off again.
+Both run on every client for every player, so every client carries every holder's effects.
+
+- Which ships each target names, and what it names with one ship in the room, is in
+  [manifest.md](../manifest.md#ship-targets). With several ships the sets are resolved per holder
+  on every client from shared data ([topology.md](topology.md)); a set that names no ship
+  contributes nothing until it names one. With `[Debug] VerboseLogging` on, each change of a
+  holder's ships logs `<target> - actor <n> → ship <k> (<source>)` (or `ships <k>, <k>`), and
+  each change of their totals `perk route - actor <n> contributes <m> modifier(s) to <k>
+  ship(s)...`.
 - Each `StatMod` gets its own source object. Standing up removes every ship modifier sourced
   from the player, so a player-sourced one would not survive leaving a chair.
-- Twice a second, and the frame after a ship spawns, starts dying or is destroyed, every holder
-  is resolved again and only a holder whose ship changed is rebuilt. A player leaving the room
-  takes their contribution off. Death and respawn keep the perk loader, so nothing is done for
-  them.
+- Four times a second, and the frame after a ship spawns, starts dying or is destroyed, after
+  anyone sits or stands, and after a holder's condition answer changes, every holder is resolved
+  again and only a holder whose ships or conditions changed is rebuilt. A player leaving the
+  room takes their contribution off. Death and respawn keep the perk loader, so nothing is done
+  for them.
+- `distribution: split` divides each copy's amount by the number of ships named at the rebuild.
 - The ship's collection does not reach every module. A module joins the ship's tree through
   its build socket or by registering itself, and a core system nested in the ship prefab that
   does neither (the Fabricator) roots its own tree. The contribution therefore also goes onto

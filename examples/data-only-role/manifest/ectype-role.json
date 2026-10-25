@@ -1,5 +1,6 @@
 {
   "contractVersion": 2,
+  "minFrameworkVersion": "0.29.0",
   "roleId": "REPLACE_ME",
   "roleName": "Example",
   "roleDesc": "A minimal role declared entirely in a JSON manifest.",
@@ -43,6 +44,25 @@
       "levels": 1,
       "mods": [
         [ { "stat": "TargetLockCount", "type": "flat", "kind": "int", "value": 1 } ]
+      ]
+    },
+    {
+      "key": "fleet-shields",
+      "name": "Fleet Shields",
+      "desc": "Every ship on your side has its <color=#FFD700>Shield Absorption</color> increased. The bonus is shared among them: one ship gets all of it, three ships a third each.",
+      "row": 2, "col": 0, "wide": true, "target": "characterFleet", "distribution": "split",
+      "mods": [
+        [ { "stat": "ShieldAbsorption", "type": "percent", "value": 0.15 } ],
+        [ { "stat": "ShieldAbsorption", "type": "percent", "value": 0.30 } ]
+      ]
+    },
+    {
+      "key": "boarding-drill",
+      "name": "Boarding Drill",
+      "desc": "While aboard an <color=#FFD700>enemy ship</color>, you accelerate faster.",
+      "row": 3, "col": 0, "target": "character", "when": "onEnemyShip",
+      "mods": [
+        [ { "stat": "MotorAcceleration", "type": "percent", "value": 0.15 } ]
       ]
     }
   ]

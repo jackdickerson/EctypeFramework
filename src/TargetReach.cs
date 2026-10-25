@@ -52,9 +52,12 @@ namespace Ectype
                     kv.Value > perk.Levels.Count || perk.Levels[kv.Value - 1] == null ||
                     perk.Levels[kv.Value - 1].Mods == null) continue;
 
+                bool routed = perk.Target == CharacterShipRoute.CharacterShip;
+                bool onCharacter = perk.Target == PerkBuffTarget.Character ||
+                                   (routed && PerkScopes.Of(kv.Key).Ships == ShipSet.Character);
                 StatCollection root;
                 string where;
-                if (perk.Target == PerkBuffTarget.Character)
+                if (onCharacter)
                 {
                     root = player != null ? player.Stats : null;
                     where = "the player's";
@@ -72,8 +75,7 @@ namespace Ectype
                     string key = perk.name + "|" + mod.Type + "|" + (int)perk.Target;
                     if (_settled.Contains(key)) continue;
                     if (StatRegistry.CollectionHasStat(root, mod.Type) ||
-                        (perk.Target == CharacterShipRoute.CharacterShip &&
-                         DetachedHasStat(ship, mod.Type)))
+                        (routed && !onCharacter && DetachedHasStat(ship, mod.Type)))
                     {
                         _settled.Add(key);
                         _firstMiss.Remove(key);
@@ -87,7 +89,7 @@ namespace Ectype
                     _settled.Add(key);
                     _firstMiss.Remove(key);
                     Plugin.Log.LogWarning("Ectype: perk '" + perk.name + "' (target " +
-                                          EctypeAssets.TargetName(perk.Target) + ") has an " +
+                                          PerkScopes.NameOf(kv.Key, perk.Target) + ") has an " +
                                           "effect on " + StatRegistry.NameOf(mod.Type) +
                                           " that matches no stat in " + where + " collection " +
                                           "tree - it stays registered and changes nothing there.");

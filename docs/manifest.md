@@ -9,7 +9,8 @@ data-only example under [../examples/](../examples/).
 
 A manifest that fails validation rejects its role by name in the log and nothing else
 breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`, `roleId`,
-`roleName`, `hero`, then each perk, custom stat and `suppress` entry.
+`roleName`, `hero`, each perk, the hero's target, distribution and conditions, each other perk's
+(a bad one skips that perk), `abilityWhen`, then each custom stat and `suppress` entry.
 [troubleshooting.md](troubleshooting.md) lists each message.
 
 ## Top level
@@ -28,6 +29,7 @@ breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`,
 | `customStats` | no | List of CustomStatSpec. A custom stat is inert until code reads it, so do not ship one in a data-only role. Role code gets the id from `RoleStats.Id(roleId, name)`. `RoleStats.RegisterAbilityTiming` registers an ability's own duration and cooldown under two of them, scoping a perk to that ability where `ClassAbilityDuration` and `ClassAbilityCooldown` reach every role ability on the character. |
 | `suppress` | no | List of vanilla perk-tree GUIDs (32 hex chars; dashes allowed) whose trees should not exist while this role is installed: the "this role replaces Gunner" mechanism. The union across every installed role mod applies. A suppressed tree is removed from both terminal documents (freeing its layout slot), skipped by the role tally, and its perks are scrubbed from saved loadouts with vanilla refund semantics: the spent points return as unspent on the next profile write. An entry that names a single perk, a framework-registered role (use `suppressRoles`), or nothing in this game version is ignored with a named warning, and an ignored entry never fails the role. An entry that is not a GUID at all (not 32 hex chars once dashes are removed) rejects the role. A dev tools build of the framework ([CONTRIBUTING.md](../CONTRIBUTING.md#dev-tools-build)) writes each tree's `guid` to `BepInEx\EctypeDump\vanilla-roles.json` with the `[Dev] WriteVanillaDump` switch on. The stock four: Gunner `b03e6f1f9a2ec3c4cae3b5027026e4e1`, Pilot `1bfec4ad20c77c34cbb1b77834afd960`, Engineer `382e55cd4fc760e4ab8bc79b09f23063`, Scavenger `7a490a7247bc6334fbeb24a0ddc48a80`. |
 | `suppressRoles` | no | List of other framework roles, by `roleId`, whose trees should not exist while this role is installed and not itself suppressed. The tree is kept out of both terminals, its perks stop applying and their points count as unspent (the perks stay in each saved loadout, read as absent, so removing this role restores the build), and its payloads are not re-homed. An id that is not installed is ignored with a warning. The role's own id is logged as an error and ignored, and the role still registers. A cycle (A lists B, B lists A) is broken in `roleId` order with a warning. |
+| `abilityWhen` | no | Conditions, in the same form as a perk's `when`, that must hold on the owning client for the role's ability to start. While one does not, the ability is unusable: the key does nothing and the HUD slot shows the game's unusable styling. Checked before the ability's own `OwnerCanUse`. An invalid entry rejects the role. Has no effect on a role without an ability factory. Framework 0.29.0. |
 
 ## PerkSpec
 
@@ -42,11 +44,106 @@ breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`,
 | `row` | yes | 1-7 (row 0 is the hero's). Every tree is a copy of the stock grid, 8 rows shaped `[1,3,1,3,3,1,3,1]`: rows 1, 3, 4 and 6 hold three cells, rows 2, 5 and 7 are single wide cells (see `wide`). The manifest currently has no field to change the shape or its row gating. |
 | `col` | rows 1/3/4/6 | 0-2 in the three-cell rows. Rows 2, 5 and 7 are single wide cells: use `col: 0`. Registration rejects only `row < 1`. The game's `PerkTreeVE.SetPerkData` indexes the cell map directly when the terminal builds: a `row` past 7, or a `col` past 2 on a three-cell row, throws `ArgumentOutOfRangeException`. On a single-cell row any `col` is forced to 0. |
 | `wide` | rows 2, 5, 7 | Declares that the perk fills a wide cell. Rows 2, 5 and 7 are the wide cells (with the hero in row 0, the full-width cells of the stock grid). A perk in a wide cell must set `true`, otherwise the role is rejected with `perk '<key>' on row <n> is a wide cell and must declare wide: true`. `true` on any other row is rejected with `perk '<key>' on row <n> has wide: true, but only rows 2, 5 and 7 are wide cells`. Absent means `false`. The hero needs no flag. |
-| `target` | no | Where the effects land. `"character"` (default): always on, on the player. `"seat"`: the manned module only, applied on sit and removed on stand. `"seatShip"`: the ship's stat collection while seated in any chair, the "all installed weapons" or ship-wide pattern (vanilla does "manning any System Module buffs all installed weapons" this way). `"characterShip"`: the ship's stat collection for every player holding the perk, seated or not (in a room with several ships, each holder's own crew ship), plus every ship module tree the game leaves detached from it, such as the Fabricator's; one contribution per holder, applied on every client. Case-insensitive. An unknown value skips the perk with a named error, and an unknown value on the hero rejects the role. A stat's category (see [stat-names.md](stat-names.md)) does not constrain the target. An effect whose stat matches nothing in the target's collection tree still registers and changes nothing; the framework logs one warning per perk, stat and target. Currently, a perk can only have one `target`.|
+| `target` | no | Where the effects land. `"character"` (default): always on, on the player. `"seat"`: the manned module only, applied on sit and removed on stand. `"seatShip"`: the ship's stat collection while seated in any chair, the "all installed weapons" or ship-wide pattern (vanilla does "manning any System Module buffs all installed weapons" this way). `"characterShip"`: the ship's stat collection for every player holding the perk, seated or not (in a room with several ships, each holder's own crew ship), plus every ship module tree the game leaves detached from it, such as the Fabricator's; one contribution per holder, applied on every client. Case-insensitive. An unknown value skips the perk with a named error, and an unknown value on the hero rejects the role. A stat's category (see [stat-names.md](stat-names.md)) does not constrain the target. An effect whose stat matches nothing in the target's collection tree still registers and changes nothing; the framework logs one warning per perk, stat and target. Currently, a perk can only have one `target`. `"characterAboard"`, `"characterFleet"` and `"seatFleet"` (framework 0.29.0) are in [Ship targets](#ship-targets).|
+| `distribution` | no | `characterFleet` and `seatFleet` only: `"each"` (default) or `"split"`. See [Distribution](#distribution). An unknown value skips the perk with a named error, and rejects the role on the hero. Framework 0.29.0. |
+| `when` | no | Conditions on the holder's own situation; the effects apply only while every one holds. A name or a list of names, each optionally prefixed with `!` to require it false. See [Conditions](#conditions). Not allowed on `seat` or `seatShip`. Framework 0.29.0. |
 | `mods` | no | List of levels; each level is a list of effects. **Each level's list is the total at that level, not an increment.** The game applies only the current level's list, so a +10/+20/+30 ladder is authored as 0.10 / 0.20 / 0.30. |
 | `levels` | no | Level (pip) count. The effective count is max(1, `levels`, `mods.Count`). Levels beyond `mods` register empty: they cost a point, do nothing, and warn on every launch. |
 | `emptyOk` | no | Declares that every empty level of this perk is intentional (an ability perk whose payload is code, or an unlock-only perk). It silences the framework's per-launch "EMPTY StatMods" warning for this perk. Vanilla ships plenty of these deliberately: every hero, boost and superior banner, and every "Inscribe X" and "Fabricate X" perk. A level that does carry effects is unaffected either way. |
 | `unlocks` | no | List of item GUIDs (32 hex, dashes allowed; anything else rejects the role) this perk unlocks in the Ship's Fabricator once bought at **any** level. This is the vanilla `UnlockCriteriaType.PlayerPerk` mechanism every "Inscribe X" and "Fabricate X" perk uses. The framework registers one `UnlockItemDef` per entry with `RequiredPerk` pointed at this perk's own GUID. `FabricatorModule` already listens for perk changes and grants matching items into the shared unlock pool itself, so no event hook is needed for that half. **This registers only the `UnlockContainer` side.** It does not make an item craftable and is not a way to add brand-new fabricator content: `CraftData.FillShop`, `FabricatorModule`'s own learnability check, and everything else that lists what the Fabricator can build all key off a separate container (`CraftingDataContainer` / `CraftableItemDef`), which `unlocks` never touches. The target item must already be independently craftable: a vanilla item, or a runtime-registered item that your mod also gave a `CraftingDataContainer` entry. Use `unlocks` to gate an already-existing craftable behind a perk. **The item must also not already have an `UnlockItemDef`** (a vanilla item, or one another mod registered). The framework can only add a fresh entry and never repoint someone else's, so a claimed GUID is skipped with a named warning and that perk grants no unlock. The exception is a claim held by a perk of a vanilla tree that this role's own `suppress` list removes: the framework repoints that unlock at this perk (a role adopts it also when another installed role suppresses the same tree). When two installed roles list the same item in their own `unlocks`, the first to register wins and the second is skipped with a named warning (see [troubleshooting.md](troubleshooting.md)). |
+
+## Ship targets
+
+Every ship target is applied by the framework, on every client, for every player holding the
+perk: one copy of the held level's effects per ship it names, each modifier with its own source
+(so standing up never removes it) and the perk as its origin in readouts. Each copy also lands on
+every ship module tree the game leaves detached from the ship's own collection, such as the
+Fabricator's. Which ships a holder's perk names is resolved on every client from data every
+client shares: never from the game's player-ship getter, which in a room with several ships
+names the ship the viewing client looks at. The resolution is repeated four times a second and
+the frame after a ship spawns, starts dying or is destroyed and after anyone sits or stands, and
+only a holder whose ships changed is rebuilt. A holder whose target names no ship contributes
+nothing until it names one.
+
+"The holder's side": under Void Crew Fleet's team match, the ship's team is the holder's team;
+otherwise, once ships of more than one faction have been seen in the mission, the ship's faction
+is the character's; in a room where every ship has had one faction, every ship. "Living": the
+ship exists and has not started dying. The crew ship is
+[Topology's crew ship](reference/topology.md#the-crew-ship).
+
+| Target | Ships | With one ship in the room |
+| --- | --- | --- |
+| `characterShip` | The holder's crew ship. | The room's ship, if it is on the holder's side. |
+| `characterAboard` | The ship whose rooms or inertia bubble hold the holder's character, while it is living and on the holder's side. None in open space or aboard another side's ship. | The room's ship while the character is in its rooms or bubble, if it is on the holder's side; none in open space beyond the bubble. |
+| `characterFleet` | Every living ship on the holder's side. In co-op, every living ship. | The room's ship, if it is on the holder's side: exactly `characterShip`. |
+| `seatFleet` | While the holder is seated (a chair, the helm, a turret), every living ship on the side of the ship the seat belongs to. A holder seated aboard another side's ship buffs that side's ships, as `seatShip` buffs the ship of the seat. | The room's ship while seated: exactly `seatShip`. |
+
+A role using `characterAboard`, `characterFleet`, `seatFleet`, `distribution` or `when` sets
+`minFrameworkVersion` to at least `0.29.0`; an older framework skips the perk by name.
+
+The gene-tree tooltip renders a perk's description and its levels' effects and never names a
+target, so the tooltip reads the same for every target. Say in `desc` where the effects land.
+
+### Distribution
+
+`characterFleet` and `seatFleet` can name several ships.
+
+- `"each"` (default): every ship gets the authored amount. A force of three ships gets three
+  times what one crew ship gets from `characterShip`, so balance a fleet perk against that.
+- `"split"`: the authored amount is divided evenly among the ships named at that moment: a
+  `flat` or `flat2` value of 6 over three ships adds 2 to each; a `percent` of 0.30 adds 0.10 to
+  each. When a ship is lost the survivors' shares rise, and when one spawns they fall. With one
+  ship the whole amount lands on it.
+
+`split` is refused (the perk skipped, the role rejected on the hero) on a target other than
+`characterFleet` or `seatFleet`, on a level with a `scalar` (ExponentialMultiplier) effect,
+because a product over ships is not a sum, and on an effect with `"kind": "int"`, because an
+integer amount does not divide. Each refusal names the effect and level.
+
+### Conditions
+
+`when` on a perk and `abilityWhen` on the role take one condition name or a list of names. Every
+entry must hold; `"!name"` requires that condition false. Names are case-insensitive.
+
+| Condition | True while | With one ship in the room |
+| --- | --- | --- |
+| `onOwnShip` | The holder's character is aboard their own crew ship (its rooms or inertia bubble). | Aboard the ship. |
+| `onAllyShip` | The character is aboard a ship of their side that is not their crew ship. | Never. |
+| `onEnemyShip` | The character is aboard a ship of another side. | Never. |
+| `inOpenSpace` | The character is aboard no ship. | Outside the ship's bubble. |
+| `teamMatch` | A team match is running: Void Crew Fleet's team match when Fleet is installed (in the hub too), otherwise player ships of more than one faction seen this mission. | Never. |
+| `ownShipAlive` | The holder's crew ship exists and has not started dying. | The ship has not started dying. |
+| `spectating` | The holder has no character, or Void Crew Fleet places them on no ship (spectating, waiting, or crew of a lost ship). | Never while the character exists. |
+
+The holder's own client decides. It reads its own character four times a second, adopts a new
+answer once two reads in a row agree, and sends it to every other player running this framework
+version, only when it changes. Every client switches that holder's perk contributions on the
+answer it last received, so every client applies the same decision, a fraction of a second after
+the holder's client. Until a holder's first answer arrives, their conditional perks are off on
+other clients. A character perk with `when` is applied by the framework onto the character,
+with the same timing. `seat` and `seatShip` are applied by the game itself on sit and stand and
+cannot carry conditions; `when` on them is refused.
+
+Conditions on other ships' state ("while an allied ship is below 30% hull", "while an enemy ship
+is within 500 m") are refused by name: they need a decision broadcast by whoever observes the
+other ship, which this framework does not make. A timed status applied when the event happens
+covers most of those designs ([reference/enemy-statuses.md](reference/enemy-statuses.md),
+[reference/character-statuses.md](reference/character-statuses.md)).
+
+Two entries of `perks`:
+
+```json
+{
+  "key": "boarding-drill", "name": "Boarding Drill", "row": 3, "col": 0,
+  "target": "character", "when": "onEnemyShip",
+  "mods": [ [ { "stat": "MotorAcceleration", "type": "percent", "value": 0.15 } ] ]
+},
+{
+  "key": "fleet-shields", "name": "Fleet Shields", "row": 2, "col": 0, "wide": true,
+  "target": "characterFleet", "distribution": "split", "when": ["ownShipAlive", "!spectating"],
+  "mods": [ [ { "stat": "ShieldAbsorption", "type": "percent", "value": 0.30 } ] ]
+}
+```
 
 ## EffectSpec (one entry in a level's list)
 

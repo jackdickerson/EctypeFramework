@@ -162,6 +162,8 @@ namespace Ectype
                 return null;
             }
 
+            ((EctypeRoleAbility)ability).ManifestWhen = rec.Manifest.AbilityWhen;
+
             // Record BEFORE Start(): Start re-enters our ClassAbility.Start postfix.
             rec.AbilityInstances[loco] = ability;
             // Opt into key-based replication so the ability's array position on other

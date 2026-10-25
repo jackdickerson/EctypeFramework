@@ -1,3 +1,7 @@
+## 0.29.0
+
+Role perks can buff every ship on your side, the ship you are standing in, or every ship on your side while you sit at a station, and can share one bonus across a fleet instead of giving each ship the whole of it. Perks and role abilities can depend on where the player is: aboard their own ship, an ally's or an enemy's, or out in space, whether their ship still flies, and whether a team match is on. Each player's game decides these for its own player and tells everyone else, so every player sees the same bonuses. In a room with one ship the new perks act like the existing ones. Players need this version to join a host running it.
+
 ## 0.28.0
 
 Mods can put timed effects on other players, such as a slow from a crewmate or an enemy. The affected player's own game checks each one first against the mod's rules (who sent it, how close they are, whether they can see each other, how often they send), so a modified client cannot apply them from afar, through walls or in a flood. Other players can see these effects. Effects on a player now end when that player dies. Players need this version to join a host running it.
