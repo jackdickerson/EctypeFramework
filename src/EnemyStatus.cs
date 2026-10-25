@@ -120,6 +120,14 @@ namespace Ectype
         /// application, and a status with damage over time should be Hostile.</summary>
         public StatusStance Stance = StatusStance.Any;
 
+        /// <summary>Milliseconds over which this client's applications of the status to one
+        /// target travel as one message. 0 (the default) sends each application at once.
+        /// Above 0, Apply still takes effect on this client at once, so a later hit in the
+        /// same frame sees the earlier stacks; the peers receive one message per target per
+        /// window carrying the number of applications, and add that many, so applications
+        /// from several clients add up. About 150 suits a status applied per projectile hit.</summary>
+        public int CoalesceMs;
+
         // ---- presentation (local-only cosmetics; see EnemyStatusFx.cs) ----
 
         /// <summary>Countdown marker on the affected object (the game's own
@@ -285,8 +293,13 @@ namespace Ectype
                 int attackerView = attacker != null && attacker.photonView != null
                                        ? attacker.photonView.ViewID : 0;
                 ApplyLocal(target, def, startTs, durationMs, magnitude, attacker, me, myForce, 1);
-                Broadcast(new object[] { (byte)0, target.photonView.ViewID, key,
-                                         startTs, durationMs, magnitude, attackerView });
+                if (def.CoalesceMs > 0)
+                    Outbox.Add(target.photonView.ViewID, key, target.name, startTs, durationMs,
+                               magnitude, attackerView, def.RefreshOnReapply, def.CoalesceMs,
+                               Time.unscaledTime);
+                else
+                    Broadcast(new object[] { (byte)0, target.photonView.ViewID, key,
+                                             startTs, durationMs, magnitude, attackerView });
                 return StatusRefusal.None;
             }
             catch (Exception e)
@@ -328,6 +341,8 @@ namespace Ectype
                     return StatusRefusal.Authority;
                 }
                 RemoveLocal(target, key);
+                // Applications still queued would re-add the status on the peers after the removal.
+                Outbox.Drop(target.photonView.ViewID, key);
                 Broadcast(new object[] { (byte)1, target.photonView.ViewID, key });
                 return StatusRefusal.None;
             }
@@ -519,6 +534,7 @@ namespace Ectype
         /// </summary>
         internal static void Poll()
         {
+            FlushOutbox(false);
             EnemyStatusMarkers.Poll(Active.Count > 0);
             if (Active.Count == 0) return;
             DriveScratch.Clear();
@@ -593,6 +609,34 @@ namespace Ectype
             EctypeNet.Send(EctypeNet.EnemyStatus, to, args, reliable: true);
         }
 
+        /// <summary>Coalesced applications waiting for their window (CoalesceMs).</summary>
+        internal static readonly EnemyStatusOutbox Outbox = new EnemyStatusOutbox();
+        private static readonly List<EnemyStatusOutbox.Batch> FlushScratch =
+            new List<EnemyStatusOutbox.Batch>();
+
+        /// <summary>Sends every batch whose window has passed (every batch when
+        /// <paramref name="all"/>) as one ApplyN message each.</summary>
+        internal static void FlushOutbox(bool all)
+        {
+            if (Outbox.Count == 0) return;
+            FlushScratch.Clear();
+            Outbox.TakeDue(Time.unscaledTime, all, FlushScratch);
+            if (FlushScratch.Count == 0) return;
+            Player[] to = RuntimeAbilities.Recipients();
+            for (int i = 0; i < FlushScratch.Count; i++)
+            {
+                EnemyStatusOutbox.Batch b = FlushScratch[i];
+                if (to.Length > 0)
+                    EctypeNet.Send(EctypeNet.EnemyStatusStacks, to, b.Args(), reliable: true);
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status '" + b.Key + "' on " + b.TargetName + ": " +
+                                       b.Applications + " application(s) in one " + b.WindowMs +
+                                       " ms window, " + (to.Length > 0 ? "1 send" : "0 sends (no peers)") +
+                                       ".");
+            }
+            FlushScratch.Clear();
+        }
+
         /// <summary>
         /// One received apply or remove (subtype <see cref="EctypeNet.EnemyStatus"/>):
         /// <c>[byte op, int viewId, string key]</c>, op 0 adding
@@ -618,6 +662,29 @@ namespace Ectype
             if (def == null) return StatusRefusal.NotRegistered;
             return ReceiveApply(sender, target, def, (int)args[3], (int)args[4], (float)args[5],
                                 (int)args[6], 1);
+        }
+
+        /// <summary>
+        /// One received batch of coalesced applications (subtype
+        /// <see cref="EctypeNet.EnemyStatusStacks"/>): <c>[int viewId, string key, int startTs,
+        /// int durationMs, float magnitude, int attackerView, int applications]</c>. Judged like
+        /// a single apply, then applied as that many applications with the timer moved once.
+        /// </summary>
+        internal static StatusRefusal HandleStacks(int sender, object[] args)
+        {
+            if (args == null || args.Length < 7) return StatusRefusal.Failed;
+            string key = args[1] as string;
+            int applications = (int)args[6];
+            if (key == null || applications < 1) return StatusRefusal.Failed;
+            if (applications > EnemyStatusOutbox.MaxApplications)
+                applications = EnemyStatusOutbox.MaxApplications;
+
+            OrbitObject target = ResolveTarget((int)args[0]);
+            if (target == null) return StatusRefusal.InvalidTarget;
+            EnemyStatusDef def = ReceivedDef(key);
+            if (def == null) return StatusRefusal.NotRegistered;
+            return ReceiveApply(sender, target, def, (int)args[2], (int)args[3], (float)args[4],
+                                (int)args[5], applications);
         }
 
         private static OrbitObject ResolveTarget(int viewId)
@@ -1088,6 +1155,19 @@ namespace Ectype
             try
             {
                 EnemyStatuses.HandleMessage(senderActor, args);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: handling enemy-status message failed: " + e);
+            }
+        }
+
+        /// <summary>Receiver for subtype <see cref="EctypeNet.EnemyStatusStacks"/>.</summary>
+        internal static void ReceiveStacks(int senderActor, object[] args)
+        {
+            try
+            {
+                EnemyStatuses.HandleStacks(senderActor, args);
             }
             catch (Exception e)
             {

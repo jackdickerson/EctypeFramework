@@ -49,6 +49,11 @@ namespace Ectype
         /// (op 0 adds int startTs, int durationMs, float magnitude, int attackerView).</summary>
         internal const byte EnemyStatus = 2;
 
+        /// <summary>Coalesced enemy status applications (ApplyN): [int viewId, string key,
+        /// int startTs, int durationMs, float magnitude, int attackerView, int applications].
+        /// The count is a delta: each receiver adds that many applications.</summary>
+        internal const byte EnemyStatusStacks = 3;
+
         /// <summary>
         /// Every message's field types, in order: the network contract in data. A subtype may
         /// have several layouts (enemy status remove and apply). The sender refuses to send,
@@ -69,6 +74,11 @@ namespace Ectype
                     new[] { typeof(byte), typeof(int), typeof(string) },
                     new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
                             typeof(float), typeof(int) },
+                } },
+            { EnemyStatusStacks, new[]
+                {
+                    new[] { typeof(int), typeof(string), typeof(int), typeof(int), typeof(float),
+                            typeof(int), typeof(int) },
                 } },
         };
 
