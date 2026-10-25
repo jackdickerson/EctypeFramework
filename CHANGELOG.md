@@ -16,7 +16,6 @@ build.
   target's client for every accepted request from another client, with the requester's
   character and the magnitude the request was accepted at. Every existing member keeps its
   signature; nothing new crosses the network.
-
 - `SessionData.HostRoomValue<T>(key, defaultValue, maxBytes)` returns a `HostRoomValue<T>`: a
   value only the host writes, of any type `SessionData.Register` accepts, held in its own room
   property `Ectype.Value:<key>` for the life of the room, in the hub and in a mission. `Value`,
