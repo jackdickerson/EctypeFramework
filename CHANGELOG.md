@@ -10,25 +10,32 @@ build.
   an application judges its sender's side against the target and drops one the stance
   forbids; the applying client checks first. A sender's side is its character's faction, else
   its crew ship's, else under Void Crew Fleet its team's; a sender with none is refused by any
-  stance other than `Any`. Refusals log as warnings, at most once per sender and status per
-  30 s. Templates that keep `Any` apply as before.
+  stance other than `Any`. When the master applies with an NPC as the attacker, the NPC's side
+  is judged instead, so an enemy's debuff on a player ship can be `Hostile`. Refusals log as
+  warnings, at most once per sender, operation and status per 30 s. Templates that keep `Any`
+  apply and remove as before.
+- A removal is accepted from the master and from any sender the stance would let apply the
+  status: anyone for `Any`, a sender on another side from the target for `Hostile`, one on its
+  side for `Friendly`. The rule depends only on the sender and the target, so every client
+  reaches the same verdict.
 - `EnemyStatuses.TryApply` and `TryRemove` return a `StatusRefusal` saying why nothing
-  happened. `Apply` and `Remove` keep their signatures.
-- A status remembers which client applied it, and a removal is accepted only from that
-  client, the target's owner or the master, for every status whatever its stance. A removal
-  from any other client is refused on that client and ignored by every receiver.
+  happened. `Apply` and `Remove` keep their signatures and log a stance refusal once per key.
+- Re-applying a status that refreshes moves its end only later, never earlier, so
+  applications from several clients leave the same end in any arrival order.
 - A damage-over-time status registered with `Stance = Any` logs one warning recommending
-  `Hostile`. A `Hostile` one skips each tick while its applier is no longer on another side
-  from the target.
+  `Hostile`. A `Hostile` one skips each tick while the client that created it (or its NPC
+  attacker) is no longer on another side from the target.
 - `EnemyStatusDef.Visibility`: `All` (default), `OwnForce`, `TargetForce` or `HostileToTarget`
-  decides which viewers draw the marker and the visual. The status itself runs everywhere.
+  decides which viewers draw the marker and the visual. `OwnForce` draws for every side that
+  applied the status. The status itself runs everywhere.
 - `EnemyStatusDef.CoalesceMs` (default 0): this client's applications of the status to one
-  target travel as one message per window, carrying how many there were, so stacks from
-  several clients add up. The applying client still applies each at once. A status applied
-  per projectile hit should set about 150.
+  target travel as one message per window, carrying how many there were and the local
+  status's timer, so stacks from several clients add up. The applying client still applies
+  each at once. A batch never spans two lives of the status, and a removal, sent or received,
+  drops the queued batch. A status applied per projectile hit should set about 150.
 - Past `[EnemyStatuses] MarkerCap` or `VfxCap`, a new status takes the slot of the one
-  farthest from the ship this client views when it is nearer, and freed slots go to the
-  nearest statuses without one.
+  farthest from the ship this client views when it is nearer by 10% of that distance or 25 m,
+  whichever is larger, and freed slots go to the nearest statuses without one.
 - `CharacterStatuses.Apply` on a character this client does not own logs one warning per key.
 - Network contract 2: a new message subtype carries coalesced status applications. A
   framework on contract 1 is refused at join.

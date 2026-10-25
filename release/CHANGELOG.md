@@ -1,3 +1,7 @@
+## 0.23.0
+
+Status effects that mods put on ships can be limited to enemies or to allies, and every player's game checks who applied or removed one, so a modified client can no longer strip or place them freely. Rapid-fire weapons that apply a status on every hit send far fewer network messages in large rooms. When too many status markers are on screen, the ones nearest your ship are kept. Players need this version to join a host running it.
+
 ## 0.22.0
 
 Rooms with more than one player ship, such as Void Crew Fleet's: perks that buff "the ship" now buff each player's own ship on every client, enemy-shot slowing works per ship, and a new event fires once when a whole fleet arrives from a jump. Timed stat effects survive being copied by other mods, a jump from one ship's inertia zone into another's ends channelled abilities, and spawns are lighter in large rooms. While a modded session keeps progression unsaved, your block list and cosmetic, ship and gene-tree loadouts are saved again.

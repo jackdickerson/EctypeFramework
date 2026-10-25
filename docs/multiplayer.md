@@ -265,8 +265,8 @@ What the framework's own features do with several ships:
   colour from the game's own affiliation rule, which a team mod can make side-relative. Past
   the marker cap, the markers nearest the viewed ship are the ones kept.
 - **Enemy statuses** judge who applied them. A status declared `Hostile` or `Friendly` is
-  refused on every client when the sender is on the wrong side of the target, a status is
-  removed only by its applier, the target's owner or the master, and `Visibility` limits its
+  refused on every client when the sender is on the wrong side of the target, a removal is
+  judged by the same stance (the master may always remove), and `Visibility` limits its
   marker to one side's players
   ([enemy-statuses.md](reference/enemy-statuses.md#who-may-apply-and-remove)).
 - **Enemy ability suspension** lifts the enemy's modifiers from every player ship.

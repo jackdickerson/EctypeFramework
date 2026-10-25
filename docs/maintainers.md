@@ -55,7 +55,7 @@ column.
 | `ClientGame.OnPlayerShipSet` (subscribed) | raised from `PlayerControlledShip.Start` after `Awake` has set `PlayerShip`, once per ship; requests the `characterShip` pass on the next frame, which rebuilds only holders whose resolved ship changed |
 | `PlayerControlledShip.Awake` postfix, `OnDestroy` prefix, `NetPublishShipDeathBegan` postfix | the `Topology` ship registry. `Awake` runs on every client for every ship and is where the ship assigns itself as the game's player ship; the death-began method is an RPC sent to all and sets `StartedDeath` |
 | `ClientGame.PlayerShip` (read) | presentation only (the status-marker lock gate, and the distance ranking of status markers and visuals past their caps), and simulation only while `Topology.Multi` is false. A multi-ship mod can postfix the getter to return the viewing client's ship |
-| `EventData.Sender` (through the framework's channel), `Room.GetPlayer(int)`, `PhotonView.Owner` / `IsMine`, `PhotonNetwork.MasterClient` / `IsMasterClient` (read); `OrbitObject.IsObjectFromDifferentFaction` (through `Topology.Hostile`) | enemy-status authority: the sender's side against the template's stance, and who may remove a status. The game's different-faction check is a plain faction comparison, so neutral objects (faction 0) are on another side from every player |
+| `EventData.Sender` (through the framework's channel), `Room.GetPlayer(int)`, `PhotonNetwork.MasterClient` / `IsMasterClient` (read); `OrbitObject.IsObjectFromDifferentFaction` (through `Topology.Hostile`) | enemy-status authority: the sender's side against the template's stance for an application and a removal, the master's removal exemption, and the master-with-NPC-attacker case. The game's different-faction check is a plain faction comparison, so neutral objects (faction 0) are on another side from every player |
 | `ClientGame.Players`, `Player.ActorId`, `Player.ZonedPlatform` / `Platform`, `OrbitObject.Faction`, `ShipHull.Ship`, `CarryableObject.ParentPlatform` (read) | `Topology`'s answers: a character by actor, the ship a character is aboard, a part's ship, sides |
 | Plugin `com.captainchunck.voidcrew.fleet`: `VoidCrewFleet.FleetApi.ApiVersion`, `ShipOfPlayer(int)`, `TeamOf(int)`, `TeamOfShip(int)`, events `ShipsChanged` / `TeamsChanged` (bound by reflection); room property `VCF_Ships` (read, shape-checked) | `Topology`'s crew-ship and team answers and ship numbering under Void Crew Fleet. Bound only for `ApiVersion` 1; answers used only while the plugin component and its `[General] Enabled` entry are on. A missing member is logged once and answered from game data |
 | `GuidedProjectile.Target`, `SyncedProjectile.Source` / `Velocity` / `ProjectileId` (read) | the per-shot ship choice for `IncomingProjectileSpeed` |
@@ -149,13 +149,17 @@ What it adds:
   the same types and values. It logs `dev self-test: net payload round trip passed` or
   `FAILED` with the first difference. Add a layout to it with each new message subtype.
 - A status coalescing self-test at load: ten applications in one 150 ms window must leave the
-  outbox as one batch carrying 10, in fields matching the ApplyN layout; a second key, a
-  template that does not refresh, and a removal of a queued batch are checked beside it.
-- A status authority self-test once a character and its crew ship exist: two templates with
+  outbox as one batch carrying 10, in fields matching the ApplyN layout. Two lives of one
+  status must make two batches, a removal must drop open and closed batches of its own key
+  only, and the cap margin is checked at four distances.
+- A status authority self-test once a character and its crew ship exist: three templates with
   no stats and no marker are driven through the receive path with synthetic senders against
-  that ship. A same-side `Hostile` apply must be refused twice with one log line, ApplyN 10
-  then 3 must leave 13 stacks, and a removal from actor 9999 must be ignored while the
-  applier's own removal takes. Its two refusal warnings are expected.
+  that ship. A same-side `Hostile` apply must be refused twice with one log line; ApplyN 10
+  then 3 must leave 13 stacks; an `Any` status must be removable by actor 9999; a `Hostile`
+  status must refuse a non-master remover its stance would not let apply it, and accept the
+  master; a received removal must drop this client's queued batch; and, on the master with a
+  hostile NPC in the sector, a `Hostile` apply with that NPC as attacker must land. Its two
+  refusal warnings are expected.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
   ability disabled while still selected, a channel stopped with time left (with a short
