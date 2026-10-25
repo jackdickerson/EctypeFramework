@@ -104,6 +104,7 @@ namespace Ectype
         /// its start is the owner's replicated start, and its own copy of the character's
         /// state can be stale. Default true. Role code never writes AbilityUsable itself. The role
         /// manifest's abilityWhen conditions are checked first; this runs only while they hold.
+        /// Read the owner's ship and side through <see cref="RoleContext"/>.
         /// </summary>
         protected virtual bool OwnerCanUse()
         {
