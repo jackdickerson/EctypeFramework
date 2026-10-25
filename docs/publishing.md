@@ -95,16 +95,27 @@ plain words.
 1. **Everyone in the room needs it.** A role mod and the framework are multiplayer type
    `All`. A player without them cannot join a room that has them, and a host without them
    bounces a joiner who has them.
-2. **Everyone needs the same version.** VoidManager refuses a joiner whose version differs
-   from the host's, and the host also compares the DLL's bytes. A Thunderstore version number
-   is uploaded once, so the same package version is the same bytes on every machine. Players
-   who use the Void Crew Mod Launcher get the host's versions installed for them when they
-   join; everyone else updates by hand. State the version the listing was written for and
-   tell players to update the framework and your mod together.
+2. **Everyone needs the same version.** What enforces it at join:
+   - The game's asset check, always: it refuses a joiner whose framework speaks another
+     network contract, and one whose role content (trees, perks) differs from the host's. It
+     does not compare version numbers.
+   - VoidManager, when the host and the joiner both run it: it refuses a joiner whose version
+     of a mod declared `All` differs from the host's, and the host also compares that DLL's
+     bytes. The framework declares no VoidManager type, so this never covers the framework
+     itself.
+   - The Void Crew Mod Launcher, before the game starts: it installs the host's exact
+     versions, the framework included.
+
+   Two framework versions on the same network contract can therefore share a room when
+   players install by hand. A Thunderstore version number is uploaded once, so the same
+   package version is the same bytes on every machine. State the version the listing was
+   written for and tell players to update the framework and your mod together.
 3. **Sessions are flagged as modded.** The game tags a room as modded and shows the tag in
-   the server browser, which is how it separates modded rooms in matchmaking. VoidManager
-   also blocks cloud profile writes and Steam stats and achievements for a tagged session.
-   The tag is set when the mod loads and cannot be switched off from the mod's settings.
+   the server browser, which is how it separates modded rooms in matchmaking. Without
+   VoidManager, the framework blocks cloud profile writes and Steam stats and achievements
+   from the first tagged room until the game restarts. With VoidManager, VoidManager's own
+   progression switch decides, and it turns off only when a mod asks it to. The tag is set
+   when the mod loads and cannot be switched off from the mod's settings.
 4. **What the framework dependency means.** One line: the role needs the Ectype Framework
    package, which the mod manager installs automatically and which a hand installer has
    to add.
@@ -123,8 +134,11 @@ A listing skeleton for the multiplayer section:
 ### Multiplayer
 
 - Everyone in the room needs this mod and the Ectype Framework, at the same version.
-- Hosting or joining a room with this mod marks the session as modded: no progression and
-  no achievements for anyone in it.
+- Hosting or joining a room with this mod marks the session as modded. Without VoidManager,
+  progression and achievements are off from then until the game restarts; with VoidManager,
+  VoidManager decides.
+- Players without VoidManager can join only a host that either has no VoidManager or runs no
+  mod declared `All` to it.
 - Updating: update this mod and the Ectype Framework together.
 ```
 

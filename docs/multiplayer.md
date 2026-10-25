@@ -8,14 +8,17 @@ its players. The VoidManager behaviour described here is that of VoidManager 1.2
 
 - Every player in a room runs the framework and every role mod any player has, at the same
   Thunderstore version.
-- A role mod declares `MultiplayerType.All`. The framework declares it too.
+- A role mod declares `MultiplayerType.All`. The framework declares no VoidManager type, so
+  VoidManager never refuses a join on its account; see "Players with and without
+  VoidManager".
 - The Void Crew Mod Launcher matches a joiner's mods to the host's before the game starts.
   VoidManager's join check refuses anyone whose set still differs, and the game's asset check
   refuses anyone whose registered role content differs.
 - Both join checks run at join. A member already in the room is never re-checked. The
   framework's own contribution is one asset the game's check compares, below.
 - Hosting a room with the framework installed marks the session as modded. The mark cannot be
-  withdrawn from that room, and a modded session does not count toward progression.
+  withdrawn from that room. Who keeps the session out of progression depends on whether the
+  player has VoidManager; see "The modded-session flag and progression".
 
 ## Matching mods with the launcher
 
@@ -32,10 +35,14 @@ host's builds and passes both join checks.
 
 What follows for a mod author:
 
-- **Declare `MultiplayerType.All`.** The framework and every role mod do, so the launcher
-  advertises them as required for everyone in the room.
-- **The join check still applies without the launcher.** A joiner who installed mods by hand
-  is refused by VoidManager's `All` check when any version differs from the host's.
+- **Make the launcher advertise the mod as required for everyone.** It reads a mod's
+  VoidManager type when the mod declares one (`All` means everyone) and the package's
+  Thunderstore categories otherwise (`All Required`). The framework declares no VoidManager
+  type and carries `All Required`.
+- **The join checks still apply without the launcher.** A joiner who installed mods by hand
+  is refused by VoidManager's `All` check when any version of an `All` mod differs from the
+  host's (both sides running VoidManager), and by the game's asset check when role content or
+  the framework's network contract differs.
 - **Ship through Thunderstore and raise the version on every build.** The launcher can install
   only what is published. A DLL you built locally and handed to a friend cannot be downloaded
   by anyone else who joins, and two different builds under one version number are refused by
@@ -95,6 +102,27 @@ framework as `Ectype Framework <version> (network contract <n>)`. Being in the `
 mask, the marker also tags every room the process hosts as modded (route 1 below), which is
 what tags a room when VoidManager is not installed.
 
+## Players with and without VoidManager
+
+The framework runs with or without VoidManager, and so can a room:
+
+- **A host without VoidManager** publishes no `Mods` room property, only the game's modded
+  tag. VoidManager's client-side check on a joiner reads the host's mod list whenever the room
+  is tagged, and fails without one. On a joiner that runs the framework, the framework passes
+  that check for a tagged room with no `Mods` property, and the game's asset check decides.
+  A joiner with VoidManager and without the framework cannot join anyway: it lacks the
+  framework's contract marker.
+- **A host with VoidManager** kicks a joiner who has no `Mods` player property, that is a
+  joiner without VoidManager, whenever the host's highest declared VoidManager type is `All`.
+  It does the same while the host has turned VoidManager's progression switch off. This is
+  VoidManager's own policy. The framework declares no type, so it never causes the kick, but
+  any `All` mod on the host does, role mods included.
+
+A room that must take players without VoidManager therefore needs a host without VoidManager,
+or a host whose mods declare nothing above `Session` to VoidManager. The framework's own
+compatibility rests on the game's asset check in every case: its contract marker and the role
+mods' required assets.
+
 ## Why role content is mandatory for the room
 
 The framework registers each role's gene tree and every perk inside the `Required` mask.
@@ -128,8 +156,19 @@ each saved loadout and are read as absent, and its spent points count as unspent
 ## The modded-session flag and progression
 
 The game tags a room as modded with the room property `R_Mod`. The tag shows in the server
-browser. VoidManager's progression handler blocks cloud profile writes and Steam stats and
-achievements for a tagged session.
+browser. The game itself reads it for nothing else.
+
+Who stops a modded session from counting toward progression depends on whether the player
+has VoidManager:
+
+- **Without VoidManager**, the framework does. The first time the client is in a room that
+  carries the tag, it blocks cloud profile writes, the profile save on exit, and Steam stats
+  and achievements, until the game restarts. The profile in memory already holds what that
+  session earned, so it is never written again in that process.
+- **With VoidManager**, VoidManager's own progression switch governs the same writes and the
+  framework leaves them alone. VoidManager turns that switch off when a mod calls its
+  `ProgressionHandler.DisableProgression`, or when the host has done so, and not because the
+  room carries the tag.
 
 A mod sets the tag by any of three routes:
 
@@ -148,8 +187,9 @@ game restart clears it. A mod's own `Enabled` config key does not un-flag a sess
 
 Consequences for a dependent of the framework:
 
-- The framework declares `All`, so any room hosted by a process that loaded it is tagged, even
-  with no role mod installed and no role selected. A dependent cannot defer the flag.
+- The framework's contract marker sits in the `Required` mask, so any room hosted by a process
+  that loaded the framework is tagged by route 1, with or without VoidManager, even with no
+  role mod installed and no role selected. A dependent cannot defer the flag.
 - A role mod's own assets sit in the `Required` mask, so route 1 applies as well.
 - A mod that must stay silent until its content is used cannot depend on the framework.
 
@@ -164,6 +204,8 @@ For a mod that declares `All`:
   hand matches the version and is refused at join otherwise.
 - When you release an update, every player updates together, including the framework if you
   rebuilt against a new one.
-- Hosting with the mod installed marks the session as modded and turns off progression for it,
-  and the mark lasts until the game restarts. Disabling the mod in its config does not undo it.
+- Hosting with the mod installed marks the session as modded, and the mark lasts until the
+  game restarts. Disabling the mod in its config does not undo it. Without VoidManager the
+  framework then blocks progression and achievements; with VoidManager that is VoidManager's
+  decision (see above).
 - A player who has the mod cannot join a host who lacks it. The asset check is symmetric.

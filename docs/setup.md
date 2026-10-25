@@ -136,7 +136,7 @@ touches a type from that assembly.
 | Assembly | Folder | Needed when | Error without it |
 | --- | --- | --- | --- |
 | `BepInEx` | `BepInEx\core` | every mod: `BaseUnityPlugin`, `[BepInPlugin]`, `[BepInDependency]`, the logger | `CS0246`, type `BepInPlugin` not found |
-| `VoidManager` | `BepInEx\plugins` | every mod: `VoidPlugin`, `MultiplayerType`, the plugin GUID constant | `CS0246`, namespace `VoidManager` or type `VoidPlugin` not found |
+| `VoidManager` | `BepInEx\plugins` | only a mod that declares a `VoidPlugin`, names `MultiplayerType` or the VoidManager GUID constant, or has an F5 page. The framework needs none of it | `CS0246`, namespace `VoidManager` or type `VoidPlugin` not found |
 | `UnityEngine`, `UnityEngine.CoreModule` | `Void Crew_Data\Managed` | every mod: `MonoBehaviour` is the base of `BaseUnityPlugin` | `CS0012`, type `MonoBehaviour` is defined in an assembly that is not referenced |
 | `EctypeFramework` | `BepInEx\plugins` | code that calls the `Ectype` namespace. A data-only role carries no reference to it | `CS0246`, namespace `Ectype` not found |
 | `Assembly-CSharp` | `Void Crew_Data\Managed` | any game type: `ClientGame`, `OrbitObject`, `Player`, the ability base class | `CS0246`, for example `OrbitObject` or namespace `CG` not found |
@@ -150,11 +150,11 @@ touches a type from that assembly.
 | `Opsive.Shared` | `Void Crew_Data\Managed` | the same: `Ability` derives from a type in this assembly | `CS0012`, type `StateObject` is defined in an assembly that is not referenced |
 
 A mod that touches the common game types (`ClientGame`, `OrbitObject`, `Player`,
-`GUIDUnion`) references the full base set: `BepInEx`, `VoidManager`, `EctypeFramework`,
+`GUIDUnion`) references the full base set: `BepInEx`, `EctypeFramework`,
 `Assembly-CSharp`, `UnityEngine`, `UnityEngine.CoreModule`, plus `PhotonUnityNetworking`,
 `PhotonRealtime`, `VoidCrewCommon`, `ResourceAssets`, `Newtonsoft.Json` and
-`Unity.InputSystem`. A role ability adds `Opsive.UltimateCharacterController` and
-`Opsive.Shared`. A mod that names none of those types can leave the extra assemblies out.
+`Unity.InputSystem`, plus `VoidManager` if it declares a `VoidPlugin`. A role ability adds
+`Opsive.UltimateCharacterController` and `Opsive.Shared`. A mod that names none of those types can leave the extra assemblies out.
 
 `CS0012` names the missing assembly in its text: `You must add a reference to assembly
 'ResourceAssets, Version=0.0.0.0, ...'`. Add that DLL from `Void Crew_Data\Managed` the same
@@ -192,7 +192,15 @@ placeholder. A utility-only mod embeds nothing.
 
 ### The metadata VoidManager reads
 
-VoidManager builds a mod's entry in its list from the plugin, not from the project file:
+A mod needs BepInEx and the framework, nothing else. VoidManager is optional: depend on it
+softly, and only for an F5 page or to declare a VoidManager multiplayer type. A mod without a
+`VoidPlugin` is listed by VoidManager as `Unmanaged`: shown, never compared at join. The Void
+Crew Mod Launcher then takes the mod's need from its Thunderstore categories, so a role mod
+carries `All Required`. What keeps a role mod's players compatible is the game's asset check
+on its required assets, with or without VoidManager.
+
+When a mod does declare a `VoidPlugin`, VoidManager builds its entry from the plugin, not from
+the project file:
 
 | Member | Source |
 | --- | --- |
@@ -204,16 +212,21 @@ VoidManager builds a mod's entry in its list from the plugin, not from the proje
 
 ## The dependency attribute
 
-A mod that uses the framework declares a hard dependency on its GUID, `jack.voidcrew.ectype`,
-and on VoidManager:
+A mod that uses the framework declares a hard dependency on its GUID, `jack.voidcrew.ectype`:
 
 ```csharp
 [BepInPlugin(PLUGIN_GUID, "My Mod", PLUGIN_VERSION)]
 [BepInProcess("Void Crew.exe")]
-[BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
 [BepInDependency("jack.voidcrew.ectype")]
 public class Plugin : BaseUnityPlugin
 ```
+
+A mod that uses VoidManager adds `[BepInDependency("VoidCrewModdingTeam.VoidManager")]`: hard
+when the mod cannot run without it (it declares a `VoidPlugin`, which fails to load without
+VoidManager), or with `BepInDependency.DependencyFlags.SoftDependency` when VoidManager only
+adds an F5 page. A soft-dependent mod keeps every VoidManager type inside members that run only
+when VoidManager is loaded, and declares no type deriving from one: such a type fails to load
+without VoidManager and makes reflection over the whole assembly throw.
 
 BepInEx loads a plugin after every plugin it depends on, and does not load it at all when
 one is missing. Without the attribute the load order is undefined, and a call into the

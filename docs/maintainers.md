@@ -77,7 +77,8 @@ column.
 | `PhotonNetwork.RaiseEvent` with `TargetActors`, `PhotonNetwork.NetworkingClient.EventReceived` (subscribed) | the framework's message channel, event code 181. PUN creates `NetworkingClient` once, in `PhotonNetwork`'s static constructor; the driver still re-subscribes if the instance changes. The event code must stay clear of the game (0-10), VoidManager (95-99), Opsive's PUN add-on (155-160), Void Crew Fleet (173) and Photon (200 and above) |
 | `PhotonNetwork.LocalPlayer.SetCustomProperties` (called), `Player.CustomProperties` (read) | peer presence: the `Ectype` property. Set outside a room it stays local, and `LoadBalancingClient` merges the local player's custom properties into every game-server join request, so the property arrives with the join |
 | `RuntimeAssetsRegister.RegisterAsset` with `RuntimeAssetInfo.Name` (called); `GameSessionManager.ValidateMods` and the missing-asset reply, events 7 and 8 (relied on) | the network contract marker. The joiner's rejection screen prints the `Name` the host sends back for an asset the joiner lacks |
-| `VoidManager.Configs.LoadModListOverride` postfix, `Configs.ModOverrideDictionary` (written), patched by name when VoidManager is loaded | lists the framework, which has no `VoidPlugin`, as `MultiplayerType.All` in the generated entry VoidManager makes for a plugin without one. A miss lists the framework as `Unmanaged`: no VoidManager version or hash check for it, and no VoidManager session flag from it |
+| `VoidManager.MPModChecks.MPModCheckManager.ModChecksClientside(Hashtable, bool)` prefix, patched by name when VoidManager is loaded | the joiner's VoidManager check deserializes the room's `Mods` property whenever the room is tagged, and throws when a host without VoidManager tagged it through `R_Mod` alone. The prefix passes a tagged room with no `Mods`. A miss: a joiner with VoidManager cannot join a host without it |
+| `CloudSyncController.Write(string, string, bool, Action<bool>)`, `CloudLocalProfile.OnQuit`, `LocalPlayerProfile.OnQuit`, Steamworks `SteamUserStats.SetStat(string, int)` / `SetStat(string, float)` / `SetAchievement` / `IndicateAchievementProgress` / `StoreStats` prefixes, patched only when VoidManager is not loaded | `ProgressionGuard`: skipped once the client has been in a room whose `R_Mod` is `mod_session`, until restart. The game never reads `R_Mod` to stop progression; VoidManager patches the same methods for its own switch, hence the exclusion. A miss is logged by name and that write is not blocked |
 | `VoidManager.PluginHandler.DiscoverPlugins` postfix, `CustomGUI.GUIMain.Instance` / `settings` (inserted into), `ModSettingsMenu.MyVoidPlugin` (written), `PluginHandler.ActiveVoidPlugins` / `GeneratedVoidPlugins` (read) | the F5 page: a `ModSettingsMenu` subclass emitted at runtime, inserted where VoidManager's own name sort would put it. A miss costs the F5 page alone |
 | `ChannelGrapplingHook.Awake` postfix | registers the framework's grapple stats onto that hook's own stat collection, and a hook-scoped alias onto the cooldown the base class already registered |
 | `PlayerControlledShip.RegisterStats` postfix | registers the framework's ship-scoped stats (`IncomingProjectileSpeed`, and `ShipDrag` over the `MovingSpacePlatform` on the same GameObject, since `Platform` is assigned after `RegisterStats` runs) onto the player ship's own collection |
@@ -216,10 +217,12 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 ## Manifest notes
 
 - `src/shared/ModFlagPolicy.cs` is a compile-time switch for whether a build flags the session.
-  Its `MPType` is `Session` or `Client` and never `All`, so a role mod declares
-  `MPType => MultiplayerType.All` itself and returns `SetMod_Session = true` from
-  `OnSessionChange`. The framework compiles with `VOIDMANAGER_OPTIONAL`, which leaves
-  `MPType` out, and has no `VoidPlugin` and no `OnSessionChange`.
+  Its `MPType` is `Session` or `Client` and never `All`, so a role mod that declares a
+  `VoidPlugin` declares `MPType => MultiplayerType.All` itself and returns
+  `SetMod_Session = true` from `OnSessionChange`. The framework compiles with
+  `VOIDMANAGER_OPTIONAL`, which leaves `MPType` out, and declares no VoidManager type: an `All`
+  framework would make every VoidManager host kick every joiner without VoidManager, and a
+  `Client` one would make the mod launcher advertise it as client-side only.
 - No compiled type in the framework may derive from, or name in a field or signature, a
   VoidManager type. Such a type fails to load without VoidManager, and
   `Assembly.GetTypes()` then throws for the whole assembly, which HarmonyX's
@@ -231,15 +234,16 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 
 ## Posture
 
-`MultiplayerType.All`: an unmodded peer runs `ReApplyPerks` over framework GUIDs and wipes the
+Required for everyone in the room: an unmodded peer runs `ReApplyPerks` over framework GUIDs and wipes the
 modded player's perks on the peer's client; only a process with this DLL carries that guard.
 The mutator-safety prefix needs the same posture for the same reason. Every player in a room
-runs the same Thunderstore version of the framework, which the mod launcher installs for a
-joiner and VoidManager's join check enforces when VoidManager is installed, and
-`PLUGIN_VERSION` is bumped on every build. The contract marker makes the game's own asset check
-refuse a peer on another network contract with or without VoidManager.
+should run the same Thunderstore version of the framework. The mod launcher installs it for a
+joiner; nothing in the game compares framework versions. The game's asset check refuses a peer
+on another network contract (the contract marker) or with other role content (role assets),
+with or without VoidManager. VoidManager's version and hash check covers role mods declared
+`All` when both sides run VoidManager, never the framework. `PLUGIN_VERSION` is bumped on every
+build.
 Registered role content sits in the Required mask, so hosting with any role mod installed
-flags the session (one-way). The framework alone also flags at load: through its
-contract marker, a `Required` asset, and with VoidManager through the `All` type the bridge
-declares for it. The flag is a process-wide static that is never reset, so a room hosted later in the
+flags the session (one-way). The framework alone also flags at load, through its
+contract marker, a `Required` asset. The flag is a process-wide static that is never reset, so a room hosted later in the
 same process carries it too. The public statement is [multiplayer.md](multiplayer.md).

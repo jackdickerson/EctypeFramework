@@ -81,8 +81,10 @@ the role code use. A role that needs nothing newer than the first release leaves
 
 Framework clients talk to each other on one Photon event, whose payload is a subtype byte
 followed by that message's fields. The network contract is that event code, the set of
-subtypes and each message's field layout, numbered by `NET_CONTRACT_VERSION` in
-`src/PluginInfo.cs`. It is independent of the manifest `contractVersion` above.
+subtypes and each message's field layout, numbered by the framework's `NET_CONTRACT_VERSION`
+constant. The field layouts are declared in one table that the sender and the receiver both
+check every message against. The number is independent of the manifest `contractVersion`
+above.
 
 Raise `NET_CONTRACT_VERSION` in the same change that adds, removes or renumbers a subtype or
 changes a message's fields, and name the new value in that version's `CHANGELOG.md` entry as
@@ -102,10 +104,10 @@ Two things follow from the number:
 
 ## Every player needs the same build
 
-The framework is listed with VoidManager as multiplayer type `All`, and every role mod
-declares it. With VoidManager installed, two checks apply to a mod of that type when a player
-joins a room. Without VoidManager neither runs, and the network contract above is the
-framework's only join check.
+A role mod that declares a `VoidPlugin` of multiplayer type `All` gets two VoidManager checks
+when a player joins a room, provided the host and the joiner both run VoidManager. The
+framework declares no VoidManager type, so neither check covers the framework itself: its join
+check is the network contract above, and its version is matched by the mod launcher alone.
 
 1. The joining client compares its mod list with the host's list. Mod name, GUID, version and
    multiplayer type are visible to every peer. A mod missing on either side, or present with a
