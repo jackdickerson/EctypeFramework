@@ -113,7 +113,6 @@ once and he can delete his copy.
    DLL; a session-level collection for run-wide contributions with a mutator effect.
    First names: `MeleeDamage`, `MeleeCooldown`, `MeleeReach`, `AntiPersonnelDamage`,
    `HostileSpawnScale`. Fleet reads by id with its constants as fallback.
-   Follow-up: a mutator effect that contributes to session stats.
 4. **Replicated character statuses.** Attacker requests; the victim's client validates
    stance, range, line of sight and rate, applies, and confirms. Modelled on Fleet's punch.
 5. **Content registry.** `RuntimeContent.Publish(container, guid, def, entry)` with tier,

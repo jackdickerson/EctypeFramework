@@ -1,3 +1,7 @@
+## 0.30.0
+
+Mods can add mutators to the game's Mutators menu that change run-wide numbers, such as how many hostiles spawn. Select one before a run, or have a mission force it on, and every player gets the same numbers, late joiners included. Players need the mod that adds a mutator to join a host who has it installed.
+
 ## 0.28.0
 
 Mods can put timed effects on other players, such as a slow from a crewmate or an enemy. The affected player's own game checks each one first against the mod's rules (who sent it, how close they are, whether they can see each other, how often they send), so a modified client cannot apply them from afar, through walls or in a flood. Other players can see these effects. Effects on a player now end when that player dies. Players need this version to join a host running it.

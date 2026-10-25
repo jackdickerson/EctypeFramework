@@ -4,6 +4,33 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.30.0
+
+- `SessionStatMutators.Register(MutatorSpec)` adds a mutator to the game's Mutators menu whose
+  rule is a list of session-stat modifiers (`SessionStatEffect`: `Stat`, `Kind` `Flat`, `Percent`
+  or `Factor`, `Amount`). It returns a `MutatorHandle` (`Pending`, `Registered` or `Failed` with a
+  `Reason`). The GUID is the spec's `Guid`, or MD5 of `ectype:mutator:<owner>/<key>`. The asset is
+  registered with the Required effect: a player without the registering mod is refused at the
+  join screen of every room hosted with it, whether or not the run uses the mutator. The
+  framework makes it selectable in the menu and re-verifies the registration every 10 s and
+  before each session start.
+- While the host starts a session, the framework contributes the effects of every session-stat
+  mutator the session is about to activate, selected in the menu or forced by the quest's
+  `ForcedMutators`, to the session collection before `SessionStats.Opening` and before the values
+  are published, so every client and late joiner reads them. The game activates no mutator
+  before that point, so the set is worked out from the session's starting list and its quest
+  asset by the game's own rules, and checked against the game's activation afterwards. A mutator
+  activated any other way contributes to the host only, with a warning.
+- A role manifest's `mutators` block (`key`, `guid`, `name`, `description`, `icon`, `iconDonor`,
+  `effects` of `stat`, `kind` `"flat"`, `"percent"` or `"factor"`, and `amount`) registers through the
+  same API, with the `roleId` as owner. A stat that is not a session stat, an unknown kind or a
+  missing amount refuses that mutator by name; the role still registers. Set
+  `minFrameworkVersion` to `"0.30.0"`: an older framework ignores the block.
+- `SessionStatMutatorEffect` is the game-side `MutatorEffectSession` the registered asset carries;
+  a mod's own `Mutator` asset may carry one, and it is contributed the same way.
+- The F5 page's `Session stats:` line adds the count of registered, pending and refused
+  mutators.
+
 ## 0.28.0
 
 - `CharacterStatuses.Request(player, key, seconds, magnitude, attacker)` puts a status on another
