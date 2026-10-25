@@ -10,9 +10,10 @@ who run it; where this page describes them, it describes VoidManager 1.2.11.
 
 - Every player in a room runs the framework and every role mod any player has, at the same
   Thunderstore version.
-- A role mod declares `MultiplayerType.All`. The framework declares no VoidManager type, so
-  VoidManager never refuses a join on its account; see "Players with and without
-  VoidManager".
+- A role mod carries the Thunderstore category `All Required` and needs nothing from
+  VoidManager. The framework declares no VoidManager type, so VoidManager never refuses a
+  join on its account; a mod that declares `All` to VoidManager does, see "Players with and
+  without VoidManager".
 - The Void Crew Mod Launcher matches a joiner's mods to the host's before the game starts.
   VoidManager's join check refuses anyone whose set still differs, and the game's asset check
   refuses anyone whose registered role content differs.
@@ -139,9 +140,10 @@ Three facts bear on a mixed room:
   perk reapply throws on an unknown GUID and leaves that player's perk set empty on the
   client that threw. Only a process running the framework's guard avoids it.
 
-A role mod therefore declares `All`, depends on the framework with `[BepInDependency]`, and
-is installed by everyone in the room. A design that relies on players holding different role
-sets is refused by the game regardless of the `MultiplayerType` a mod declares.
+A role mod therefore carries `All Required`, depends on the framework with
+`[BepInDependency]`, and is installed by everyone in the room. A design that relies on
+players holding different role sets is refused by the game regardless of what a mod
+declares to VoidManager or to the launcher.
 
 ## Suppression in a room
 
@@ -191,7 +193,7 @@ Consequences for a dependent of the framework:
 
 ## What your mod's page must tell players
 
-For a mod that declares `All`:
+For a mod every player needs (`All Required`, or `All` declared to VoidManager):
 
 - The framework is required, by its name and Thunderstore dependency, and every player in the
   room installs it.

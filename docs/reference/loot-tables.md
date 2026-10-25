@@ -100,12 +100,12 @@ spawns it as itself. Rolls that spawn anything run on the master. The sector on-
 also built on every other client, where it only counts remaining loot.
 
 A registered item must resolve on every client in the room. An item your mod adds resolves
-only where your mod is installed, so a mod that registers one declares
-`MultiplayerType.All`: VoidManager then refuses a joiner who lacks it or runs another
-version. An item that belongs to a role gates on `RoleRegistry.IsAvailableInRoom(roleId)`,
-which closes the roll while that role is not registered or another installed role
-suppresses it. See
-[../multiplayer.md](../multiplayer.md) for how rooms are composed.
+only where your mod is installed, so a mod that registers one carries the Thunderstore
+category `All Required` and publishes the item through `RuntimeContent`, which by default
+registers it in the game's required-asset set: the game then refuses a joiner who lacks it.
+An item that belongs to a role gates on `RoleRegistry.IsAvailableInRoom(roleId)`, which
+closes the roll while that role is not registered or another installed role suppresses it.
+See [../multiplayer.md](../multiplayer.md) for how rooms are composed.
 
 `LootTables.Status` reports the patch state. `[Info]` lines name each table an owner's items
 were first added to. If the postfix fails to apply, loot alone is affected.

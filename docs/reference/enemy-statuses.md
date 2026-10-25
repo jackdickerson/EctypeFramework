@@ -46,10 +46,9 @@ EnemyStatuses.IsActive(target, "mymod.breach");      // + RemainingSeconds, Stac
 - **Only the owner deals damage.** HP replicates through the game's own serialization, so
   damage over time ticks exactly once. Who may apply and remove is below.
 - **The template must be registered on every client that should see it.** A peer without the
-  key ignores the message with one log line. A status-applying mod should be `MPType.All`, or
-  accept divergence on peers without it. Applying statuses changes what a run contains, so a
-  mod that does it should treat the session as modded; see
-  [../multiplayer.md](../multiplayer.md).
+  key ignores the message with one log line. A status-applying mod should be required for the
+  whole room (Thunderstore category `All Required`), or accept divergence on peers without
+  it; see [../multiplayer.md](../multiplayer.md).
 - **The marker is the game's own countdown visual.** It has the same `ObjectMarkerData` shape
   the game builds for an NPC's reinforcement-call channel, so the stock viewer draws and
   animates it. `Icon` null falls back to the stock ability icon. The marker's colour comes

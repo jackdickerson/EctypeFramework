@@ -9,9 +9,9 @@ does not carry its own copy of the guard.
 own `MutatorContainer` and dereferences the result unconditionally. A mutator whose content
 mod is not installed on a client resolves to `null` and throws a `NullReferenceException` the
 instant the host activates it. This happens for a mutator mod that is legitimately
-`MPType.Client` rather than `All`: its effects are host-only, gated on
-`PhotonNetwork.IsMasterClient` and carried by the game's normal replication, so a client
-without the mod has no reason to refuse the room.
+client-optional (`Client-Side` on Thunderstore, `Client` to VoidManager) rather than
+required: its effects are host-only, gated on `PhotonNetwork.IsMasterClient` and carried by
+the game's normal replication, so a client without the mod has no reason to refuse the room.
 
 ## What the framework does
 

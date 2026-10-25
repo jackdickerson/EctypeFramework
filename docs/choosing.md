@@ -8,7 +8,7 @@ can do, what the author maintains and what every player in a room has to install
 | What it adds | A role: gene tree, hero perk, perks with stat effects | The same, plus a role ability and any behaviour the perks need | Behaviour with no role: statuses, loot, HUD buttons, stats, ship events |
 | Author writes | A JSON manifest, PNG icons, a short plugin | The same, plus C# against the framework | C# against the framework |
 | References the framework assembly | No | Yes | Yes |
-| Declared multiplayer type | `All` | `All` | The one that matches what the mod changes |
+| Thunderstore category | `All Required` | `All Required` | The one that matches who has to run it |
 | Example | [data-only-role](../examples/data-only-role/) | [ability-role](../examples/ability-role/) | [utility-mod](../examples/utility-mod/) |
 
 ## Data-only role
@@ -68,29 +68,32 @@ code.
 Weapon mods and other content mods belong here. They are utility-only mods with no role, and
 they use the loot and stat APIs.
 
-A utility-only mod's multiplayer type follows from what it changes:
+A utility-only mod's Thunderstore category follows from who has to run it. The Void Crew Mod
+Launcher reads the category to decide what to install for a joiner:
 
-- A mod whose effects only the local player sees, such as a log line or a readout, declares
-  `Client`. VoidManager never refuses a join over a `Client` mod, and the mod does not raise
-  the modded-session flag.
-- A mod that changes what other players experience declares `Session` or `All`. Both raise
-  the flag, and `All` also refuses a join when the versions or builds differ. The values and
-  their costs are in [multiplayer.md](multiplayer.md).
+- A mod whose effects only the local player sees, such as a log line or a readout, carries
+  `Client-Side`. The launcher does not install it for joiners.
+- A mod that every player has to run for its effect to hold carries `All Required`, and the
+  launcher installs it, at the host's version, for every joiner. The game compares nothing of
+  such a mod at join unless it registers content in the game's required-asset set.
+
+[publishing.md](publishing.md) lists how the launcher reads each category, and
+[multiplayer.md](multiplayer.md) what VoidManager adds for a mod that declares a type to it.
 
 ## What each shape costs players
 
-| | Data-only role | Role with code | Utility-only mod, `Client` | Utility-only mod, `Session` or `All` |
+| | Data-only role | Role with code | Utility-only mod, `Client-Side` | Utility-only mod, `All Required` |
 | --- | --- | --- | --- | --- |
 | Who installs the framework | Everyone in the room | Everyone in the room | Everyone in the room | Everyone in the room |
 | Who installs the mod | Everyone in the room | Everyone in the room | Players who want it | Everyone in the room |
-| Same build required | Yes, of the mod and the framework | Yes, of the mod and the framework | Not for the mod; yes for the framework | Yes for `All`. A `Session` mod is not version-matched, so ship it as if it were |
-| Marks the session as modded | Yes | Yes | The framework does | Yes |
+| Same build required | Yes, of the mod and the framework | Yes, of the mod and the framework | Not for the mod; yes for the framework | Yes, of the mod and the framework. The launcher installs the host's build; the game does not compare it |
+| Marks the session as modded | Yes | Yes | The framework does | The framework does |
 
 [multiplayer.md](multiplayer.md) states each fact behind the table in full.
 
 - **Everyone in the room needs the framework.** A player who runs any dependent mod runs the
   framework, and the game refuses a join between a player with it and one without, or between
-  two frameworks on different network contracts. A `Client` mod does not remove that
+  two frameworks on different network contracts. A `Client-Side` mod does not remove that
   requirement, so a room still needs the framework on every machine.
 - **The framework raises the modded-session flag.** The framework registers an asset in the
   game's required set, and the host tags every room it hosts while the registry holds one;
@@ -102,7 +105,7 @@ A utility-only mod's multiplayer type follows from what it changes:
   game's required-asset set, and the game refuses a join when the host's required assets and
   the joiner's differ, whatever the mods declare. A role cannot be optional for some players.
 
-The listing for a mod that declares `All` says all of this in plain words;
+The listing for a mod every player needs says all of this in plain words;
 [publishing.md](publishing.md) lists the points.
 
 ## Picking one
@@ -111,5 +114,5 @@ The listing for a mod that declares `All` says all of this in plain words;
    module or the ship, write a data-only role and start from [quickstart.md](quickstart.md).
 2. Does it need a role ability or other behaviour, and does it belong to a role? Write a
    role with code. Start from the data-only role and add the factory.
-3. Is it behaviour with no role? Write a utility-only mod, and choose its multiplayer type by
-   who has to see the effect.
+3. Is it behaviour with no role? Write a utility-only mod, and choose its Thunderstore category
+   by who has to see the effect.
