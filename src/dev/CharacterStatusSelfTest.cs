@@ -24,6 +24,12 @@ namespace Ectype
     ///   client, a blocked line; and accepts 5.0 m, 5.5 m from the requester's view (its limit is
     ///   6 m), any distance with no MaxRange, a seat or a tube the template does not refuse, and
     ///   cuts 100 s and magnitude 5 to MaxSeconds and MaxMagnitude;
+    /// - requester limits: with MaxRangeFor 3, MinIntervalFor 0.5 and MaxMagnitudeFor 1.5 over
+    ///   constants 2, 1 and 1, the limits are the functions' values, 2.5 m passes where the
+    ///   constant refuses it, 3.9 m passes from the requester's view (its limit is 4 m), and
+    ///   magnitude 5 is cut to 1.5; with no requester character the functions are not called and
+    ///   the constants stand; a NaN range, a negative interval, a throwing interval and a magnitude
+    ///   of 0 each fall back to their constant;
     /// - the rate bucket: with Burst 2 per 1 s it takes two at once, refuses a third and one at
     ///   0.5 s, takes one at 1.01 s and keeps ids apart; requests sent 2 s apart that arrive
     ///   1.95 s apart pass the target's bucket (Burst + 1) where a bucket of Burst alone refuses
@@ -40,7 +46,9 @@ namespace Ectype
     /// - actor 9999 (no character here) is refused SenderMissing, a key without AcceptsRequests
     ///   NotAccepted, a request naming another actor InvalidTarget;
     /// - this client's own actor, at 0 m, is accepted: the status is active, RequesterOf names
-    ///   the actor, and the movement stat it carries changes; a second request inside
+    ///   the actor, and the movement stat it carries changes; MaxMagnitudeFor is called with this
+    ///   client's character and cuts the magnitude to 0.75, and OnRequestApplied runs once with
+    ///   this client's character as target and requester, magnitude 0.75 and one stack; a second request inside
     ///   MinInterval beyond the target's burst is refused RateLimited and leaves one stack;
     /// - a shorter, stronger request on a running status keeps its end and raises its effect;
     /// - an announcement from actor 9999 naming this client's character is refused Authority,
@@ -75,6 +83,7 @@ namespace Ectype
             {
                 Wire(fails);
                 JudgeCases(fails);
+                LimitCases(fails);
                 RateCases(fails);
                 HandleCases(fails);
                 AudienceCases(fails);
@@ -87,7 +96,8 @@ namespace Ectype
             if (fails.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: character status requests passed - the " +
                                    "request, answer, announcement and end messages round-trip, every " +
-                                   "refusal reason fired on its own input, the rate buckets held with " +
+                                   "refusal reason fired on its own input, requester limits replaced the " +
+                                   "constants and fell back on bad values, the rate buckets held with " +
                                    "jitter and the per-requester cap, a completed handle ran its callback, " +
                                    "each audience rule chose its viewers, and six bad templates were refused.");
             else
@@ -155,6 +165,7 @@ namespace Ectype
                                    List<string> fails, bool requesterView = false)
         {
             CharacterStatusRefusal got = CharacterStatusSync.Judge(def, ref seconds, ref magnitude, f,
+                                                                   CharacterStatusSync.Limits(def, null, false),
                                                                    requesterView);
             if (got != want) fails.Add(label + " answered " + got + ", expected " + want);
         }
@@ -212,10 +223,69 @@ namespace Ectype
             Expect("a blocked line with no line-of-sight check", blind, f, 3f, 1f, CharacterStatusRefusal.None, fails);
 
             float s = 100f, m = 5f;
-            CharacterStatusRefusal cut = CharacterStatusSync.Judge(d, ref s, ref m, Clear(), false);
+            CharacterStatusRefusal cut = CharacterStatusSync.Judge(d, ref s, ref m, Clear(),
+                                                                   CharacterStatusSync.Limits(d, null, false), false);
             if (cut != CharacterStatusRefusal.None || s != d.MaxSeconds || m != d.MaxMagnitude)
                 fails.Add("100 s at magnitude 5 answered " + cut + " with " + s + " s at " + m +
                           ", expected None cut to " + d.MaxSeconds + " s at " + d.MaxMagnitude);
+        }
+
+        /// <summary>The functions ignore their argument, so the limits are evaluated here with no
+        /// character and <c>sourceKnown</c> forced true.</summary>
+        private static void LimitCases(List<string> fails)
+        {
+            CharacterStatusDef d = Strict();
+            d.MaxRange = 2f;
+            d.MinInterval = 1f;
+            d.MaxMagnitude = 1f;
+            d.MaxRangeFor = p => 3f;
+            d.MinIntervalFor = p => 0.5f;
+            d.MaxMagnitudeFor = p => 1.5f;
+            CharacterRequestLimits lim = CharacterStatusSync.Limits(d, null, true);
+            if (lim.MaxRange != 3f || lim.MinInterval != 0.5f || lim.MaxMagnitude != 1.5f)
+                fails.Add("requester limits came out " + lim.MaxRange + " m, " + lim.MinInterval + " s, x" +
+                          lim.MaxMagnitude + ", expected 3 m, 0.5 s, x1.5");
+
+            CharacterRequestFacts f = Clear();
+            f.Distance = 2.5f;
+            float s = 3f, m = 5f;
+            CharacterStatusRefusal far = CharacterStatusSync.Judge(d, ref s, ref m, f, lim, false);
+            if (far != CharacterStatusRefusal.None || m != 1.5f)
+                fails.Add("2.5 m at magnitude 5 under MaxRangeFor 3 answered " + far + " at x" + m +
+                          ", expected None cut to x1.5");
+            s = 3f; m = 1f;
+            CharacterStatusRefusal fixedRange = CharacterStatusSync.Judge(d, ref s, ref m, f,
+                CharacterStatusSync.Limits(d, null, false), false);
+            if (fixedRange != CharacterStatusRefusal.OutOfRange)
+                fails.Add("2.5 m against the constant MaxRange 2 answered " + fixedRange + ", expected OutOfRange");
+            f.Distance = 3.9f;
+            s = 3f; m = 1f;
+            CharacterStatusRefusal edge = CharacterStatusSync.Judge(d, ref s, ref m, f, lim, true);
+            if (edge != CharacterStatusRefusal.None)
+                fails.Add("3.9 m from the requester's view under MaxRangeFor 3 answered " + edge + ", expected None");
+
+            int calls = 0;
+            CharacterStatusDef counted = Strict();
+            counted.MaxRangeFor = p => { calls++; return 9f; };
+            CharacterRequestLimits none = CharacterStatusSync.Limits(counted, null, false);
+            if (calls != 0 || none.MaxRange != counted.MaxRange)
+                fails.Add("with no requester character the range function ran " + calls + " time(s) and the " +
+                          "limit is " + none.MaxRange + " m, expected 0 runs and " + counted.MaxRange + " m");
+
+            CharacterStatusDef bad = Strict();
+            bad.MaxRange = 2f;
+            bad.MinInterval = 1f;
+            bad.MaxMagnitude = 1f;
+            bad.MaxRangeFor = p => float.NaN;
+            bad.MinIntervalFor = p => -1f;
+            bad.MaxMagnitudeFor = p => 0f;
+            CharacterRequestLimits back = CharacterStatusSync.Limits(bad, null, true);
+            if (back.MaxRange != 2f || back.MinInterval != 1f || back.MaxMagnitude != 1f)
+                fails.Add("bad requester limits came out " + back.MaxRange + " m, " + back.MinInterval + " s, x" +
+                          back.MaxMagnitude + ", expected the constants 2 m, 1 s, x1");
+            bad.MinIntervalFor = p => { throw new InvalidOperationException("dev self-test: a limit function that throws"); };
+            if (CharacterStatusSync.Limits(bad, null, true).MinInterval != 1f)
+                fails.Add("a throwing MinIntervalFor did not fall back to MinInterval 1");
         }
 
         private static void RateCases(List<string> fails)
@@ -341,12 +411,22 @@ namespace Ectype
             List<string> fails = new List<string>();
             List<string> notes = new List<string>();
             int applied = 0;
+            Player limitArg = null;
+            int reqCalls = 0, reqStacks = 0;
+            Player reqTarget = null, reqFrom = null;
+            float reqMagnitude = 0f;
             try
             {
                 // Requests only from 0.01 m: no other player can use these templates.
                 CharacterStatuses.Register(new CharacterStatusDef(AcceptKey)
                 {
                     AcceptsRequests = true, MaxRange = 0.01f, MinInterval = 60f, Burst = 1, MaxStacks = 3,
+                    MaxMagnitudeFor = p => { limitArg = p; return 0.75f; },
+                    OnRequestApplied = (t, from, mag, n) =>
+                    {
+                        if (reqCalls++ > 0) return;
+                        reqTarget = t; reqFrom = from; reqMagnitude = mag; reqStacks = n;
+                    },
                 }.AddStat("MotorAcceleration", "percent", -0.5f));
                 CharacterStatuses.Register(new CharacterStatusDef(PlainKey));
                 CharacterStatuses.Register(new CharacterStatusDef(ExtendKey)
@@ -383,6 +463,14 @@ namespace Ectype
                 else if (CharacterStatuses.RequesterOf(character, AcceptKey) != me)
                     fails.Add("RequesterOf answered " + CharacterStatuses.RequesterOf(character, AcceptKey) +
                               ", expected " + me);
+                if (!ReferenceEquals(limitArg, character))
+                    fails.Add("MaxMagnitudeFor was called with " + (limitArg != null ? limitArg.name : "nothing") +
+                              ", expected this client's character");
+                if (reqCalls != 1 || !ReferenceEquals(reqTarget, character) || !ReferenceEquals(reqFrom, character) ||
+                    reqMagnitude != 0.75f || reqStacks != 1)
+                    fails.Add("OnRequestApplied ran " + reqCalls + " time(s) with magnitude " + reqMagnitude + " and " +
+                              reqStacks + " stack(s), expected once with this client's character as target and " +
+                              "requester, magnitude 0.75 and 1 stack");
                 bool statMoved = Math.Abs(during - before) > 0.001f;
                 if (statMoved) notes.Add("the accepted request moved MotorAcceleration " + before.ToString("0.##") +
                                          " -> " + during.ToString("0.##"));
@@ -507,7 +595,8 @@ namespace Ectype
                 Plugin.Log.LogInfo("Ectype: dev self-test: character status authority passed - actor " +
                                    Stranger + " was refused SenderMissing, a key without AcceptsRequests " +
                                    "NotAccepted, another actor's request InvalidTarget, a request from actor " + me +
-                                   " landed and a third was RateLimited, a shorter request kept the end, a " +
+                                   " landed at the magnitude MaxMagnitudeFor allowed and ran OnRequestApplied, " +
+                                   "a third was RateLimited, a shorter request kept the end, a " +
                                    "re-apply from OnRemoved started clean, the death hook is on the life-state " +
                                    "setter and ended a status and a copy, a forged announcement was refused " +
                                    "Authority, and a presentation copy changed no stat and ran no callback; " +
