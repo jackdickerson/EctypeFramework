@@ -2,6 +2,18 @@
 
 Mods can publish new weapons, modules and items through the framework. Item catalogs such as ship customizers list published items with no change of their own, every player in a room holds them in the same order, and an item without a recycle value is refused instead of breaking the end-of-run alloy count.
 
+## 0.26.0
+
+Mods can declare their own stats in a data file. Each shows in tooltips like the game's own stats and can be read by mods that do not use the framework. The framework adds melee damage, cooldown and reach, anti-personnel damage and a hostile spawn scale for mods to adjust, and run-wide stats the host decides reach every player, late joiners included.
+
+## 0.25.0
+
+Mods can let the host decide settings for the whole crew. The host's values reach every player at the start of each session, late joiners included, so everyone plays the same run, and a resumed saved run keeps the values it started with.
+
+## 0.24.0
+
+Mods can stop players using seats, the helm, turrets, terminals, doors, switches and items by their own rules, such as keeping the helm for the host. A refused player sees a short warning instead of a prompt, and the game that owns the part refuses the request too, so a modified client cannot get around the rule. With no mod using it nothing changes.
+
 ## 0.23.0
 
 Status effects that mods put on ships can be limited to enemies or to allies, and for those every player's game checks who applied or removed one, so a modified client cannot place or strip them on the wrong side. Effects a mod leaves open to everyone stay open. Rapid-fire weapons that apply a status on every hit send far fewer network messages in large rooms. When too many status markers are on screen, the ones nearest your ship are kept. Players need this version to join a host running it.
