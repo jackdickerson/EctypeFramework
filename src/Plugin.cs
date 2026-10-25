@@ -189,6 +189,7 @@ namespace Ectype
             Step("status self-test", StatusSelfTest.Poll);
             Step("session data self-test", SessionDataSelfTest.Poll);
             Step("mod stats self-test", ModStatsSelfTest.Poll);
+            Step("mutators self-test", SessionStatMutatorsSelfTest.Poll);
             Step("character status self-test", CharacterStatusSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);

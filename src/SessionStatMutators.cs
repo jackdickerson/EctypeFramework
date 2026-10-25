@@ -380,7 +380,7 @@ namespace Ectype
                 return "stat '" + name + "' is not declared (name a stats file's stat as \"owner/Name\")";
             if (ModStats.IsSessionStat(id)) return null;
             ModStatDecl decl;
-            string where = ModStats.TryGetDecl(id, out decl) ? ModStats.KindName(decl.Collection) : "perk";
+            string where = ModStats.TryGetDecl(id, out decl) ? ModStats.KindName(decl.Collection) : "perk-target";
             return "stat '" + name + "' is a " + where + " stat; a mutator contributes to session stats only";
         }
 
