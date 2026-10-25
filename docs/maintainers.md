@@ -178,7 +178,9 @@ What it adds:
   `AcceptsRequests` `NotAccepted`, a request naming another actor `InvalidTarget`; this client's
   own actor must land the status and move `MotorAcceleration`, and a third request inside
   `MinInterval` must be `RateLimited`; a shorter, stronger request must keep the end and lower
-  `MotorAcceleration` further; the death hook must end a status and a copy; a forged
+  `MotorAcceleration` further; an `OnRemoved` that re-applies its own key must start a fresh
+  status with one stack and leak no modifier; the life-state setter must carry the death-hook
+  postfix, and the hook must end a status and a copy; a forged
   announcement must be refused `Authority`; and a presentation copy on the character must leave
   `MotorAcceleration` and the `OnApplied` count unchanged. Its five refusal warnings are
   expected.

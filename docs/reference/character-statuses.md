@@ -32,7 +32,12 @@ CharacterStatuses.Register(new CharacterStatusDef("mymod.slow")
 }.AddStat("MotorAcceleration", "percent", -0.4f));
 
 CharacterStatuses.Request(enemyPlayer, "mymod.slow", seconds: 3f)
-    .OnCompleted(r => { if (!r.Applied) RefundCooldown(r.Refusal); });
+    .OnCompleted(r =>
+    {
+        // NoAnswer means the outcome is unknown: the status may have landed.
+        if (r.Refusal != CharacterStatusRefusal.None && r.Refusal != CharacterStatusRefusal.NoAnswer)
+            RefundCooldown(r.Refusal);
+    });
 ```
 
 ## Where a status lives
@@ -74,7 +79,7 @@ character:
 
    | Order | Check | Refusal |
    | --- | --- | --- |
-   | 1 | The requester sent at most 20 requests in the last second, across all keys. Past that, requests are dropped unanswered | `RateLimited` |
+   | 1 | Across all keys, the requester stays within a burst of 21, refilled at 20 a second. Past that, requests are dropped unanswered | `RateLimited` |
    | 2 | The key is at most 128 characters | `Failed` |
    | 3 | The request names this client's actor, and this client has a character | `InvalidTarget` |
    | 4 | The framework's patches applied this session | `Inert` |
@@ -104,9 +109,13 @@ character:
 client), `Done`, `Refusal` and `Applied` (done with `None`). `OnCompleted(callback)` runs the
 callback once when the verdict is in, at once if it already is, and returns the handle. A request
 applied here or refused by this client's own checks is done before `Request` returns. A sent one
-is done when the answer arrives, or with `NoAnswer` after 10 s (the target left, or its client
-dropped the request at the per-requester cap). A role ability that spends a cooldown on a
-request can refund it from the callback.
+is done when the answer arrives; with `SendFailed` at once when Photon refuses to send it (not
+connected); or with `NoAnswer`. `NoAnswer` means the outcome is unknown: after 10 s with no answer,
+or when 40 newer requests to the same player are waiting and this is the oldest. No answer comes
+when the target left, its client dropped the request at its cap across keys or failed while
+handling it, or the answer was lost or arrived late; in the last case the status was applied. A
+role ability that spends a cooldown on a request can refund it from the callback on a refusal
+other than `NoAnswer`.
 
 **Why the target's client judges.** Any client can be modified, and a request is a claim by the
 requester. The two facts a check could not do without are the requester's identity and both
@@ -186,8 +195,9 @@ with one warning.
 
 **Refusals from the requesting client's own checks** are the reasons above plus
 `InvalidTarget` (null, no stat collection or no `PhotonView`), `NoPeer` (the target's client does
-not run this framework on this network contract) and `RateLimited` when 256 requests are already
-waiting for an answer.
+not run this framework on this network contract), `TargetDead` for this client's own dead
+character, and `RateLimited` past the target's cap across keys (kept here too: a burst of 20,
+refilled at 20 a second, per target) or when 256 requests are already waiting for an answer.
 
 ## Removal
 
@@ -203,8 +213,22 @@ the clone-tube respawn marks the same object alive again. Every death passes thr
 character's life-state setter on every client, and the framework hooks it. When a character's
 state leaves alive, each client ends every status it runs on that character, with `OnRemoved`,
 and every presentation copy shown on it. On the owning client that ending also tells the peers'
-copies. A respawned character starts with no status. A character that is destroyed outright
-(leaving the room, a scene change) ends its statuses on the next poll.
+copies.
+
+Nothing is applied to a dead character. `Apply` on one logs one warning per key and does
+nothing; `Request` on this client's own dead character is done with `TargetDead`, and the target's
+client refuses a request for a dead character the same way. A status put on a corpse would
+otherwise outlive the respawn. So a respawned character starts with no status, and a status
+applied from the game's respawn or clone events lands on the living character.
+
+`OnRemoved` runs after the status's modifiers are gone and it is no longer active, so applying
+the same key again from it starts a fresh status. On death it runs inside the game's own death
+handling, before the game marks the character's health dead, and, when a tick killed the
+character, inside that status's own `OnTick`. An `OnRemoved` must not kill the character: the
+game would announce the death twice.
+
+A character that is destroyed outright (leaving the room, a scene change) ends its statuses on
+the next poll.
 
 ## Presentation copies
 
@@ -234,7 +258,10 @@ callback; `IsActive` stays false on every client but the owner's.
   0.5 s; a re-application inside that gap is sent when it ends.
 - **Only a character's own client may announce a status on it.** A receiver refuses an
   announcement naming any other actor's character, one for a key whose template is not
-  `Presented` on the receiver, and one for a dead character. A copy lasts at most an hour.
+  `Presented` on the receiver. A copy lasts at most an hour, and a receiver takes a burst of 20
+  announcements from one player, refilled at 20 a second. A copy may be announced for a character
+  the receiver still sees dead: the owner's respawn reaches the other clients after any status the
+  respawn applied.
 - **Late joiners** receive no copy of a status already running.
 - `CreateVfx` does not run on the owning client: its player sees through the character's eyes.
   Use `OnApplied` and `OnRemoved` for that player's own feedback.
