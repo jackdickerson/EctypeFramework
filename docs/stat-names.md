@@ -21,8 +21,8 @@ Names are matched case-insensitively. A raw int id is accepted as an escape hatc
 stats declared in the same manifest's `customStats` are also valid and shadow these names for
 that role's own effect lines, so do not reuse a vanilla name. Stat names from other mods can
 be used too, provided those mods are marked required. A stat a mod declares in its stats file is
-named `"owner/Name"`, for example `"fleet/HackSeconds"`; such stats are not rows of the CSV, and
-the declaring mod's own documentation lists them (see
+named `"owner/Name"`, for example `"com.captainchunck.voidcrew.fleet/HackSeconds"`; such stats
+are not rows of the CSV, and the declaring mod's own documentation lists them (see
 [reference/mod-stats.md](reference/mod-stats.md)).
 
 ## Resolution order

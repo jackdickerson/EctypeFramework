@@ -1,3 +1,7 @@
+## 0.31.0
+
+Every mod-made status, button, setting and stat carries the name of the mod that made it, so a problem in a modded game traces back to its mod from the log.
+
 ## 0.30.0
 
 Mods can add mutators to the game's Mutators menu that change run-wide numbers, such as how many hostiles spawn. Select one before a run, or have a mission force it on, and every player gets the same numbers, late joiners included. Players need the mod that adds a mutator to join a host who has it installed.

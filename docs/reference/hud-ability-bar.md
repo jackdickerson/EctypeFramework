@@ -9,7 +9,7 @@ the row, draws the key chip and feeds the fill.
 // once, e.g. at plugin Awake; safe before the HUD exists
 HudAbilityBar.Handle h = HudAbilityBar.Register(new HudButtonSpec
 {
-    Id = "mymod.dash",                  // unique; namespace it with your GUID
+    Id = "com.example.mymod/dash",      // unique: "<plugin GUID>/<name>"
     Glyph = myTexture,                  // square, white on transparent
     ReadyColor = new Color(0.3f, 0.8f, 1f),   // null = the game's orange
     Order = 0,                          // left to right, ties on Id
@@ -21,7 +21,8 @@ h.Dispose();                            // removes it
 ```
 
 `Register` returns null and logs once when the bar is full (naming the ids holding it), when
-the id is taken, or when the spec has no id. A callback that throws hides its own button for
+the id is taken, or when the spec has no id. An id follows the
+[identifier rule](../identifiers.md); one that does not logs one warning and still works. A callback that throws hides its own button for
 the session and logs once; the rest of the bar keeps running. The bar is presentation only:
 nothing is networked or registered, so it cannot flag a session.
 

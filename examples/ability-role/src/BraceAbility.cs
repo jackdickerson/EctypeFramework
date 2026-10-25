@@ -9,7 +9,7 @@ namespace ExampleAbilityRole
     /// </summary>
     public class BraceAbility : Ectype.EctypeRoleAbility
     {
-        private const string StatusKey = Plugin.PLUGIN_GUID + ".brace";
+        private const string StatusKey = Plugin.PLUGIN_GUID + "/brace";
 
         private bool _loggedFailure;
 

@@ -218,7 +218,13 @@ What it adds:
   stamp and token kinds, and the type checks. The capture at `PrepareNextSession` needs a live
   session start and is not covered. It logs `dev self-test: session data passed` or `FAILED`
   with each difference.
-- A session-stat mutator self-test at load, offline: the GUID vector of `fleet/pilgrimage`,
+- An identifier self-test in the framework's own `Awake`, while BepInEx is still loading
+  plugins: the framework's GUID must already be in the chainloader's plugin table, and the
+  check must accept a conforming owner and id and refuse a missing prefix, an unknown GUID, the
+  GUID in other capitals, a reserved owner, and a role id unless the role exception is asked
+  for. It logs `dev self-test: identifiers passed` or `FAILED` with each wrong answer.
+- A session-stat mutator self-test at load, offline: the GUID vector of
+  `com.captainchunck.voidcrew.fleet/pilgrimage`,
   every spec refusal, the kind mapping, the manifest form, the activation prediction for the
   hub, a mission and a quest whitelist, and a synthetic active mutator (through the dev-only
   activation-input override) run through the real opening handler, whose effects must be in the

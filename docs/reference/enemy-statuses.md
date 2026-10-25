@@ -7,7 +7,7 @@ on expiry or target death.
 
 ```csharp
 // at Awake, on every client (register from a literal - the key crosses the wire):
-EnemyStatuses.Register(new EnemyStatusDef("mymod.breach")
+EnemyStatuses.Register(new EnemyStatusDef("com.example.mymod/breach")
 {
     DisplayName = "Hull Breach",
     DamagePerSecond = 15f,        // raw damage, dealt by the target's owner
@@ -24,12 +24,15 @@ EnemyStatuses.Register(new EnemyStatusDef("mymod.breach")
 }.AddStat("MaxFlightSpeed", "percent", -0.25f));
 
 // at runtime, from any client:
-EnemyStatuses.Apply(target, "mymod.breach", seconds: 8f, magnitude: 1f,
+EnemyStatuses.Apply(target, "com.example.mymod/breach", seconds: 8f, magnitude: 1f,
                     attacker: myShip);
-StatusRefusal why = EnemyStatuses.TryApply(target, "mymod.breach", 8f);   // None, or why not
-EnemyStatuses.Remove(target, "mymod.breach");        // early removal, everywhere
-EnemyStatuses.IsActive(target, "mymod.breach");      // + RemainingSeconds, Stacks
+StatusRefusal why = EnemyStatuses.TryApply(target, "com.example.mymod/breach", 8f); // None, or why not
+EnemyStatuses.Remove(target, "com.example.mymod/breach");     // early removal, everywhere
+EnemyStatuses.IsActive(target, "com.example.mymod/breach");   // + RemainingSeconds, Stacks
 ```
+
+A key is `"<plugin GUID>/<name>"`, the [identifier rule](../identifiers.md). A key that does not
+follow it logs one warning and still works.
 
 ## Rules and limits
 

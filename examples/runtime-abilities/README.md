@@ -12,7 +12,7 @@ Rules:
 
 - The game replicates an ability's state by its position in the locomotion's array. An ability added after spawn breaks that unless every client installed the same abilities in the same order. A registered ability is sent on a keyed message instead, so order across clients stops mattering.
 - An unregistered runtime ability still goes through the index-based RPC. Registering is what opts it in.
-- The key is a literal, namespaced by the mod, and identical on every client. Do not derive it from runtime state.
+- The key is a literal `"<plugin GUID>/<name>"`, identical on every client. Do not derive it from runtime state.
 - Every client installs the ability on every character. A peer resolves the key against its own copy of that character's array.
 - A manually started ability needs its `Start()` called after installation, because Unity only starts abilities that were on the prefab.
 

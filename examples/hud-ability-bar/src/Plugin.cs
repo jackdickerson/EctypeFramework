@@ -34,7 +34,7 @@ namespace ExampleHudBar
                 // the id is taken or the id is empty.
                 _button = HudAbilityBar.Register(new HudButtonSpec
                 {
-                    Id = PLUGIN_GUID + ".ping",        // unique: namespace it with the GUID
+                    Id = PLUGIN_GUID + "/ping",        // unique: "<plugin GUID>/<name>"
                     Glyph = MakeGlyph(),               // square, white on transparent
                     ReadyColor = new Color(0.3f, 0.8f, 1f),
                     Order = 0,

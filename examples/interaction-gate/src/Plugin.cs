@@ -22,7 +22,7 @@ namespace ExampleInteractionGate
         public const string PLUGIN_VERSION = "0.1.0";
 
         // The gate's id: unique across every mod, so prefix it with the plugin GUID.
-        private const string GateId = PLUGIN_GUID + ".host-helm";
+        private const string GateId = PLUGIN_GUID + "/host-helm";
 
         internal static ManualLogSource Log;
 

@@ -51,7 +51,7 @@ namespace ExampleEnemyStatuses
             }
         }
 
-        private const string SlowKey = PLUGIN_GUID + ".slow";
+        private const string SlowKey = PLUGIN_GUID + "/slow";
 
         private void Update()
         {
