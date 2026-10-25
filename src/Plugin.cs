@@ -162,6 +162,7 @@ namespace Ectype
             }
 #if ECTYPE_DEV
             Step("layout poll", DevLayout.Poll);
+            Step("dev self-test", DevSelfTest.Poll);
 #endif
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.

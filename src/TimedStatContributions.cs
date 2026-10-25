@@ -8,8 +8,9 @@ using UnityEngine;
 namespace Ectype
 {
     /// <summary>
-    /// One live contribution: the modifier's source, so the removal key for the one StatMod it
-    /// applied, and the handle a caller keeps to read or end it.
+    /// One live contribution: the handle a caller keeps to read or end it. The applied modifier
+    /// carries a small token as its source, not this object, so nothing reachable from the
+    /// modifier leads back to the target collection.
     /// </summary>
     public sealed class TimedStatContribution : IDescriptiveModifierSource
     {
@@ -33,6 +34,8 @@ namespace Ectype
         internal readonly UnityEngine.Object Holder;
         internal readonly bool HolderIsUnity;
         internal readonly GameSession Session;
+        internal readonly int Handle;
+        internal readonly ContributionSource Source;
         internal FloatModifier Mod;
         internal CurveValue Value;
         internal bool Ended;
@@ -55,6 +58,8 @@ namespace Ectype
             Holder = target.Holder as UnityEngine.Object;
             HolderIsUnity = !ReferenceEquals(Holder, null);
             Session = GameSessionManager.ActiveSession;
+            Handle = TimedStatContributions.NextHandle();
+            Source = new ContributionSource(Handle, Label);
         }
 
         /// <summary>True until the contribution ends.</summary>
@@ -127,6 +132,14 @@ namespace Ectype
     ///
     /// The statuses fix every amount when applied and bind to an OrbitObject (broadcast) or a Player
     /// (local clock), so this is its own layer; it shares their stat resolution, StatRegistry.
+    ///
+    /// Copy safety. The game deep-copies StatMods (perk levels on every perk reapply, mutator and
+    /// weapon mods), and other mods copy dynamic values before applying them. That copier recurses
+    /// through every field and clones MonoBehaviours, so a value that held the contribution would
+    /// drag the target collection and its Unity holder into the copy. The value and the source
+    /// therefore hold only an integer handle into a static table, filled at start and cleared at
+    /// the end. A copy shares the handle, reads the same curve while the contribution runs, and
+    /// contributes the neutral amount once it has ended.
     /// </summary>
     public static class TimedStatContributions
     {
@@ -134,6 +147,9 @@ namespace Ectype
         public const float UpdateSeconds = 0.1f;
 
         private static readonly List<TimedStatContribution> Live = new List<TimedStatContribution>();
+        private static readonly Dictionary<int, TimedStatContribution> ByHandle =
+            new Dictionary<int, TimedStatContribution>();
+        private static int _lastHandle;
         private static readonly HashSet<string> WarnedOnce = new HashSet<string>();
         private static float _nextUpdate;
         private static bool _loggedFirst;
@@ -219,11 +235,13 @@ namespace Ectype
 
                 c = new TimedStatContribution(key, label, target, id, startServerMs, durationMs,
                                               amountAt, keepAlive);
-                c.Value = new CurveValue(c);
-                // The amount is written by the value's Init inside ApplyModifiers.
+                // In the table before the apply: the value's Init inside ApplyModifiers writes
+                // the first amount, read through the handle.
+                ByHandle[c.Handle] = c;
+                c.Value = new CurveValue(c.Handle, c.Label);
                 c.Mod = new FloatModifier(0f, type);
                 StatMod mod = new StatMod(c.Mod, id) { DynamicValue = c.Value };
-                target.ApplyModifiers(new List<StatMod> { mod }, c, true);
+                target.ApplyModifiers(new List<StatMod> { mod }, c.Source, true);
                 Live.Add(c);
 
                 if (!StatRegistry.CollectionHasStat(target, id) &&
@@ -280,6 +298,21 @@ namespace Ectype
             for (int i = 0; i < Live.Count; i++)
                 if (ReferenceEquals(Live[i].Target, target) && Live[i].Key == key) return Live[i];
             return null;
+        }
+
+        /// <summary>Handles are never reused, so a copy made from an ended contribution never
+        /// reads a later one.</summary>
+        internal static int NextHandle()
+        {
+            _lastHandle = _lastHandle == int.MaxValue ? 1 : _lastHandle + 1;
+            return _lastHandle;
+        }
+
+        /// <summary>The live contribution behind a handle, or null once it has ended.</summary>
+        internal static TimedStatContribution ByHandleOrNull(int handle)
+        {
+            TimedStatContribution c;
+            return ByHandle.TryGetValue(handle, out c) ? c : null;
         }
 
         internal static float ProgressAt(int startMs, int durationMs, int nowMs)
@@ -347,7 +380,8 @@ namespace Ectype
             c.Ended = true;
             c.Reason = reason;
             Live.Remove(c);
-            if (removeFromTarget && c.Target != null) c.Target.RemoveModifier(c);
+            ByHandle.Remove(c.Handle);
+            if (removeFromTarget && c.Target != null) c.Target.RemoveModifier(c.Source);
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: timed stat '" + c.Label + "' on " + HolderName(c) + " ended (" +
                                    reason + ") at " + (c.Progress * 100f).ToString("0") + "% of " +
@@ -362,20 +396,50 @@ namespace Ectype
     }
 
     /// <summary>
-    /// The game's dynamic-value hook, driven by the contribution's curve. Description is overridden
-    /// because the base reads a localisation table keyed by value type, which has no row for this
-    /// one.
+    /// The applied modifier's source and removal key. It carries only the handle and the label, so
+    /// a deep copy of the modifier stops here. The stat tooltip reads it through the game's
+    /// descriptive-source interface.
+    /// </summary>
+    internal sealed class ContributionSource : IDescriptiveModifierSource
+    {
+        internal readonly int Handle;
+        internal readonly string Label;
+
+        internal ContributionSource(int handle, string label) { Handle = handle; Label = label; }
+
+        public string GetHeader() { return Label; }
+
+        public string GetDescription()
+        {
+            TimedStatContribution c = TimedStatContributions.ByHandleOrNull(Handle);
+            return c != null ? c.GetDescription() : "ended";
+        }
+
+        public override string ToString() { return "Ectype timed stat " + Label; }
+    }
+
+    /// <summary>
+    /// The game's dynamic-value hook, driven by the contribution's curve through its handle.
+    /// Description is overridden because the base reads a localisation table keyed by value type,
+    /// which has no row for this one.
     /// </summary>
     internal sealed class CurveValue : ModDynamicValue<FloatModifier, float>
     {
-        private readonly TimedStatContribution _owner;
+        private readonly int _handle;
+        private readonly string _label;
 
-        internal CurveValue(TimedStatContribution owner) { _owner = owner; }
+        internal CurveValue(int handle, string label) { _handle = handle; _label = label; }
 
         /// <summary>Rewrites the amount in place and tells every subscribed collection.</summary>
         internal void Refresh() { RecalculateValue(); }
 
-        protected override float GetValue() { return _owner.AmountNow(); }
+        /// <summary>Every modifier type composes an amount of 0 as no change, so a handle with no
+        /// live contribution behind it (an ended one, or a copy that outlived it) reads 0.</summary>
+        protected override float GetValue()
+        {
+            TimedStatContribution c = TimedStatContributions.ByHandleOrNull(_handle);
+            return c != null ? c.AmountNow() : 0f;
+        }
 
         protected override float DynamicValueBase
         {
@@ -386,6 +450,6 @@ namespace Ectype
 
         protected override void OnDestroy() { }
 
-        public override string Description() { return _owner.Label; }
+        public override string Description() { return _label; }
     }
 }
