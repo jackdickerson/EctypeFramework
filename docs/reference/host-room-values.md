@@ -60,8 +60,8 @@ the next frame's.
 
 Atomicity holds for the host's own sets in one frame, and nowhere else. A put-back after another
 player's write leaves per key, on its own schedule ([Who may write](#who-may-write)); a joiner
-reads whatever the room holds at the moment it joins; a new host clears some keys and keeps others
-([Host migration](#host-migration)). Values that must agree with each other, such as a list and an
+reads whatever the room holds at the moment it joins; a new host carries on with the values it
+holds and puts back only refused writes ([Host migration](#host-migration)). Values that must agree with each other, such as a list and an
 index into it, or a choice and the time it expires, belong in one `HostRoomValue<T>` of a small
 class. A single value is always read whole.
 
@@ -144,21 +144,24 @@ client records, per key, where the value it holds came from:
 and why the latest write of the key it did not take was refused: its writer was not the master,
 or its value did not read (over the cap, not JSON text, not `T`).
 
-A new master vouches only for what a master wrote or it set itself. In one update it:
+A new master carries the room's choices on, so the crew keeps what the departed host set. In one
+update it:
 
-1. **Keeps every value with master provenance** as its own, and writes it back where the room
-   holds it differently. The difference can only be a write refused for its writer: a stray write
+1. **Keeps every value it holds** as its own, whether it saw the master write it or read it from
+   the join response, and writes it back where the room holds it differently. With a value it
+   took from the master, the difference can only be a write refused for its writer: a stray write
    the departed host had not yet put back.
-2. **Leaves alone a key whose latest room value it could not read.** That value is most likely
+2. **Takes the room's value, without a write, for a value it read unverified** that the room now
+   holds differently with no refused write to explain it.
+3. **Leaves alone a key whose latest room value it could not read.** That value is most likely
    the departed host's, from a version of the mod this player does not run; writing an older value
    back would destroy it. The new master's `Value` stays what it had, and it does not guard the key
    until it sets it.
-3. **Clears every other unverified value** to none and writes the none, so every client returns to
-   the default with `Changed`, and `HasValue` is false. A value read from the join response may be
-   a stray write the departed host never put back, and nothing on this client can tell; a value
-   the new master took from the master's write after joining falls under rule 1. The default is
-   the one value every client can agree on without trusting anyone. A mod whose value must outlive
-   its host seeds it again when `CanSet` is true and `HasValue` is false.
+
+A value read from the join response names no writer, so a stray write the departed host never put
+back, read by a joiner who is then promoted, becomes the new host's value. Clearing such values
+instead would reset every choice whenever a player who joined after the host's last write takes
+over, which is the usual case; a host that wants a value back sets it again.
 
 A player who loses the master role while still in the room keeps a value of its own only once it
 has seen the room take it, as the echo of its write. Every other one, unsent or sent but not yet
@@ -190,8 +193,8 @@ so changing the argument afterwards changes nothing.
 - A joiner reads the join response, which names no writer. A value another player wrote after the
   host's last write is what a joiner reads if it arrives before the host has put its own back; the
   put-back reaches it as a change, up to half a second and a round trip later.
-- A player who joined after the host's last write of a key, and is then promoted, clears that key
-  ([Host migration](#host-migration)).
+- A player who joined after a stray write the host had not yet put back, and is then promoted,
+  keeps that write as the room's value ([Host migration](#host-migration)).
 - A client whose copy of the mod reads a value differently (another version) keeps its previous
   value, and the default until one reads.
 - Only the host writes. A client that wants a value changed asks the host through the mod's own
@@ -231,7 +234,6 @@ so changing the argument afterwards changes nothing.
 | `Ectype: host room values: actor <a> wrote <keys>; the host puts its own back.` | Host: the same write, seen from the host. |
 | `Ectype: host room values: this player hosts the room now and keeps the <n> value(s) it held; <k> differed in the room and are put back (<keys>).` | New host: the room held values the previous host had not put back. |
 | `Ectype: host room values: this player hosts the room now and keeps the <n> value(s) it held.` | Verbose. New host, or the player who created the room. |
-| `Ectype: host room values: this player hosts the room now and clears <n> value(s) no master write vouched for (<keys>).` | New host: it had these values only from the join response, or from the room when the key was registered, and writes the default. |
 | `Ectype: host room values: this player hosts the room now and leaves <n> value(s) it could not read as the room holds them (<keys>).` | New host: the room's values come from a version of the mod it does not run, or are not JSON text. It writes them when it sets them. |
 | `Ectype: host room values: the master client moved from actor <a> to actor <b> while <a> is still in the room; clients now take host room values written by <b>.` | A player asked Photon for the master role. The game does not; a mod or a modified client did. |
 | `Ectype: host room values: the room update of <keys> was not sent (<reason>); the host sends it again at the next frame.` | Host: `SetCustomProperties` returned false or threw, usually while the connection drops. Logged once per room. |
@@ -254,7 +256,7 @@ With two clients and `VerboseLogging` on both:
 5. Let the host leave: the new host logs `hosts the room now`, and `Set` works there. A value it
    saw the old host write is kept on every client.
 6. Host sets a value, a fourth client joins, then every other player leaves: the fourth client
-   logs `clears 1 value(s) no master write vouched for`, and its `Value` is the default.
+   logs `hosts the room now`, and its `Value` is still the host's value.
 7. From a client, call `PhotonNetwork.CurrentRoom.SetMasterClient` on itself: every client logs
    `the master client moved from actor`.
 8. From a client, write every `Ectype.Value:<key>` every frame: the host's verbose log shows each

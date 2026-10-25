@@ -25,7 +25,7 @@ build.
   host puts its own value back after another player's write, each key at most twice a second.
   Each client records where every value came from: a player who becomes the master keeps the
   values a master wrote and puts them back where the room differs, leaves alone a room value it
-  could not read, and clears the values it read only from the join response; a player who loses
+  could not read, and keeps the values it read from the join response; a player who loses
   the master role goes back to the last value the room took from the master. A warning names a
   master switch made while the previous master is still in the room. Each value is capped
   by `maxBytes` (default 4096) and all of them together at 16384 bytes. The room properties are

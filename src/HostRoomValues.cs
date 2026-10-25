@@ -42,8 +42,9 @@ namespace Ectype
     {
         /// <summary>Kept, and written back because the room holds them differently.</summary>
         internal readonly List<string> Back = new List<string>();
-        /// <summary>Held unverified: cleared to none, and the none written.</summary>
-        internal readonly List<string> Cleared = new List<string>();
+        /// <summary>Held unverified and differing from the room's value, which the host now holds
+        /// as its own without writing it.</summary>
+        internal readonly List<string> FromRoom = new List<string>();
         /// <summary>The room holds a value this client could not read: left as the room holds
         /// it.</summary>
         internal readonly List<string> Standing = new List<string>();
@@ -178,12 +179,13 @@ namespace Ectype
         }
 
         /// <summary>
-        /// This client has just become the host. It vouches only for values a master wrote or it
-        /// set itself. A value taken from the master's write is kept as its own and written back
-        /// where the room holds it differently (a write refused because its writer was not the
-        /// master). A key whose latest room value this client could not read is left as the room
-        /// holds it, unguarded until the host sets it. Every other value is unverified: it is
-        /// cleared to none and the none written, so every client converges on the default.
+        /// This client has just become the host and carries the room's choices on. A value it holds
+        /// is kept as its own and written back where the room holds it differently, which is a
+        /// write refused because its writer was not the master. An unverified value (read from the
+        /// join response, with no writer named) that the room still holds differently, with no
+        /// refused write explaining the difference, is taken from the room without a write. A key
+        /// whose latest room value this client could not read is left as the room holds it,
+        /// unguarded until the host sets it.
         /// </summary>
         internal HostRoomAdoption Adopt(IEnumerable<string> keys, Func<string, object> roomRaw)
         {
@@ -197,16 +199,13 @@ namespace Ectype
                     if (raw != null) result.Standing.Add(key);
                     continue;
                 }
-                if (e.Source == HostRoomSource.Unverified)
+                if (e.Source == HostRoomSource.Unverified && e.Refused == HostRoomRefusal.None &&
+                    !SameAsRoom(e.Held, raw) && (raw == null || raw is string))
                 {
+                    e.Held = (string)raw;
                     e.Source = HostRoomSource.Own;
-                    e.Refused = HostRoomRefusal.None;
-                    e.HasMaster = false;
-                    e.MasterText = null;
-                    if (e.Held == null && raw == null) continue;
-                    e.Held = null;
-                    MarkPending(key, e, false, 0f);
-                    result.Cleared.Add(key);
+                    if (e.Held != null) result.Held++;
+                    result.FromRoom.Add(key);
                     continue;
                 }
                 e.Source = HostRoomSource.Own;
@@ -371,7 +370,7 @@ namespace Ectype
     /// by its own copy and writes the values changed in a frame in one room update, at the end of
     /// the frame. A client takes a change only when Photon reports the master as its writer; the
     /// host writes its own value back when anyone else writes one. A player who becomes the master
-    /// keeps the values a master wrote and clears the ones it holds unverified.
+    /// carries on with the values it holds and puts back what the room holds differently.
     /// </summary>
     internal static class HostRoomValues
     {
@@ -592,16 +591,12 @@ namespace Ectype
         private static void Claim(IEnumerable<string> keys, Room room, bool log)
         {
             HostRoomAdoption a = _copy.Adopt(keys, k => Raw(room, k));
-            foreach (string key in a.Cleared)
+            foreach (string key in a.FromRoom)
             {
                 IHostRoomValue v;
                 string ignored;
-                if (_byKey.TryGetValue(key, out v)) v.Take(null, out ignored);
+                if (_byKey.TryGetValue(key, out v)) v.Take(_copy.Held(key), out ignored);
             }
-            if (a.Cleared.Count > 0)
-                Plugin.Log.LogWarning("Ectype: host room values: this player hosts the room now and clears " +
-                                      a.Cleared.Count + " value(s) no master write vouched for (" +
-                                      string.Join(", ", a.Cleared.ToArray()) + ").");
             if (a.Standing.Count > 0)
                 Plugin.Log.LogWarning("Ectype: host room values: this player hosts the room now and leaves " +
                                       a.Standing.Count + " value(s) it could not read as the room holds them (" +

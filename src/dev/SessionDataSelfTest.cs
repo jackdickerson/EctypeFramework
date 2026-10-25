@@ -483,9 +483,10 @@ namespace Ectype
                 client.Held("r") != "1")
                 failures.Add("host room: provenance was recorded wrongly");
 
-            // A client that becomes host keeps what the master wrote and puts back a refused
-            // forgery; clears what it holds unverified, the join response's value included; and
-            // leaves alone a room value it could not read.
+            // A client that becomes host keeps what it holds, the join response's value included,
+            // and puts back a refused forgery; takes the room's value without a write for an
+            // unverified key the room holds differently; and leaves alone a room value it could
+            // not read.
             Dictionary<string, object> room = new Dictionary<string, object>
             {
                 { "j", "1" }, { "a", "1" }, { "b", "[9]" }, { "r", "{\"newer\":1}" }, { "c", "5" },
@@ -493,13 +494,13 @@ namespace Ectype
             HostRoomAdoption adopted = client.Adopt(new[] { "j", "a", "b", "r", "c", "d" },
                                                     k => room.TryGetValue(k, out object raw) ? raw : null);
             batch = client.TakeBatch(0f);
-            if (adopted.Back.Count != 1 || adopted.Back[0] != "b" || adopted.Cleared.Count != 2 ||
-                adopted.Cleared[0] != "j" || adopted.Cleared[1] != "c" || adopted.Standing.Count != 1 ||
-                adopted.Standing[0] != "r" || adopted.Held != 2 || batch.Count != 3 ||
-                batch[0].Key != "j" || batch[0].Value != null || batch[1].Key != "b" || batch[1].Value != "[2]" ||
-                batch[2].Key != "c" || batch[2].Value != null)
+            if (adopted.Back.Count != 1 || adopted.Back[0] != "b" || adopted.FromRoom.Count != 1 ||
+                adopted.FromRoom[0] != "c" || adopted.Standing.Count != 1 ||
+                adopted.Standing[0] != "r" || adopted.Held != 4 || batch.Count != 1 ||
+                batch[0].Key != "b" || batch[0].Value != "[2]")
                 failures.Add("host room: adoption did not follow provenance");
-            if (client.Held("j") != null || client.Source("a") != HostRoomSource.Own ||
+            if (client.Held("j") != "1" || client.Held("c") != "5" || client.Source("j") != HostRoomSource.Own ||
+                client.Source("a") != HostRoomSource.Own ||
                 client.Source("r") != HostRoomSource.Unverified || client.Foreign("r", "x", 0f))
                 failures.Add("host room: adoption left the wrong values held or guarded");
 
