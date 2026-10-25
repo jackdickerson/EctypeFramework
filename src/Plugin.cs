@@ -74,6 +74,8 @@ namespace Ectype
                                CharacterStatusMessage.ReceiveRequest);
             EctypeNet.Register(EctypeNet.CharacterStatusApplied, "character-status-applied",
                                CharacterStatusMessage.ReceiveApplied);
+            EctypeNet.Register(EctypeNet.CharacterStatusResult, "character-status-result",
+                               CharacterStatusMessage.ReceiveResult);
 
             // Resolved and patched gate by gate, so a renamed game member costs only the
             // system that needs it.
@@ -83,6 +85,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
+            try { CharacterStatusLife.ApplyPatch(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: character status death hook failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }

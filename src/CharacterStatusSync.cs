@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 using CG.Game.Player;
 using CG.Ship.Object;
 using CG.Space;
+using HarmonyLib;
 using Photon.Pun;
 using UnityEngine;
 
@@ -11,26 +13,26 @@ using PhotonPlayer = Photon.Realtime.Player;
 
 namespace Ectype
 {
-    /// <summary>Why <see cref="CharacterStatuses.Request"/> or
+    /// <summary>Why a <see cref="CharacterStatuses.Request"/> or
     /// <see cref="CharacterStatuses.TryRemove"/> did nothing, and why a character's client
     /// refused a received request or announcement.</summary>
     public enum CharacterStatusRefusal
     {
-        /// <summary>Not refused: applied, sent or removed.</summary>
+        /// <summary>Not refused: applied, or removed.</summary>
         None = 0,
         /// <summary>The target is null, has no stat collection or no PhotonView, or a received
-        /// request names a character this client does not own.</summary>
+        /// request names a character the receiving client does not own.</summary>
         InvalidTarget = 1,
-        /// <summary>No template is registered under the key on this client.</summary>
+        /// <summary>No template is registered under the key on the judging client.</summary>
         NotRegistered = 2,
         /// <summary>The framework's patches did not apply this session.</summary>
         Inert = 3,
-        /// <summary>The duration is zero, negative or not finite.</summary>
+        /// <summary>The duration is not finite or is below the template's MinSeconds.</summary>
         InvalidDuration = 4,
-        /// <summary>The magnitude is negative or not finite.</summary>
+        /// <summary>The magnitude is 0 or below, or not finite.</summary>
         InvalidMagnitude = 5,
-        /// <summary>A request for a template that does not set Replicated.</summary>
-        NotReplicated = 6,
+        /// <summary>A request for a template that does not set AcceptsRequests.</summary>
+        NotAccepted = 6,
         /// <summary>The target's client does not run this framework on this network contract,
         /// so it has nothing to receive a request with.</summary>
         NoPeer = 7,
@@ -40,22 +42,99 @@ namespace Ectype
         SenderMissing = 9,
         /// <summary>The requester's character is dead.</summary>
         SenderDead = 10,
+        /// <summary>RefuseSeated is set and the requester is seated.</summary>
+        SenderSeated = 11,
+        /// <summary>RefuseInTube is set and the requester or the target is in a clone tube.</summary>
+        InCloneTube = 12,
         /// <summary>The requester's relation to the target fails the template's Stance.</summary>
-        Stance = 11,
-        /// <summary>The requester's character is farther from the target than MaxRange.</summary>
-        OutOfRange = 12,
-        /// <summary>RequiresLineOfSight is set and level geometry blocks the line between the
-        /// two characters.</summary>
-        NoLineOfSight = 13,
-        /// <summary>The requester sent this key faster than MinInterval allows beyond Burst.</summary>
-        RateLimited = 14,
+        Stance = 13,
+        /// <summary>The requester's character is farther from the target than the range allows.</summary>
+        OutOfRange = 14,
+        /// <summary>RequiresLineOfSight is set and something blocks the line between the two
+        /// characters.</summary>
+        NoLineOfSight = 15,
+        /// <summary>The requester sent this key faster than MinInterval allows beyond its burst,
+        /// or sent more than the per-requester cap across all keys.</summary>
+        RateLimited = 16,
         /// <summary>A removal of, or an announcement for, a status on a character the sender
         /// does not own.</summary>
-        Authority = 15,
+        Authority = 17,
         /// <summary>An announcement for a template that does not set Presented on this client.</summary>
-        NotPresented = 16,
-        /// <summary>The call threw, or a received message was malformed.</summary>
-        Failed = 17,
+        NotPresented = 18,
+        /// <summary>A sent request whose target's client did not answer in time.</summary>
+        NoAnswer = 19,
+        /// <summary>The call threw, or a message was malformed.</summary>
+        Failed = 20,
+    }
+
+    /// <summary>
+    /// One <see cref="CharacterStatuses.Request"/>. A request this client applied itself or
+    /// refused is complete when Request returns; a sent one completes when the target's client
+    /// answers, or with <see cref="CharacterStatusRefusal.NoAnswer"/> when it does not.
+    /// </summary>
+    public sealed class CharacterStatusRequest
+    {
+        private Action<CharacterStatusRequest> _completed;
+
+        internal int Id;
+        internal int TargetActor;
+        internal float Deadline;
+
+        /// <summary>The character the status was requested on.</summary>
+        public Player Target { get; private set; }
+
+        /// <summary>The status key.</summary>
+        public string Key { get; private set; }
+
+        /// <summary>The request left this client for the target's client.</summary>
+        public bool Sent { get; private set; }
+
+        /// <summary>The verdict is in: <see cref="Refusal"/> holds it.</summary>
+        public bool Done { get; private set; }
+
+        /// <summary><see cref="CharacterStatusRefusal.None"/> while pending and when applied;
+        /// otherwise why the status was not applied.</summary>
+        public CharacterStatusRefusal Refusal { get; private set; }
+
+        /// <summary>Done, and the status was applied on the target's client.</summary>
+        public bool Applied { get { return Done && Refusal == CharacterStatusRefusal.None; } }
+
+        internal CharacterStatusRequest(Player target, string key)
+        {
+            Target = target;
+            Key = key;
+        }
+
+        /// <summary>Runs the callback once, when the verdict is in: at once when it already is.
+        /// Returns this request, so it chains onto Request.</summary>
+        public CharacterStatusRequest OnCompleted(Action<CharacterStatusRequest> callback)
+        {
+            if (callback == null) return this;
+            if (Done) Invoke(callback);
+            else _completed += callback;
+            return this;
+        }
+
+        internal void MarkSent() { Sent = true; }
+
+        internal void Complete(CharacterStatusRefusal refusal)
+        {
+            if (Done) return;
+            Done = true;
+            Refusal = refusal;
+            Action<CharacterStatusRequest> cb = _completed;
+            _completed = null;
+            if (cb != null) Invoke(cb);
+        }
+
+        private void Invoke(Action<CharacterStatusRequest> cb)
+        {
+            try { cb(this); }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: character status '" + Key + "' request callback threw: " + e);
+            }
+        }
     }
 
     /// <summary>What the judging client sees of a request: the target's and the requester's
@@ -64,16 +143,20 @@ namespace Ectype
     internal struct CharacterRequestFacts
     {
         internal bool VictimAlive;
+        internal bool VictimInTube;
         internal bool SourceKnown;
         internal bool SourceAlive;
+        internal bool SourceSeated;
+        internal bool SourceInTube;
         internal bool Hostile;
         internal float Distance;
         internal bool LineClear;
     }
 
     /// <summary>
-    /// A token bucket per id: Burst tokens to start with, one more every MinInterval seconds
-    /// up to Burst, one taken per accepted request. A refused request takes nothing.
+    /// A token bucket per id: <c>burst</c> tokens to start with, one more every
+    /// <c>interval</c> seconds up to <c>burst</c>, one taken per accepted request. A refused
+    /// request takes nothing.
     /// </summary>
     internal sealed class CharacterStatusRate
     {
@@ -86,15 +169,15 @@ namespace Ectype
         private readonly Dictionary<string, Bucket> _buckets = new Dictionary<string, Bucket>();
 
         /// <summary>True, and one token taken, when the id has a token at <paramref name="now"/>.
-        /// Always true when the template sets no MinInterval.</summary>
-        internal bool TryTake(string id, CharacterStatusDef def, float now)
+        /// Always true for an interval of 0.</summary>
+        internal bool TryTake(string id, int burst, float interval, float now)
         {
-            if (!(def.MinInterval > 0f)) return true;
-            float burst = Math.Max(1, def.Burst);
+            if (!(interval > 0f)) return true;
+            float cap = Math.Max(1, burst);
             Bucket b;
-            float tokens = burst;
+            float tokens = cap;
             if (_buckets.TryGetValue(id, out b))
-                tokens = Math.Min(burst, b.Tokens + Math.Max(0f, now - b.At) / def.MinInterval);
+                tokens = Math.Min(cap, b.Tokens + Math.Max(0f, now - b.At) / interval);
             bool fits = tokens >= 1f;
             _buckets[id] = new Bucket { Tokens = fits ? tokens - 1f : tokens, At = now };
             return fits;
@@ -108,15 +191,12 @@ namespace Ectype
     /// whose copy of it the game reads for damage and movement, so it is the only client a
     /// status on that character can live on.
     ///
-    /// Request: the requester sends (target actor, key, duration, magnitude, attacker view)
-    /// to the target's client alone. That client judges the request against its own view of
-    /// the requester's character - never against anything the message claims about position
-    /// or state - in a fixed order: template registered and Replicated; duration and
-    /// magnitude in bounds (cut to MaxSeconds and MaxMagnitude); target alive; requester has
-    /// a character and it is alive; Stance by the game's different-faction check; MaxRange;
-    /// line of sight; rate. It then applies the status exactly as a local Apply would. The
-    /// requester runs the same checks first, from its own view, and sends nothing a check
-    /// refuses.
+    /// Request: the requester sends (request id, target actor, key, duration, magnitude,
+    /// attacker view) to the target's client alone. That client judges it against its own view
+    /// of both characters - never against anything the message claims about position or
+    /// state - applies it exactly as a local Apply would, or refuses it, and answers the
+    /// requester with the verdict. The requester runs the same checks first, from its own view
+    /// with a looser range, and sends nothing a check refuses.
     ///
     /// Presentation: when the template is Presented, the owning client announces each
     /// application (target actor, key, end on the server clock, magnitude) to the peers the
@@ -136,12 +216,41 @@ namespace Ectype
         /// only to peers that were not told yet.</summary>
         internal const int AnnounceSlackMs = 250;
 
-        /// <summary>Accepted requests on the target's client, per requester and key.</summary>
+        /// <summary>Seconds between two announcements of one status; a later one waits.</summary>
+        internal const float AnnounceGapSeconds = 0.5f;
+
+        /// <summary>Seconds a sent request waits for the target's answer.</summary>
+        internal const float AnswerTimeoutSeconds = 10f;
+
+        /// <summary>Longest key a received message may carry.</summary>
+        internal const int MaxKeyLength = 128;
+
+        /// <summary>Requests one requester may send across all keys: a burst of this many,
+        /// refilled at this many per second.</summary>
+        internal const int SenderBurst = 20;
+
+        /// <summary>Requests waiting for an answer on this client.</summary>
+        internal const int MaxPending = 256;
+
+        /// <summary>The requesting client's range is MaxRange times this, or MaxRange plus
+        /// <see cref="RangeSlackMetres"/>, whichever is larger.</summary>
+        internal const float RangeSlackFactor = 1.15f;
+        internal const float RangeSlackMetres = 1f;
+
+        /// <summary>Longest a received announcement may keep a copy, in milliseconds.</summary>
+        internal const int MaxCopyMs = 3600 * 1000;
+
+        /// <summary>Accepted requests on the target's client, per requester and key, and per
+        /// requester across keys.</summary>
         internal static readonly CharacterStatusRate Accepted = new CharacterStatusRate();
 
-        /// <summary>Sent requests on the requester's client, per target and key: the same
-        /// budget, so a requester that keeps to it is never refused for rate.</summary>
+        /// <summary>Sent requests on the requester's client, per target and key.</summary>
         internal static readonly CharacterStatusRate Sent = new CharacterStatusRate();
+
+        private static readonly Dictionary<int, CharacterStatusRequest> Pending =
+            new Dictionary<int, CharacterStatusRequest>();
+        private static readonly List<int> PendingScratch = new List<int>();
+        private static int _nextRequestId;
 
         private static int _sightMask = -1;
 
@@ -160,22 +269,36 @@ namespace Ectype
                 return "MaxRange is " + def.MaxRange + "; it must be a finite number of metres, 0 or more";
             if (!Finite(def.MaxSeconds) || def.MaxSeconds <= 0f)
                 return "MaxSeconds is " + def.MaxSeconds + "; it must be a finite number of seconds above 0";
-            if (!Finite(def.MaxMagnitude) || def.MaxMagnitude < 0f)
-                return "MaxMagnitude is " + def.MaxMagnitude + "; it must be a finite number, 0 or more";
+            if (!Finite(def.MinSeconds) || def.MinSeconds < 0f || def.MinSeconds > def.MaxSeconds)
+                return "MinSeconds is " + def.MinSeconds + "; it must be a finite number of seconds from 0 to MaxSeconds";
+            if (!Finite(def.MaxMagnitude) || def.MaxMagnitude <= 0f)
+                return "MaxMagnitude is " + def.MaxMagnitude + "; it must be a finite number above 0";
             return null;
         }
 
         /// <summary>One warning per field group a template sets without the switch that uses it.</summary>
         internal static void WarnUnusedFields(CharacterStatusDef def)
         {
-            if (!def.Replicated && (def.Stance != StatusStance.Any || def.MaxRange > 0f ||
-                                    def.RequiresLineOfSight || def.MinInterval > 0f))
+            if (!def.AcceptsRequests && (def.Stance != StatusStance.Any || def.MaxRange > 0f ||
+                                         def.RequiresLineOfSight || def.MinInterval > 0f ||
+                                         def.RefuseSeated || def.RefuseInTube))
                 Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' sets request " +
-                                      "checks (Stance, MaxRange, RequiresLineOfSight or MinInterval) " +
-                                      "but is not Replicated, so it accepts no requests for them to judge.");
+                                      "checks (Stance, MaxRange, RequiresLineOfSight, RefuseSeated, " +
+                                      "RefuseInTube or MinInterval) but not AcceptsRequests, so it " +
+                                      "accepts no requests for them to judge.");
             if (!def.Presented && (def.Visibility != StatusVisibility.All || def.CreateVfx != null))
                 Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' sets Visibility " +
                                       "or CreateVfx but is not Presented, so no presentation copy is sent.");
+        }
+
+        /// <summary>A template that sets Replicated, which changes nothing.</summary>
+        internal static void WarnReplicated(CharacterStatusDef def)
+        {
+            if (!CharacterStatuses.WarnOnce("replicated:" + def.Key)) return;
+            Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' sets Replicated, which " +
+                                  "changes nothing: a status runs on the client that owns the character. " +
+                                  "AcceptsRequests lets other clients request it, and Presented shows " +
+                                  "it to them.");
         }
 
         /// <summary>Apply on another player's character: it lands on this client's copy,
@@ -186,10 +309,10 @@ namespace Ectype
             Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' applied to " +
                                   target.name + ", a character this client does not own. It " +
                                   "runs on this client's copy only and changes nothing for " +
-                                  "that player; " + (def.Replicated
+                                  "that player; " + (def.AcceptsRequests
                                       ? "use CharacterStatuses.Request to ask that player's client."
-                                      : "mark the template Replicated and use CharacterStatuses.Request " +
-                                        "to ask that player's client."));
+                                      : "set AcceptsRequests on the template and use " +
+                                        "CharacterStatuses.Request to ask that player's client."));
         }
 
         /// <summary>This client's side, -1 when unknown.</summary>
@@ -205,11 +328,23 @@ namespace Ectype
         internal static CharacterStatusRefusal Bound(CharacterStatusDef def, ref float seconds,
                                                      ref float magnitude)
         {
-            if (!(seconds > 0f) || float.IsInfinity(seconds)) return CharacterStatusRefusal.InvalidDuration;
-            if (!Finite(magnitude) || magnitude < 0f) return CharacterStatusRefusal.InvalidMagnitude;
+            if (!Finite(seconds) || !(seconds > 0f) || seconds < def.MinSeconds)
+                return CharacterStatusRefusal.InvalidDuration;
+            if (!Finite(magnitude) || !(magnitude > 0f)) return CharacterStatusRefusal.InvalidMagnitude;
             if (seconds > def.MaxSeconds) seconds = def.MaxSeconds;
             if (magnitude > def.MaxMagnitude) magnitude = def.MaxMagnitude;
             return CharacterStatusRefusal.None;
+        }
+
+        /// <summary>The distance a request may span: MaxRange on the target's client; on the
+        /// requesting client, the larger of MaxRange times <see cref="RangeSlackFactor"/> and
+        /// MaxRange plus <see cref="RangeSlackMetres"/>, so a request at the edge reaches the
+        /// target's client to be judged there. 0 when the template checks no range.</summary>
+        internal static float RangeLimit(CharacterStatusDef def, bool requesterView)
+        {
+            if (!(def.MaxRange > 0f)) return 0f;
+            if (!requesterView) return def.MaxRange;
+            return Math.Max(def.MaxRange * RangeSlackFactor, def.MaxRange + RangeSlackMetres);
         }
 
         /// <summary>
@@ -217,24 +352,28 @@ namespace Ectype
         /// requester and the target's client run the same function on their own views.
         /// </summary>
         internal static CharacterStatusRefusal Judge(CharacterStatusDef def, ref float seconds,
-                                                     ref float magnitude, CharacterRequestFacts f)
+                                                     ref float magnitude, CharacterRequestFacts f,
+                                                     bool requesterView)
         {
             if (def == null) return CharacterStatusRefusal.NotRegistered;
-            if (!def.Replicated) return CharacterStatusRefusal.NotReplicated;
+            if (!def.AcceptsRequests) return CharacterStatusRefusal.NotAccepted;
             CharacterStatusRefusal bounds = Bound(def, ref seconds, ref magnitude);
             if (bounds != CharacterStatusRefusal.None) return bounds;
             if (!f.VictimAlive) return CharacterStatusRefusal.TargetDead;
             if (!f.SourceKnown) return CharacterStatusRefusal.SenderMissing;
             if (!f.SourceAlive) return CharacterStatusRefusal.SenderDead;
+            if (def.RefuseSeated && f.SourceSeated) return CharacterStatusRefusal.SenderSeated;
+            if (def.RefuseInTube && (f.SourceInTube || f.VictimInTube)) return CharacterStatusRefusal.InCloneTube;
             if (def.Stance == StatusStance.Hostile && !f.Hostile) return CharacterStatusRefusal.Stance;
             if (def.Stance == StatusStance.Friendly && f.Hostile) return CharacterStatusRefusal.Stance;
-            if (def.MaxRange > 0f && !(f.Distance <= def.MaxRange)) return CharacterStatusRefusal.OutOfRange;
+            float limit = RangeLimit(def, requesterView);
+            if (limit > 0f && !(f.Distance <= limit)) return CharacterStatusRefusal.OutOfRange;
             if (def.RequiresLineOfSight && !f.LineClear) return CharacterStatusRefusal.NoLineOfSight;
             return CharacterStatusRefusal.None;
         }
 
-        /// <summary>What this client sees of the two characters. The line of sight is cast
-        /// only when the template asks for it.</summary>
+        /// <summary>What this client sees of the two characters. The seat, tube and line of
+        /// sight are read only when the template asks for them.</summary>
         internal static CharacterRequestFacts Gather(Player source, Player victim, CharacterStatusDef def)
         {
             CharacterRequestFacts f = new CharacterRequestFacts();
@@ -244,19 +383,64 @@ namespace Ectype
             f.SourceAlive = Alive(source);
             f.Hostile = Topology.Hostile(source, victim);
             f.Distance = Vector3.Distance(source.transform.position, victim.transform.position);
+            if (def != null && def.RefuseSeated) f.SourceSeated = Seated(source);
+            if (def != null && def.RefuseInTube)
+            {
+                f.SourceInTube = InTube(source);
+                f.VictimInTube = InTube(victim);
+            }
             f.LineClear = def == null || !def.RequiresLineOfSight || LineClear(source, victim);
             return f;
         }
 
         /// <summary>The game's replicated life state: NetworkNotifyDeath sets it to Dead on
         /// every client and the respawn sets it back, where the health component's own flag is
-        /// set only on the owning client.</summary>
+        /// set only on the owning client. A client that joined after a death learns it from
+        /// that character's first health update, which marks the character dead at 0.</summary>
         internal static bool Alive(Player p)
         {
             return p != null && p.State == LifeState.Alive;
         }
 
-        /// <summary>Chest to chest against level geometry, triggers ignored.</summary>
+        /// <summary>The seat ability (chairs, the helm, turrets) is active; its state is
+        /// synchronised to every client.</summary>
+        internal static bool Seated(Player p)
+        {
+            try
+            {
+                if (p == null || p.Locomotion == null) return false;
+                SittingInChair seat = p.Locomotion.GetAbility<SittingInChair>();
+                return seat != null && seat.IsActive;
+            }
+            catch (Exception) { return false; }
+        }
+
+        private static readonly FieldInfo CloneTubesField = AccessTools.Field(typeof(SpawnSystem), "clonetubes");
+
+        /// <summary>A clone tube holds the character as its occupant, or, on the client that owns
+        /// it, its in-tube ability is active.</summary>
+        internal static bool InTube(Player p)
+        {
+            try
+            {
+                if (p == null) return false;
+                if (p.photonView != null && p.photonView.IsMine && p.Locomotion != null)
+                {
+                    InClonetube inTube = p.Locomotion.GetAbility<InClonetube>();
+                    if (inTube != null && inTube.IsActive) return true;
+                }
+                SpawnSystem spawn = SpawnSystem.Instance;
+                if (spawn == null || CloneTubesField == null) return false;
+                List<CloneTube> tubes = CloneTubesField.GetValue(spawn) as List<CloneTube>;
+                if (tubes == null) return false;
+                foreach (CloneTube tube in tubes)
+                    if (tube != null && tube.GetOccupant() == p) return true;
+            }
+            catch (Exception) { }
+            return false;
+        }
+
+        /// <summary>Chest to chest against level geometry and space objects, triggers ignored.</summary>
         internal static bool LineClear(Player source, Player victim)
         {
             int mask = SightMask();
@@ -267,54 +451,59 @@ namespace Ectype
         }
 
         /// <summary>
-        /// The layers that stop a line of sight: StaticPlatform and MovingPlatform, the hull and
-        /// level geometry. They are the interaction ray's mask without InteractiveObjects, and
-        /// the pair the jetpack treats as environment. Interactive objects are left out so a
-        /// console or a carried item does not hide a player standing behind it. Characters sit
-        /// on their own layer, so neither end of the line hits its own body. Resolved by name
-        /// once; a game without the layers fails every line-of-sight check closed.
+        /// The layers that stop a line of sight: StaticPlatform and MovingPlatform (hulls and
+        /// level geometry) and SpaceObjects (asteroids, NPC hulls, wrecks). Interactive objects
+        /// are left out so a console or a carried item does not hide a player standing behind
+        /// it. Characters sit on their own layer, so neither end of the line hits its own body.
+        /// Resolved by name once; a game without the layers fails every line-of-sight check
+        /// closed.
         /// </summary>
         internal static int SightMask()
         {
             if (_sightMask >= 0) return _sightMask;
-            _sightMask = LayerMask.GetMask("StaticPlatform", "MovingPlatform");
+            _sightMask = LayerMask.GetMask("StaticPlatform", "MovingPlatform", "SpaceObjects");
             if (_sightMask == 0)
-                Plugin.Log.LogError("Ectype: the game has no 'StaticPlatform' or 'MovingPlatform' " +
-                                    "layer; every character status that requires line of sight is " +
-                                    "refused until the framework is updated for this game version.");
+                Plugin.Log.LogError("Ectype: the game has no 'StaticPlatform', 'MovingPlatform' or " +
+                                    "'SpaceObjects' layer; every character status that requires line " +
+                                    "of sight is refused until the framework is updated for this game version.");
             return _sightMask;
         }
 
         /// <summary>A refusal in words, the same on the requester and on the target's client.
         /// <paramref name="seconds"/> and <paramref name="magnitude"/> are the values as received.</summary>
         internal static string Reason(CharacterStatusRefusal r, CharacterStatusDef def, CharacterRequestFacts f,
-                                      float seconds, float magnitude)
+                                      float seconds, float magnitude, bool requesterView)
         {
             switch (r)
             {
-                case CharacterStatusRefusal.NotReplicated:
-                    return "the template is not Replicated, so it accepts no requests";
+                case CharacterStatusRefusal.NotAccepted:
+                    return "the template does not set AcceptsRequests, so it accepts no requests";
                 case CharacterStatusRefusal.InvalidDuration:
-                    return "duration " + seconds + " s is not a positive finite number";
+                    return "duration " + seconds + " s is not a finite number of at least MinSeconds " +
+                           def.MinSeconds + " s";
                 case CharacterStatusRefusal.InvalidMagnitude:
-                    return "magnitude " + magnitude + " is negative or not a finite number";
+                    return "magnitude " + magnitude + " is not a finite number above 0";
                 case CharacterStatusRefusal.TargetDead:
                     return "the target character is dead";
                 case CharacterStatusRefusal.SenderMissing:
                     return "the requester has no character on this client";
                 case CharacterStatusRefusal.SenderDead:
                     return "the requester's character is dead";
+                case CharacterStatusRefusal.SenderSeated:
+                    return "the requester is seated";
+                case CharacterStatusRefusal.InCloneTube:
+                    return (f.SourceInTube ? "the requester" : "the target") + " is in a clone tube";
                 case CharacterStatusRefusal.Stance:
                     return "stance " + def.Stance + " and the requester is " +
                            (f.Hostile ? "on another side from the target" : "on the target's side");
                 case CharacterStatusRefusal.OutOfRange:
-                    return "the requester is " + f.Distance.ToString("0.0") + " m from the target, " +
-                           "beyond MaxRange " + def.MaxRange;
+                    return "the requester is " + f.Distance.ToString("0.0") + " m from the target, beyond " +
+                           RangeLimit(def, requesterView).ToString("0.0") + " m";
                 case CharacterStatusRefusal.NoLineOfSight:
-                    return "level geometry blocks the line between the requester and the target";
+                    return "something blocks the line between the requester and the target";
                 case CharacterStatusRefusal.RateLimited:
-                    return "more than " + def.Burst + " request(s) at once, or more often than one per " +
-                           def.MinInterval + " s";
+                    return "more than " + (requesterView ? def.Burst : def.Burst + 1) +
+                           " request(s) at once, or more often than one per " + def.MinInterval + " s";
                 case CharacterStatusRefusal.NoPeer:
                     return "the target's client does not run this framework on network contract " +
                            EctypePluginInfo.NET_CONTRACT_VERSION;
@@ -326,21 +515,28 @@ namespace Ectype
         // ---------------------------------------------------------------- requesting
 
         /// <summary>The request half of <see cref="CharacterStatuses.Request"/>, after the
-        /// template lookup.</summary>
-        internal static CharacterStatusRefusal Request(Player target, CharacterStatusDef def, float seconds,
-                                                       float magnitude, OrbitObject attacker)
+        /// template lookup. Completes the handle unless the request was sent.</summary>
+        internal static void Request(CharacterStatusRequest handle, CharacterStatusDef def, float seconds,
+                                     float magnitude, OrbitObject attacker)
         {
-            if (target.photonView == null) return CharacterStatusRefusal.InvalidTarget;
+            Player target = handle.Target;
+            if (target.photonView == null)
+            {
+                handle.Complete(CharacterStatusRefusal.InvalidTarget);
+                return;
+            }
             if (target.photonView.IsMine)
             {
-                if (!(seconds > 0f) || float.IsInfinity(seconds))
+                if (!Finite(seconds) || !(seconds > 0f))
                 {
                     Plugin.Log.LogWarning("Ectype: Request('" + def.Key + "') with duration " +
                                           seconds + "s ignored.");
-                    return CharacterStatusRefusal.InvalidDuration;
+                    handle.Complete(CharacterStatusRefusal.InvalidDuration);
+                    return;
                 }
-                CharacterStatuses.ApplyLocal(target, def, seconds, magnitude, 0, attacker, LocalSide());
-                return CharacterStatusRefusal.None;
+                CharacterStatuses.ApplyLocal(target, def, seconds, magnitude, 0, attacker, LocalSide(), false);
+                handle.Complete(CharacterStatusRefusal.None);
+                return;
             }
 
             int targetActor = Topology.ActorOf(target);
@@ -348,36 +544,58 @@ namespace Ectype
             Player me = Topology.CharacterOf(EnemyStatuses.LocalActor());
             CharacterRequestFacts f = Gather(me, target, def);
             float s = seconds, m = magnitude;
-            CharacterStatusRefusal r = Judge(def, ref s, ref m, f);
+            CharacterStatusRefusal r = Judge(def, ref s, ref m, f, true);
             if (r == CharacterStatusRefusal.None && (owner == null || !PeerPresence.HasFramework(owner)))
                 r = CharacterStatusRefusal.NoPeer;
+            if (r == CharacterStatusRefusal.None && Pending.Count >= MaxPending)
+            {
+                if (CharacterStatuses.WarnOnce("pending-full"))
+                    Plugin.Log.LogWarning("Ectype: " + MaxPending + " character status requests are " +
+                                          "waiting for an answer; further requests are refused RateLimited " +
+                                          "until some are answered or time out (reported once).");
+                r = CharacterStatusRefusal.RateLimited;
+            }
             if (r == CharacterStatusRefusal.None &&
-                !Sent.TryTake(targetActor + "/" + def.Key, def, Time.unscaledTime))
+                !Sent.TryTake(targetActor + "/" + def.Key, def.Burst, def.MinInterval, Time.unscaledTime))
                 r = CharacterStatusRefusal.RateLimited;
             if (r != CharacterStatusRefusal.None)
             {
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: Request('" + def.Key + "') on " + target.name +
-                                       " refused: " + Reason(r, def, f, seconds, magnitude) + ".");
-                return r;
+                                       " refused: " + Reason(r, def, f, seconds, magnitude, true) + ".");
+                handle.Complete(r);
+                return;
             }
 
+            int id = unchecked(++_nextRequestId);
+            if (id == 0) id = unchecked(++_nextRequestId);
+            handle.Id = id;
+            handle.TargetActor = targetActor;
+            handle.Deadline = Time.unscaledTime + AnswerTimeoutSeconds;
+            handle.MarkSent();
+            Pending[id] = handle;
             int attackerView = attacker != null && attacker.photonView != null ? attacker.photonView.ViewID : 0;
             EctypeNet.Send(EctypeNet.CharacterStatusRequest, new[] { owner },
-                           RequestArgs(targetActor, def.Key, s, m, attackerView), reliable: true);
+                           RequestArgs(id, targetActor, def.Key, s, m, attackerView), reliable: true);
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: character status '" + def.Key + "' requested on " +
-                                   target.name + " (actor " + targetActor + ", " + s + " s, magnitude " +
-                                   m + ").");
-            return CharacterStatusRefusal.None;
+                                   target.name + " (actor " + targetActor + ", request " + id + ", " + s +
+                                   " s, magnitude " + m + ").");
         }
 
-        /// <summary>[int targetActor, string key, int durationMs, float magnitude, int attackerView].</summary>
-        internal static object[] RequestArgs(int targetActor, string key, float seconds, float magnitude,
-                                             int attackerView)
+        /// <summary>[int requestId, int targetActor, string key, int durationMs, float magnitude,
+        /// int attackerView].</summary>
+        internal static object[] RequestArgs(int requestId, int targetActor, string key, float seconds,
+                                             float magnitude, int attackerView)
         {
             int ms = (int)Math.Min(Math.Round(seconds * 1000.0), int.MaxValue);
-            return new object[] { targetActor, key, Math.Max(ms, 1), magnitude, attackerView };
+            return new object[] { requestId, targetActor, key, Math.Max(ms, 1), magnitude, attackerView };
+        }
+
+        /// <summary>[int requestId, int refusal]: the target's verdict on a request.</summary>
+        internal static object[] ResultArgs(int requestId, CharacterStatusRefusal refusal)
+        {
+            return new object[] { requestId, (int)refusal };
         }
 
         /// <summary>[int targetActor, string key, int endTs, float magnitude].</summary>
@@ -398,29 +616,116 @@ namespace Ectype
             return room != null ? room.GetPlayer(actor) : null;
         }
 
+        /// <summary>Completes sent requests whose answer is overdue.</summary>
+        internal static void PollPending()
+        {
+            if (Pending.Count == 0) return;
+            float now = Time.unscaledTime;
+            PendingScratch.Clear();
+            foreach (KeyValuePair<int, CharacterStatusRequest> kv in Pending)
+                if (now >= kv.Value.Deadline) PendingScratch.Add(kv.Key);
+            for (int i = 0; i < PendingScratch.Count; i++)
+            {
+                CharacterStatusRequest h;
+                if (!Pending.TryGetValue(PendingScratch[i], out h)) continue;
+                Pending.Remove(PendingScratch[i]);
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: character status '" + h.Key + "' request " + h.Id +
+                                       " to actor " + h.TargetActor + " got no answer in " +
+                                       AnswerTimeoutSeconds + " s.");
+                h.Complete(CharacterStatusRefusal.NoAnswer);
+            }
+        }
+
+        /// <summary>
+        /// The target's verdict on one of this client's requests (subtype
+        /// <see cref="EctypeNet.CharacterStatusResult"/>). Accepted only from the actor the
+        /// request went to.
+        /// </summary>
+        internal static CharacterStatusRefusal HandleResult(int sender, object[] args)
+        {
+            if (!EctypeNet.MatchesLayout(EctypeNet.CharacterStatusResult, args))
+                return CharacterStatusRefusal.Failed;
+            int id = (int)args[0];
+            int code = (int)args[1];
+            CharacterStatusRequest h;
+            if (!Pending.TryGetValue(id, out h))
+            {
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: character status answer for request " + id + " from actor " +
+                                       sender + " ignored: no such request is waiting (timed out?).");
+                return CharacterStatusRefusal.InvalidTarget;
+            }
+            if (sender != h.TargetActor)
+            {
+                StatusRefusalLog.Report(sender, "character answer", "*",
+                                        "Ectype: ignored a character status answer from actor " + sender +
+                                        ": request " + id + " went to actor " + h.TargetActor + ".");
+                return CharacterStatusRefusal.Authority;
+            }
+            Pending.Remove(id);
+            CharacterStatusRefusal verdict = Enum.IsDefined(typeof(CharacterStatusRefusal), code)
+                                                 ? (CharacterStatusRefusal)code : CharacterStatusRefusal.Failed;
+            if (Plugin.Verbose)
+                Plugin.Log.LogInfo("Ectype: character status '" + h.Key + "' request " + id + " to actor " +
+                                   sender + " answered " + verdict + ".");
+            h.Complete(verdict);
+            return verdict;
+        }
+
         // ---------------------------------------------------------------- receiving a request
 
         /// <summary>
         /// One received request (subtype <see cref="EctypeNet.CharacterStatusRequest"/>).
         /// <paramref name="sender"/> is the actor Photon stamped on the event, the one fact
-        /// about the requester the message cannot forge. Returns what was refused, for the
-        /// dev self-test; a refusal is logged here.
+        /// about the requester the message cannot forge. Every request within the
+        /// per-requester cap is answered with its verdict. Returns the verdict, for the dev
+        /// self-test; a refusal is logged here.
         /// </summary>
         internal static CharacterStatusRefusal HandleRequest(int sender, object[] args)
         {
             if (!EctypeNet.MatchesLayout(EctypeNet.CharacterStatusRequest, args))
                 return CharacterStatusRefusal.Failed;
-            int targetActor = (int)args[0];
-            string key = (string)args[1];
-            int durationMs = (int)args[2];
-            float magnitude = (float)args[3];
-            int attackerView = (int)args[4];
+            int requestId = (int)args[0];
+            if (!Accepted.TryTake(sender + "/*", SenderBurst, 1f / SenderBurst, Time.unscaledTime))
+            {
+                StatusRefusalLog.Report(sender, "character request flood", "*",
+                                        "Ectype: refused character status requests from actor " + sender +
+                                        ": more than " + SenderBurst + " a second across all keys; they " +
+                                        "are dropped unanswered.");
+                return CharacterStatusRefusal.RateLimited;
+            }
+            CharacterStatusRefusal r = Decide(sender, args);
+            if (sender != EnemyStatuses.LocalActor())
+            {
+                PhotonPlayer to = PlayerOf(sender);
+                if (to != null)
+                    EctypeNet.Send(EctypeNet.CharacterStatusResult, new[] { to }, ResultArgs(requestId, r),
+                                   reliable: true);
+            }
+            return r;
+        }
 
+        private static CharacterStatusRefusal Decide(int sender, object[] args)
+        {
+            int targetActor = (int)args[1];
+            string key = (string)args[2];
+            int durationMs = (int)args[3];
+            float magnitude = (float)args[4];
+            int attackerView = (int)args[5];
+
+            if (key.Length > MaxKeyLength)
+            {
+                StatusRefusalLog.Report(sender, "character request key", "*",
+                                        "Ectype: refused a character status request from actor " + sender +
+                                        ": its key is longer than " + MaxKeyLength + " characters.");
+                return CharacterStatusRefusal.Failed;
+            }
             int me = EnemyStatuses.LocalActor();
             Player victim = targetActor == me ? Topology.CharacterOf(me) : null;
             if (victim == null || victim.photonView == null || !victim.photonView.IsMine)
             {
-                StatusRefusalLog.Report(sender, "character request", key,
+                StatusRefusalLog.Report(sender, "character request target", "*",
                                         "Ectype: refused character status '" + key + "' request from actor " +
                                         sender + ": " + (targetActor != me
                                             ? "it names actor " + targetActor + ", not this client"
@@ -431,32 +736,34 @@ namespace Ectype
             CharacterStatusDef def = CharacterStatuses.Lookup(key);
             if (def == null)
             {
-                if (CharacterStatuses.WarnOnce("peer-nodef:" + key))
-                    Plugin.Log.LogWarning("Ectype: peer requested unknown character status '" + key +
-                                          "'; ignoring (mod not installed here?).");
+                StatusRefusalLog.Report(sender, "character unknown key", "*",
+                                        "Ectype: peer requested unknown character status '" + key +
+                                        "'; ignoring (mod not installed here?).");
                 return CharacterStatusRefusal.NotRegistered;
             }
 
             Player source = Topology.CharacterOf(sender);
             CharacterRequestFacts f = Gather(source, victim, def);
             float seconds = durationMs / 1000f, rawSeconds = seconds, rawMagnitude = magnitude;
-            CharacterStatusRefusal r = Judge(def, ref seconds, ref magnitude, f);
+            CharacterStatusRefusal r = Judge(def, ref seconds, ref magnitude, f, false);
+            // One token more than the requester keeps: requests the network delivered closer
+            // together than they were sent still land, and the sustained rate stays MinInterval.
             if (r == CharacterStatusRefusal.None &&
-                !Accepted.TryTake(sender + "/" + key, def, Time.unscaledTime))
+                !Accepted.TryTake(sender + "/" + key, def.Burst + 1, def.MinInterval, Time.unscaledTime))
                 r = CharacterStatusRefusal.RateLimited;
             if (r != CharacterStatusRefusal.None)
             {
                 StatusRefusalLog.Report(sender, "character request", key,
                                         "Ectype: refused character status '" + key + "' request from actor " +
                                         sender + " on " + victim.name + ": " +
-                                        Reason(r, def, f, rawSeconds, rawMagnitude) + ".");
+                                        Reason(r, def, f, rawSeconds, rawMagnitude, false) + ".");
                 return r;
             }
 
             PhotonView av = attackerView != 0 ? PhotonView.Find(attackerView) : null;
             OrbitObject attacker = av != null ? av.GetComponent<OrbitObject>() : null;
             CharacterStatuses.ApplyLocal(victim, def, seconds, magnitude, sender, attacker,
-                                         Topology.ForceOf(source));
+                                         Topology.ForceOf(source), true);
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: character status '" + key + "' applied on request from actor " +
                                    sender + " (" + seconds + " s, magnitude " + magnitude + ", " +
@@ -490,11 +797,18 @@ namespace Ectype
         /// <summary>
         /// Announces a status on a character this client owns to its audience, after an
         /// application. A re-application whose end moved by less than
-        /// <see cref="AnnounceSlackMs"/> goes only to audience members not yet told.
+        /// <see cref="AnnounceSlackMs"/> goes only to audience members not yet told; one within
+        /// <see cref="AnnounceGapSeconds"/> of the last announcement waits for the status's
+        /// poll to send it.
         /// </summary>
         internal static void Announce(CharacterStatus live)
         {
             if (!live.Announces || live.Ended || live.Target == null) return;
+            if (live.AnnouncedTo.Count > 0 && Time.unscaledTime < live.NextAnnounceAt)
+            {
+                live.AnnounceDue = true;
+                return;
+            }
             int remainingMs = (int)(live.RemainingSeconds * 1000f);
             if (remainingMs <= 0) return;
             int endTs = unchecked(PhotonNetwork.ServerTimestamp + remainingMs);
@@ -516,6 +830,7 @@ namespace Ectype
             foreach (PhotonPlayer p in to)
                 if (!live.AnnouncedTo.Contains(p.ActorNumber)) live.AnnouncedTo.Add(p.ActorNumber);
             if (moved) live.AnnouncedEndTs = endTs;
+            live.NextAnnounceAt = Time.unscaledTime + AnnounceGapSeconds;
         }
 
         /// <summary>Tells every peer that received a copy that the status ended before the end
@@ -548,9 +863,16 @@ namespace Ectype
                 return CharacterStatusRefusal.Failed;
             int targetActor = (int)args[0];
             string key = (string)args[1];
+            if (key.Length > MaxKeyLength)
+            {
+                StatusRefusalLog.Report(sender, "character announcement key", "*",
+                                        "Ectype: refused a character status announcement from actor " + sender +
+                                        ": its key is longer than " + MaxKeyLength + " characters.");
+                return CharacterStatusRefusal.Failed;
+            }
             if (targetActor != sender)
             {
-                StatusRefusalLog.Report(sender, "character announcement", key,
+                StatusRefusalLog.Report(sender, "character announcement authority", "*",
                                         "Ectype: refused character status '" + key + "' announcement from actor " +
                                         sender + ": it names actor " + targetActor + "'s character, and only " +
                                         "a character's own client announces its statuses.");
@@ -560,9 +882,9 @@ namespace Ectype
             CharacterStatusDef def = CharacterStatuses.Lookup(key);
             if (def == null)
             {
-                if (CharacterStatuses.WarnOnce("peer-nodef:" + key))
-                    Plugin.Log.LogWarning("Ectype: peer announced unknown character status '" + key +
-                                          "'; ignoring (mod not installed here?).");
+                StatusRefusalLog.Report(sender, "character unknown key", "*",
+                                        "Ectype: peer announced unknown character status '" + key +
+                                        "'; ignoring (mod not installed here?).");
                 return CharacterStatusRefusal.NotRegistered;
             }
             if (!def.Presented)
@@ -585,16 +907,66 @@ namespace Ectype
                 CharacterStatusCopies.Hide(target, key);
                 return CharacterStatusRefusal.None;
             }
+            int now = PhotonNetwork.ServerTimestamp;
             int endTs = (int)args[2];
-            if (unchecked(endTs - PhotonNetwork.ServerTimestamp) <= 0)
+            if (unchecked(endTs - now) <= 0)
             {
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: character status '" + key + "' announcement from actor " +
                                        sender + " arrived after its end; ignored.");
                 return CharacterStatusRefusal.InvalidDuration;
             }
+            if (!Alive(target)) return CharacterStatusRefusal.TargetDead;
+            if (unchecked(endTs - now) > MaxCopyMs) endTs = unchecked(now + MaxCopyMs);
             CharacterStatusCopies.Show(target, def, endTs);
             return CharacterStatusRefusal.None;
+        }
+    }
+
+    /// <summary>
+    /// Ends statuses and copies when a character dies. The game keeps the character object
+    /// through death and respawn, so nothing is destroyed for the poll to notice. Every death
+    /// passes through the life-state setter on every client: the death RPC (sent to all) sets it
+    /// on each, and a client that learns of the death from a health update sets it there.
+    /// </summary>
+    internal static class CharacterStatusLife
+    {
+        internal static void ApplyPatch(Harmony harmony)
+        {
+            MethodInfo setter = AccessTools.PropertySetter(typeof(Player), "State");
+            if (setter == null)
+            {
+                Plugin.Log.LogError("Ectype: Player.State setter not found - character statuses are not " +
+                                    "ended on death (game update?).");
+                return;
+            }
+            harmony.Patch(setter, postfix: new HarmonyMethod(typeof(CharacterStatusLife), "Postfix"));
+        }
+
+        private static void Postfix(Player __instance)
+        {
+            try
+            {
+                if (__instance != null && __instance.State != LifeState.Alive) OnDeath(__instance);
+            }
+            catch (Exception e)
+            {
+                if (CharacterStatuses.WarnOnce("death-hook"))
+                    Plugin.Log.LogError("Ectype: ending character statuses on death failed (reported once): " + e);
+            }
+        }
+
+        /// <summary>Ends every status this client runs on the character (on its owner, that
+        /// also tells the peers' copies) and every copy shown on it. Returns how many ended.</summary>
+        internal static int OnDeath(Player p)
+        {
+            int ended = CharacterStatuses.CountOn(p);
+            if (ended > 0) CharacterStatuses.RemoveAll(p);
+            int hidden = CharacterStatusCopies.HideAll(p);
+            if (Plugin.Verbose && ended + hidden > 0)
+                Plugin.Log.LogInfo("Ectype: " + p.name + " died: ended " + ended + " character status(es) and " +
+                                   hidden + " presentation copy(ies).");
+            return ended + hidden;
         }
     }
 
@@ -663,6 +1035,21 @@ namespace Ectype
             if (Live.TryGetValue(k, out c)) End(k, c);
         }
 
+        /// <summary>Ends every copy shown on the character; returns how many.</summary>
+        internal static int HideAll(Player target)
+        {
+            if (target == null || Live.Count == 0) return 0;
+            Scratch.Clear();
+            foreach (KeyValuePair<string, Copy> kv in Live)
+                if (ReferenceEquals(kv.Value.Target, target)) Scratch.Add(kv.Key);
+            for (int i = 0; i < Scratch.Count; i++)
+            {
+                Copy c;
+                if (Live.TryGetValue(Scratch[i], out c)) End(Scratch[i], c);
+            }
+            return Scratch.Count;
+        }
+
         internal static bool IsPresented(Player target, string key)
         {
             return target != null && Live.ContainsKey(CharacterStatuses.MapKey(target, key));
@@ -698,7 +1085,7 @@ namespace Ectype
         }
     }
 
-    /// <summary>Receivers registered with EctypeNet for the two character status subtypes.</summary>
+    /// <summary>Receivers registered with EctypeNet for the character status subtypes.</summary>
     internal static class CharacterStatusMessage
     {
         internal static void ReceiveRequest(int senderActor, object[] args)
@@ -716,6 +1103,15 @@ namespace Ectype
             catch (Exception e)
             {
                 Plugin.Log.LogError("Ectype: handling character-status announcement failed: " + e);
+            }
+        }
+
+        internal static void ReceiveResult(int senderActor, object[] args)
+        {
+            try { CharacterStatusSync.HandleResult(senderActor, args); }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError("Ectype: handling character-status answer failed: " + e);
             }
         }
     }

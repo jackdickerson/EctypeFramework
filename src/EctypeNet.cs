@@ -54,9 +54,9 @@ namespace Ectype
         /// The count is a delta: each receiver adds that many applications.</summary>
         internal const byte EnemyStatusStacks = 3;
 
-        /// <summary>A request to put a status on the recipient's own character: [int
-        /// targetActor, string key, int durationMs, float magnitude, int attackerView]. Sent to
-        /// the target's client alone, which judges it against its own view.</summary>
+        /// <summary>A request to put a status on the recipient's own character: [int requestId,
+        /// int targetActor, string key, int durationMs, float magnitude, int attackerView]. Sent
+        /// to the target's client alone, which judges it against its own view.</summary>
         internal const byte CharacterStatusRequest = 4;
 
         /// <summary>A character's own client announcing a status on that character for
@@ -64,6 +64,10 @@ namespace Ectype
         /// extend it until a server timestamp, [int targetActor, string key] when it ended
         /// before that.</summary>
         internal const byte CharacterStatusApplied = 5;
+
+        /// <summary>The target's verdict on a character status request, to the requester alone:
+        /// [int requestId, int refusal] (0 for applied).</summary>
+        internal const byte CharacterStatusResult = 6;
 
         /// <summary>
         /// Every message's field types, in order: the network contract in data. A subtype may
@@ -93,12 +97,17 @@ namespace Ectype
                 } },
             { CharacterStatusRequest, new[]
                 {
-                    new[] { typeof(int), typeof(string), typeof(int), typeof(float), typeof(int) },
+                    new[] { typeof(int), typeof(int), typeof(string), typeof(int), typeof(float),
+                            typeof(int) },
                 } },
             { CharacterStatusApplied, new[]
                 {
                     new[] { typeof(int), typeof(string) },
                     new[] { typeof(int), typeof(string), typeof(int), typeof(float) },
+                } },
+            { CharacterStatusResult, new[]
+                {
+                    new[] { typeof(int), typeof(int) },
                 } },
         };
 

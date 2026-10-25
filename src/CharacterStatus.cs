@@ -89,13 +89,20 @@ namespace Ectype
         /// be null if the character was destroyed first.</summary>
         public Action<Player> OnRemoved;
 
+        /// <summary>Declares that this status should be visible on every client. It changes
+        /// nothing: a status runs on the client that owns the character, and applying a
+        /// template that sets it logs one warning naming the key.
+        /// <see cref="AcceptsRequests"/> lets other clients request the status, and
+        /// <see cref="Presented"/> shows it to them.</summary>
+        public bool Replicated;
+
         // ---- requests from other clients (CharacterStatuses.Request) ----
 
         /// <summary>Accepts requests from other clients. Off (the default), the character's
         /// own client refuses every request for this key, and only that client can apply
         /// the status. The checks below judge requests only; they never apply to the owning
         /// client's own Apply.</summary>
-        public bool Replicated;
+        public bool AcceptsRequests;
 
         /// <summary>Which relation between the requester's character and the target the
         /// status accepts: Any (the default), Hostile (another side) or Friendly (the same
@@ -103,27 +110,38 @@ namespace Ectype
         public StatusStance Stance = StatusStance.Any;
 
         /// <summary>Metres between the requester's character and the target, measured on the
-        /// target's client. 0 (the default) checks no range. Leave slack: the target's client
-        /// sees the requester where its last network update put them.</summary>
+        /// target's client. 0 (the default) checks no range. The requesting client checks a
+        /// looser limit, so a request at the edge reaches the target's client to be judged.</summary>
         public float MaxRange;
 
-        /// <summary>Refuse a request when level geometry blocks the line between the two
-        /// characters' chests, cast on the target's client.</summary>
+        /// <summary>Refuse a request when level geometry or a space object blocks the line
+        /// between the two characters' chests, cast on the target's client.</summary>
         public bool RequiresLineOfSight;
+
+        /// <summary>Refuse a request from a player who is seated: a chair, the helm or a turret.</summary>
+        public bool RefuseSeated;
+
+        /// <summary>Refuse a request when the requester or the target is in a clone tube.</summary>
+        public bool RefuseInTube;
 
         /// <summary>Seconds per request from one requester for this key, refilled one at a
         /// time. 0 (the default) checks no rate.</summary>
         public float MinInterval;
 
-        /// <summary>Requests from one requester the target accepts back to back before
-        /// MinInterval applies, for messages the network delivered bunched up. 1 or more.</summary>
+        /// <summary>Requests from one requester the requesting client sends back to back before
+        /// MinInterval applies. The target's client accepts one more, for requests the network
+        /// delivered closer together than they were sent. 1 or more.</summary>
         public int Burst = 1;
+
+        /// <summary>Shortest duration a request may ask for; a shorter one is refused.</summary>
+        public float MinSeconds = 0.25f;
 
         /// <summary>Longest duration a request may ask for; a longer one is cut to this.</summary>
         public float MaxSeconds = 30f;
 
         /// <summary>Largest magnitude a request may ask for; a larger one is cut to this. A
-        /// negative magnitude is refused, because it would turn a debuff into a buff.</summary>
+        /// magnitude of 0 or below is refused: it would turn a debuff into a buff, or pin the
+        /// status at no effect.</summary>
         public float MaxMagnitude = 1f;
 
         // ---- presentation copies ----
@@ -229,7 +247,7 @@ namespace Ectype
             Defs[def.Key] = def;
             Plugin.Log.LogInfo("Ectype: character status '" + def.Key + "' registered (" +
                                def.Entries.Count + " stat mods, max stacks " + def.MaxStacks +
-                               (def.Replicated ? ", accepts requests" : "") +
+                               (def.AcceptsRequests ? ", accepts requests" : "") +
                                (def.Presented ? ", presented" : "") + ").");
             CharacterStatusSync.WarnUnusedFields(def);
         }
@@ -253,9 +271,10 @@ namespace Ectype
                                           seconds + "s ignored.");
                     return;
                 }
+                if (def.Replicated) CharacterStatusSync.WarnReplicated(def);
                 if (target.photonView != null && !target.photonView.IsMine)
                     CharacterStatusSync.WarnNotOwned(def, target);
-                ApplyLocal(target, def, seconds, magnitude, 0, null, CharacterStatusSync.LocalSide());
+                ApplyLocal(target, def, seconds, magnitude, 0, null, CharacterStatusSync.LocalSide(), false);
             }
             catch (Exception e)
             {
@@ -267,33 +286,36 @@ namespace Ectype
         /// Put a status on a character, wherever it is simulated. On this client's own
         /// character this is <see cref="Apply"/>. On another player's character it sends a
         /// request to that player's client, which checks the template's opt-in
-        /// (<see cref="CharacterStatusDef.Replicated"/>), the requester's character, Stance,
+        /// (<see cref="CharacterStatusDef.AcceptsRequests"/>), both characters, Stance,
         /// MaxRange, line of sight and rate against its own view, then applies the status there
-        /// or refuses it. The same checks run here first, from this client's view, so a
-        /// request that would be refused is not sent.
+        /// or refuses it, and answers. The same checks run here first, from this client's view,
+        /// so a request that would be refused is not sent.
         ///
-        /// Returns <see cref="CharacterStatusRefusal.None"/> when the status was applied here
-        /// or the request was sent; the target's client can still refuse it, and logs why.
-        /// Seconds and magnitude above the template's MaxSeconds and MaxMagnitude are cut to
-        /// them. The attacker travels as a view id and is reported by
-        /// <see cref="AttackerOf"/> on the target's client; it is informational and never
-        /// judged.
+        /// Returns a handle. A request applied here or refused here is complete before this
+        /// returns; a sent one completes when the target's client answers, or with
+        /// <see cref="CharacterStatusRefusal.NoAnswer"/> after
+        /// <see cref="CharacterStatusSync.AnswerTimeoutSeconds"/> seconds. Seconds and magnitude
+        /// above the template's MaxSeconds and MaxMagnitude are cut to them. The attacker
+        /// travels as a view id and is reported by <see cref="AttackerOf"/> on the target's
+        /// client; it is informational and never judged.
         /// </summary>
-        public static CharacterStatusRefusal Request(Player target, string key, float seconds,
+        public static CharacterStatusRequest Request(Player target, string key, float seconds,
                                                      float magnitude = 1f, OrbitObject attacker = null)
         {
+            CharacterStatusRequest handle = new CharacterStatusRequest(target, key);
             try
             {
                 CharacterStatusDef def;
                 CharacterStatusRefusal pre = Preflight(target, key, out def);
-                if (pre != CharacterStatusRefusal.None) return pre;
-                return CharacterStatusSync.Request(target, def, seconds, magnitude, attacker);
+                if (pre != CharacterStatusRefusal.None) handle.Complete(pre);
+                else CharacterStatusSync.Request(handle, def, seconds, magnitude, attacker);
             }
             catch (Exception e)
             {
                 Plugin.Log.LogError("Ectype: Request('" + key + "') failed: " + e);
-                return CharacterStatusRefusal.Failed;
+                handle.Complete(CharacterStatusRefusal.Failed);
             }
+            return handle;
         }
 
         /// <summary>Remove a status early. No-op when not active. Only the client that owns
@@ -348,8 +370,9 @@ namespace Ectype
         }
 
         /// <summary>Drop every status on a character. Call this when a character is about
-        /// to stop being the thing the mods were meant for - a role switch, say. Death
-        /// and despawn need no call: the poll reaps a status whose target went away.</summary>
+        /// to stop being the thing the mods were meant for - a role switch, say. Death and
+        /// despawn need no call: the framework ends every status on a character when its life
+        /// state leaves Alive, and the poll reaps a status whose character was destroyed.</summary>
         public static void RemoveAll(Player target)
         {
             if (target == null) return;
@@ -456,17 +479,19 @@ namespace Ectype
         /// <summary>
         /// Applies one application on this client and returns the live status. The requester
         /// is the actor whose request was accepted (0 for this client's own call); its side
-        /// joins the set the OwnForce audience reads. A status on a character this client owns
-        /// is then announced to its audience when the template is Presented.
+        /// joins the set the OwnForce audience reads. A requested application never shortens or
+        /// weakens a running status: its end moves only later and its magnitude only up. A
+        /// status on a character this client owns is then announced to its audience when the
+        /// template is Presented.
         /// </summary>
         internal static CharacterStatus ApplyLocal(Player target, CharacterStatusDef def, float seconds,
                                                    float magnitude, int requester, OrbitObject attacker,
-                                                   int applierSide)
+                                                   int applierSide, bool requested)
         {
             string mapKey = MapKey(target, def.Key);
             CharacterStatus live;
             if (Active.TryGetValue(mapKey, out live))
-                live.Reapply(seconds, requester, attacker, applierSide);
+                live.Reapply(seconds, magnitude, requester, attacker, applierSide, requested);
             else
             {
                 live = new CharacterStatus(def, target, mapKey, magnitude, seconds, requester,
@@ -485,6 +510,7 @@ namespace Ectype
         internal static void Poll()
         {
             CharacterStatusCopies.Poll();
+            CharacterStatusSync.PollPending();
             if (Active.Count == 0) return;
             DriveScratch.Clear();
             foreach (KeyValuePair<string, CharacterStatus> kv in Active)
@@ -493,6 +519,16 @@ namespace Ectype
         }
 
         internal static void Unregister(CharacterStatus live) { Active.Remove(live.MapKey); }
+
+        /// <summary>How many statuses this client runs on the character.</summary>
+        internal static int CountOn(Player target)
+        {
+            int n = 0;
+            if (target == null) return 0;
+            foreach (KeyValuePair<string, CharacterStatus> kv in Active)
+                if (kv.Value.Targets(target)) n++;
+            return n;
+        }
 
         internal static bool WarnOnce(string tag) { return WarnedOnce.Add(tag); }
 
@@ -504,8 +540,8 @@ namespace Ectype
         }
 
         /// <summary>Keyed on the Unity instance id, not a view id: a status lives on one
-        /// client, and a respawned character is a different object that must not inherit the
-        /// old one's entries.</summary>
+        /// client. The game keeps the same object through death and respawn; the death hook
+        /// empties it first, so a respawn starts with nothing.</summary>
         internal static string MapKey(Player target, string key)
         {
             return target.GetInstanceID() + "/" + key;
@@ -522,7 +558,7 @@ namespace Ectype
         internal int StackCount { get { return _stacks; } }
 
         private readonly CharacterStatusDef _def;
-        private readonly float _magnitude;
+        private float _magnitude;
         private readonly float _startTime;
         private Player _target;
         private float _endTime;
@@ -550,6 +586,11 @@ namespace Ectype
         /// <summary>Actors a presentation copy was announced to, and the end they were told.</summary>
         internal readonly List<int> AnnouncedTo = new List<int>();
         internal int AnnouncedEndTs;
+
+        /// <summary>Unscaled time before which a moved end is not announced again, and whether
+        /// one is waiting for it.</summary>
+        internal float NextAnnounceAt;
+        internal bool AnnounceDue;
 
         internal float RemainingSeconds
         {
@@ -586,26 +627,57 @@ namespace Ectype
             if (side >= 0 && !ApplierSides.Contains(side)) ApplierSides.Add(side);
         }
 
-        internal void Reapply(float seconds, int requester, OrbitObject attacker, int applierSide)
+        /// <summary>A re-application. This client's own re-application refreshes to the new
+        /// duration and keeps the first magnitude. A requested one only ever extends the end
+        /// and raises the magnitude, so no requester can shorten or weaken a status another
+        /// applier put on.</summary>
+        internal void Reapply(float seconds, float magnitude, int requester, OrbitObject attacker,
+                              int applierSide, bool requested)
         {
             RequesterActor = requester;
             Attacker = attacker;
             NoteApplierSide(applierSide);
-            if (_def.RefreshOnReapply) _endTime = Time.time + seconds;
+            if (_def.RefreshOnReapply)
+            {
+                float end = Time.time + seconds;
+                _endTime = requested ? Math.Max(_endTime, end) : end;
+            }
+            if (requested) RaiseMagnitude(magnitude);
             if (_stacks < _def.MaxStacks) ApplyStack();
             else if (_def.OnApplied != null) SafeCb(() => _def.OnApplied(_target, _stacks));
         }
 
-        /// <summary>A character that went away (death, despawn, scene change) ends its
-        /// statuses here rather than through any teardown hook: the target is a Unity
-        /// object, so the null check catches a destroyed one, and the collection it held
-        /// died with it.</summary>
+        /// <summary>Re-applies every stack at a larger magnitude: the modifiers are removed by
+        /// source and rebuilt, so the stat sees the new amount once per stack.</summary>
+        private void RaiseMagnitude(float magnitude)
+        {
+            if (!(magnitude > _magnitude) || _target == null || _target.Stats == null) return;
+            _target.Stats.RemoveModifier(this);
+            _magnitude = magnitude;
+            for (int i = 0; i < _stacks; i++)
+            {
+                bool anyMatched;
+                List<StatMod> mods = StatusStats.BuildMods(_def.Entries, _magnitude, _target.Stats,
+                                                           "character status", out anyMatched);
+                if (mods.Count > 0) _target.Stats.ApplyModifiers(mods, this, true);
+            }
+        }
+
+        /// <summary>A character that was destroyed (despawn, scene change) ends its statuses
+        /// here: the target is a Unity object, so the null check catches a destroyed one, and
+        /// the collection it held died with it. Death ends them earlier, from the life-state
+        /// hook, because the game keeps the character object through death and respawn.</summary>
         internal void Update()
         {
             try
             {
                 if (_target == null) { End(); return; }
                 if (Time.time >= _endTime) { End(); return; }
+                if (AnnounceDue && Time.unscaledTime >= NextAnnounceAt)
+                {
+                    AnnounceDue = false;
+                    CharacterStatusSync.Announce(this);
+                }
                 Tick();
             }
             catch (Exception e)
