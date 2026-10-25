@@ -12,7 +12,7 @@ breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`,
 `roleName`, `hero`, each perk (its `unlocks` included), the hero's target, distribution and
 conditions, each other perk's (a bad one skips that perk), `abilityWhen`, the hero's `unlocks`,
 then each custom stat and `suppress` entry. A `mutators` entry is
-checked when the role registers, and a bad one refuses only that mutator.
+checked after the role registers, and a bad one refuses only that mutator.
 [troubleshooting.md](troubleshooting.md) lists each message.
 
 ## Top level
@@ -228,7 +228,10 @@ every client, late joiners included, reads the result. Requires framework 0.30.0
 | `effects[].amount` | A JSON number. |
 
 A refused mutator logs one error naming `<roleId>/<key>` and the reason; the role and its other
-mutators still register. Every mutator is registered with the game's Required effect, so a
+mutators still register. The mutators register only with their role: once the role has
+registered and the framework has worked out which roles are suppressed. A role that fails
+registration, or that another role lists in `suppressRoles`, registers none of its mutators and
+logs one warning saying which. Every mutator is registered with the game's Required effect, so a
 player without the role mod is refused at the join screen of a room hosted with it.
 [reference/mod-stats.md](reference/mod-stats.md#contributions-from-mutators) has the composition
 rule, the registration walk and the exact point in the session start where the effects apply.
