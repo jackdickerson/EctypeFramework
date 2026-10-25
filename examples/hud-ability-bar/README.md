@@ -12,7 +12,7 @@ Rules:
 - The bar draws the button, the key chip and the fill. The mod owns the input and the cooldown. The chip names a key but reads none.
 - `Fill` is 0 when ready and 1 when just used.
 - At most `HudAbilityBar.MaxButtons` (4) buttons. `Register` returns null and logs when the bar is full, the id is taken or the id is empty. `Register` is safe before the HUD exists.
-- Namespace the `Id` with the plugin GUID.
+- The `Id` is `"<plugin GUID>/<name>"`.
 - The glyph is a square texture, white on transparent, readable by the CPU. An unreadable texture is drawn as given, with one warning.
 - A callback that throws hides its own button for the session. The rest of the bar keeps running.
 

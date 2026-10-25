@@ -34,7 +34,7 @@ namespace ExampleLootTables
                 // Register once at startup. The call is idempotent, so retrying is safe.
                 bool ok = LootTables.Register(new LootDrop
                 {
-                    Owner = "Example Loot Tables",                      // log text only
+                    Owner = PLUGIN_GUID,                                // this plugin's BepInEx GUID
                     Item = new GUIDUnion(ItemGuid),
                     Rarity = LootTables.ToLootRarity(RarityType.Common),
                     // Which stock entries decide where the item may drop: every weapon mod.

@@ -278,7 +278,8 @@ namespace Ectype
 
         /// <summary>
         /// Registers a session value. Call it at plugin <c>Awake</c>, on every client, with a key
-        /// that is the same literal on every client; prefix it with your plugin GUID.
+        /// that is the same literal on every client: <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>, where the
+        /// GUID is the registering plugin's BepInEx GUID.
         ///
         /// On the host, <paramref name="hostProduce"/> runs once per session, as the new session
         /// object becomes active, after the previous scene has been unloaded and before the quest
@@ -296,7 +297,16 @@ namespace Ectype
         public static bool Register<T>(string key, Func<T> hostProduce, Action<T> apply,
                                        SessionDataOptions opts = null)
         {
+            return RegisterCore(key, hostProduce, apply, opts, true);
+        }
+
+        /// <summary><see cref="Register{T}"/>; <paramref name="checkRule"/> false skips the
+        /// identifier rule, for the framework's own keys.</summary>
+        internal static bool RegisterCore<T>(string key, Func<T> hostProduce, Action<T> apply,
+                                             SessionDataOptions opts, bool checkRule)
+        {
             string problem = CheckKey(key);
+            if (problem == null && checkRule) problem = Identifiers.IdProblem(key);
             if (problem == null && hostProduce == null) problem = "no host producer";
             if (problem == null && _byKey.ContainsKey(key)) problem = "the key is already registered";
             if (problem == null) problem = TypeProblem(typeof(T), false);
@@ -399,9 +409,10 @@ namespace Ectype
         /// publishes it live in the room property <see cref="HostValuesRoomProperty"/>; from the
         /// start of a mission every client, the host included, reads the value frozen into the
         /// session data. <typeparamref name="T"/> must be a bool, a number, an enum or a string.
-        /// <paramref name="key"/> defaults to the config file name, section and key. Call at
-        /// plugin <c>Awake</c> on every client. Never null; a refused entry follows the local
-        /// config only.
+        /// <paramref name="key"/> is <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>; it defaults to the config
+        /// file name, which is the plugin GUID for the plugin's own <c>Config</c>, then <c>/</c>,
+        /// section, <c>.</c> and key. Call at plugin <c>Awake</c> on every client. Never null; a
+        /// refused entry follows the local config only.
         /// </summary>
         public static HostValue<T> HostValue<T>(BepInEx.Configuration.ConfigEntry<T> entry, string key = null)
         {
@@ -416,14 +427,15 @@ namespace Ectype
                                     "entry; this one follows the local config only.");
                 return new HostValue<T>(key, entry, false);
             }
-            string typeProblem = TypeProblem(typeof(T), true);
+            string typeProblem = TypeProblem(typeof(T), true) ?? Identifiers.IdProblem(key);
             if (typeProblem != null)
             {
                 Plugin.Log.LogError("Ectype: host value '" + key + "' refused: " + typeProblem +
                                     "; it follows the local config only.");
                 return new HostValue<T>(key, entry, false);
             }
-            bool live = Register<T>(key, () => entry.Value, null);
+            bool live = RegisterCore<T>(key, () => entry.Value, null, null, false);
+
             HostValue<T> hv = new HostValue<T>(key, entry, live);
             if (live)
             {

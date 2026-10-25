@@ -28,8 +28,8 @@ namespace ExampleCharacterStatuses
 
         internal static ManualLogSource Log;
 
-        private const string GuardKey = PLUGIN_GUID + ".guard";
-        private const string SlowKey = PLUGIN_GUID + ".slow";
+        private const string GuardKey = PLUGIN_GUID + "/guard";
+        private const string SlowKey = PLUGIN_GUID + "/slow";
 
         // The crewmate must be this close on this client before a request is sent.
         private const float SlowReach = 5f;

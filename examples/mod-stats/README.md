@@ -12,17 +12,18 @@ Shows:
 
 Rules:
 
+- The owner is the plugin's BepInEx GUID, spelled exactly as `[BepInPlugin]` declares it. The framework refuses a stats file whose owner is not a plugin its assembly declares, or for a loose file, a plugin in its folder.
 - The owner and names are part of every id. Renaming either derives new ids and every reader and perk naming the old ones reads nothing.
 - The hash is case-sensitive. Spell the owner and name exactly as the file declares them.
 - A field's fallback is the mod's own constant; a factor's is 1. The mod then behaves the same with and without the framework.
 - The session collection exists only inside a session, and only the host contributes to it. Every client reads the host's session-start value.
-- Nothing here contributes. A perk names a declared stat as `"example.modstats/HackSeconds"`; code on the host contributes to a session stat with `Ectype.SessionStats.Contribute` from `SessionStats.Opening`.
+- Nothing here contributes. A perk names a declared stat as `"<plugin GUID>/HackSeconds"`; code on the host contributes to a session stat with `Ectype.SessionStats.Contribute` from `SessionStats.Opening`.
 
 `docs/reference/mod-stats.md` in the framework documents the file, the formula with a worked example, the generic framework factors and the session collection.
 
 ## Before you build
 
-This example does not build as committed. `src\Plugin.cs` has a `#error` directive beside the `PLUGIN_GUID` constant. Replace `REPLACE_ME` with your own unique plugin GUID, then delete the `#error` line.
+This example does not build as committed. `src\Plugin.cs` has a `#error` directive beside the `PLUGIN_GUID` constant. Replace every `REPLACE_ME` with your own unique plugin GUID: in `src\Plugin.cs` and as the `owner` in `stats\example.ectype-stats.json`, which must be the same string. Then delete the `#error` line.
 
 ## Build
 

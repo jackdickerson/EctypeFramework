@@ -44,9 +44,9 @@ namespace ExampleRuntimeAbility
             }
         }
 
-        // The key crosses the network. Use a literal, namespaced by this mod, never a value
+        // The key crosses the network. Use a literal "<plugin GUID>/<name>", never a value
         // derived from runtime state: it must be identical on every client.
-        private const string AbilityKey = PLUGIN_GUID + ".ping";
+        private const string AbilityKey = PLUGIN_GUID + "/ping";
 
         private void Update()
         {

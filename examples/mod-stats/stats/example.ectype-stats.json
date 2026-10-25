@@ -1,6 +1,6 @@
 {
   "$schema": "../../../docs/schemas/ectype-stats.schema.json",
-  "owner": "example.modstats",
+  "owner": "REPLACE_ME",
   "stats": [
     {
       "name": "HackSeconds",

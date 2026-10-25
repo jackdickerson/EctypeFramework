@@ -35,7 +35,8 @@ namespace ExampleSessionData
                 _arrivalSpread = Config.Bind("General", "ArrivalSpread", 450f,
                     "Metres between ships when they leave the void. Only the host's setting counts.");
 
-                // Same key on every client: here, the default "<config file>/General.ArrivalSpread".
+                // Same key on every client: here, the default "<plugin GUID>/General.ArrivalSpread",
+                // because the plugin's own Config file is named after its GUID.
                 _spread = SessionData.HostValue(_arrivalSpread);
                 _spread.Changed += OnSpreadChanged;
                 ShipArrivals.Arrived += OnArrived;

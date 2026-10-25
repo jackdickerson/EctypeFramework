@@ -48,9 +48,9 @@ namespace Ectype
     /// </summary>
     internal static class StatusSelfTest
     {
-        private const string HostileKey = "ectype.dev.selftest-hostile";
-        private const string OpenKey = "ectype.dev.selftest-open";
-        private const string QueuedKey = "ectype.dev.selftest-queued";
+        private const string HostileKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-hostile";
+        private const string OpenKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-open";
+        private const string QueuedKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-queued";
         private const int Stranger = 9999;
         /// <summary>A view id no object in a session carries.</summary>
         private const int GoneView = 987654;
@@ -67,7 +67,7 @@ namespace Ectype
                 EnemyStatusOutbox box = new EnemyStatusOutbox();
                 List<EnemyStatusOutbox.Batch> sent = new List<EnemyStatusOutbox.Batch>();
                 for (int i = 0; i < 10; i++)
-                    box.Add(4242, "ectype.dev.coalesce", "probe", 100000, 105000 + i * 10, 1f, 0,
+                    box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.coalesce", "probe", 100000, 105000 + i * 10, 1f, 0,
                             window, 10f + i * 0.01f);
                 box.TakeDue(10.1f, false, sent);
                 if (sent.Count != 0) fails.Add(sent.Count + " send(s) before the window closed");
@@ -87,10 +87,10 @@ namespace Ectype
                 }
 
                 sent.Clear();
-                box.Add(4242, "ectype.dev.life", "probe", 0, 1000, 1f, 0, window, 20f);
-                box.Add(4242, "ectype.dev.life", "probe", 0, 1000, 1f, 0, window, 20f);
-                box.Close(4242, "ectype.dev.life");
-                box.Add(4242, "ectype.dev.life", "probe", 2000, 3000, 1f, 0, window, 20.05f);
+                box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.life", "probe", 0, 1000, 1f, 0, window, 20f);
+                box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.life", "probe", 0, 1000, 1f, 0, window, 20f);
+                box.Close(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.life");
+                box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.life", "probe", 2000, 3000, 1f, 0, window, 20.05f);
                 box.TakeDue(30f, false, sent);
                 if (sent.Count != 2 || sent[0].Applications != 2 || sent[0].EndTs != 1000 ||
                     sent[1].Applications != 1 || sent[1].StartTs != 2000)
@@ -99,13 +99,13 @@ namespace Ectype
                               "starting at 2000");
 
                 sent.Clear();
-                box.Add(4242, "ectype.dev.c", "probe", 0, 1000, 1f, 0, window, 40f);
-                box.Close(4242, "ectype.dev.c");
-                box.Add(4242, "ectype.dev.c", "probe", 0, 1000, 1f, 0, window, 40f);
-                box.Add(4242, "ectype.dev.c#1", "probe", 0, 1000, 1f, 0, window, 40f);
-                box.Drop(4242, "ectype.dev.c");
+                box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.c", "probe", 0, 1000, 1f, 0, window, 40f);
+                box.Close(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.c");
+                box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.c", "probe", 0, 1000, 1f, 0, window, 40f);
+                box.Add(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.c#1", "probe", 0, 1000, 1f, 0, window, 40f);
+                box.Drop(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.c");
                 box.TakeDue(0f, true, sent);
-                if (sent.Count != 1 || sent[0].Key != "ectype.dev.c#1")
+                if (sent.Count != 1 || sent[0].Key != EctypePluginInfo.PLUGIN_GUID + "/dev.c#1")
                     fails.Add("a removal left " + Describe(sent) + ", expected only ectype.dev.c#1");
 
                 if (EnemyStatusRank.Displaces(601f, 600f) || !EnemyStatusRank.Displaces(400f, 600f) ||
@@ -128,11 +128,11 @@ namespace Ectype
 
                 // Removals remembered against applications already in flight.
                 EnemyStatusTombstones tombs = new EnemyStatusTombstones();
-                tombs.Record(4242, "ectype.dev.t", 1000, 2150);
-                bool stale = tombs.Covers(4242, "ectype.dev.t", 900, 1100);
-                bool fresh = tombs.Covers(4242, "ectype.dev.t", 1200, 1100);
-                bool other = tombs.Covers(4242, "ectype.dev.u", 900, 1100);
-                bool expired = tombs.Covers(4242, "ectype.dev.t", 900, 4000);
+                tombs.Record(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.t", 1000, 2150);
+                bool stale = tombs.Covers(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.t", 900, 1100);
+                bool fresh = tombs.Covers(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.t", 1200, 1100);
+                bool other = tombs.Covers(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.u", 900, 1100);
+                bool expired = tombs.Covers(4242, EctypePluginInfo.PLUGIN_GUID + "/dev.t", 900, 4000);
                 if (!stale || fresh || other || expired)
                     fails.Add("a removal at 1000 covered a start of 900 " + stale + ", 1200 " + fresh +
                               ", another key " + other + ", after expiry " + expired +

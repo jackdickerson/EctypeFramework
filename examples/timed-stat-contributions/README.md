@@ -13,7 +13,7 @@ Rules:
 - Nothing is networked. Every machine that should have the effect starts it from the same replicated signal and the same server timestamp. A machine that never saw the signal, such as a late joiner, runs none.
 - A factor f is `ExponentialMultiplier` with an amount of f - 1.
 - The stat name must resolve on the target collection or the contribution has no effect. A name that does not resolve returns null; a name the collection does not hold logs a warning.
-- Starting a live key again on the same collection replaces it. Keys are per collection and should be namespaced by the mod.
+- Starting a live key again on the same collection replaces it. Keys are per collection and take the form `"<plugin GUID>/<name>"`.
 - `amountAt` is called ten times a second. Keep it allocation-free.
 - It ends when the window closes, on `End`, when `keepAlive` returns false, on a session change, or when the collection's holder is destroyed. `Start` returns null, applying nothing, when the window has already ended on this machine's clock.
 

@@ -44,7 +44,7 @@ namespace ExampleEnemyAbilities
             }
         }
 
-        private const string HoldKey = PLUGIN_GUID + ".hold";
+        private const string HoldKey = PLUGIN_GUID + "/hold";
 
         private void Update()
         {

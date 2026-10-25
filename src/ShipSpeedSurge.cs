@@ -94,7 +94,7 @@ namespace Ectype
                 }
 
                 float m = magnitude;
-                return TimedStatContributions.Start(Key, ship.Stats, FrameworkStats.ShipDrag,
+                return TimedStatContributions.StartUnchecked(Key, ship.Stats, FrameworkStats.ShipDrag,
                                                     ModifierType.ExponentialMultiplier,
                                                     u => DragFactor(m, u) - 1f,
                                                     durationSeconds, startServerMs, keepAlive,

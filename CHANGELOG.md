@@ -4,6 +4,36 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.31.0
+
+- One identifier rule across every API, stated in `docs/identifiers.md`: an owner is the
+  registering plugin's BepInEx GUID, and a single-string id is `"<plugin GUID>/<name>"`. The
+  framework checks that the owner, or the part of an id before its first `/`, is the GUID of a
+  loaded plugin (`Chainloader.PluginInfos`, which holds a plugin's own GUID from its `Awake` on).
+  `ectype` and `framework` are reserved for the framework; a role manifest's `customStats` and
+  `mutators` keep the `roleId` as owner.
+- **Breaking for stats-file owners.** A stats file's `owner` is the declaring plugin's GUID,
+  exactly as declared, capitals allowed: letters, digits, `.`, `_` and `-`, at most 128
+  characters. An embedded file must name a plugin its assembly declares and a loose file a
+  plugin whose DLL is in its folder; the refusal names the file and the GUIDs it could have used.
+  A stat's id is derived from its owner, so every id changes with the owner. Nothing shipped
+  against the old owners.
+- **Breaking for derived mutator GUIDs.** `MutatorSpec.Owner` must be the GUID of a loaded
+  plugin, or the spec is `Failed` with the reason. A derived GUID is MD5 of
+  `ectype:mutator:<owner>/<key>`, so it changes with the owner. Nothing shipped against it.
+- `SessionData.Register` and `SessionData.HostValue` refuse a key that is not
+  `"<plugin GUID>/<name>"`. `HostValue`'s default key is the config file name, which is the
+  plugin's GUID for its own `Config`, so the default passes.
+- `InteractionGate.Register` refuses, with one error and `false`, an id that is not
+  `"<plugin GUID>/<name>"`.
+- `RuntimeContent.Publish` refuses an entry whose `ModContentEntry.Owner` is not the GUID of a
+  loaded plugin.
+- `CharacterStatusDef` and `EnemyStatusDef` keys, `TimedStatContributions.Start` keys,
+  `HudButtonSpec.Id`, `RuntimeAbilities.Register` keys and `LootDrop.Owner` that do not follow
+  the rule log one warning per id and still work.
+- Nothing that crosses the network changed. A longer key costs one byte per character in each
+  status or ability message that carries it.
+
 ## 0.30.0
 
 - `SessionStatMutators.Register(MutatorSpec)` adds a mutator to the game's Mutators menu whose

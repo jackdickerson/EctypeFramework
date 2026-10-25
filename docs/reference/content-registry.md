@@ -202,7 +202,7 @@ Every item that reached `Registered` has an entry in `ModContent`:
 | `Guid` | The item's GUID. Set by Publish. |
 | `Kind` | `"WeaponModule"`, `"Module"` or `"Carryable"`. Set by Publish. |
 | `DisplayName` | The name shown, also the header of the item's context info. Required. |
-| `Owner` | The publishing plugin's GUID. Required. |
+| `Owner` | The publishing plugin's BepInEx GUID, exactly as declared: the [identifier rule](../identifiers.md). Required; an owner that is not a loaded plugin's GUID is refused. |
 | `Category` | A tab hint. Empty becomes the game's category name: the purchase sub-category for a carryable, the module category for a module, `"Weapons"` for a weapon module. |
 | `Tier` | 1 to 3 for Mk I to Mk III, independent of the display language. 0 is unranked. |
 | `IsComponent` | An inner part: never listed, never in a loot roll on its own. |

@@ -463,7 +463,7 @@ built before the switch. Reopen it, or restart. Non-English languages are never 
 | Line | Cause |
 | --- | --- |
 | `Ectype: HUD bar refused a button with no id.` | `HudButtonSpec.Id` is empty. |
-| `Ectype: HUD bar refused '<id>': that id is already registered.` | Two buttons share an id. Prefix ids with your plugin GUID. |
+| `Ectype: HUD bar refused '<id>': that id is already registered.` | Two buttons share an id. Use `"<plugin GUID>/<name>"`. |
 | `Ectype: HUD bar refused '<id>': the bar holds 4 buttons and they are taken by <ids>.` | The bar holds at most four buttons across every mod. `Register` returns `null`. |
 | `Ectype: HUD bar button '<id>' threw and is hidden for the rest of this session: <exception>` | One of the spec's callbacks (`Key`, `Fill`, `Visible`) threw. That button is hidden; the rest of the bar runs. |
 | `Ectype: HUD bar glyph '<name>' is not readable, so its corners are not trimmed to the frame; content there may show outside it.` | The glyph texture was created without read access. Make it readable, or keep the glyph clear of the corners. |
@@ -575,7 +575,7 @@ A role that adopted a stock ability and authored its own capstone effects may re
   differs resolves the number against the wrong ability or past the end of the array, and the
   exception lands inside the engine's own tick on every other client, once per start and once
   per stop. Register the ability with `RuntimeAbilities.Register(ability, key)` after it is in
-  the array, with a literal key namespaced by your mod. The framework then replicates it by key
+  the array, with a literal key `"<plugin GUID>/<name>"`. The framework then replicates it by key
   on its own channel. A framework role ability is registered automatically as
   `ectype:<roleId>`.
 - **A `RuntimeAbilities` key computed from runtime state.** The key must be the same on every
@@ -717,6 +717,21 @@ VerboseLogging` on, on every client compared.
 
 These lines come from the APIs a non-role mod calls.
 
+### Identifiers
+
+Every identifier a mod hands the framework is its plugin GUID (an owner) or
+`"<plugin GUID>/<name>"` (an id); [identifiers.md](identifiers.md) has the rule, the check and the
+full list of `<problem>` texts.
+
+| Line | Cause and fix |
+| --- | --- |
+| `Ectype: <API> '<id>' does not follow the identifier rule: <problem>. It still works.` | A character status, enemy status, timed stat, HUD bar button or runtime ability key, or a loot owner, that is not in the form. `<API>` is `character status`, `enemy status`, `timed stat`, `HUD bar button`, `runtime ability` or `loot owner`. Logged once per id. Rename it to `"<plugin GUID>/<name>"`, or set the owner to the plugin GUID. |
+| `Ectype: interaction gate '<id>' refused: <problem>.` | `InteractionGate.Register` returned false. Use `"<plugin GUID>/<name>"`. |
+| `... no plugin GUID before a '/'; expected "<plugin GUID>/<name>"` | The id joins the GUID and the name with something other than `/`, often `PLUGIN_GUID + ".name"`. |
+| `... is not the GUID of a loaded BepInEx plugin ...` | The owner or prefix is a short name, a display name, the GUID in other capitals, or the GUID of a plugin that loads after the caller. Use the `[BepInPlugin]` GUID exactly. |
+| `... is reserved for the framework ...` | `ectype` and `framework` belong to the framework. |
+| `Ectype: dev self-test: identifiers passed (own GUID present during Awake; conforming, missing prefix, unknown GUID, reserved owner, role exception).` or `Ectype: dev self-test: identifiers FAILED: <failures>` | Dev tools build only, at load: the framework's own GUID is in the plugin table during its own `Awake`, and the check accepts and refuses each documented case. |
+
 ### Enemy and character statuses
 
 | Line | Cause and fix |
@@ -828,7 +843,7 @@ Each line starts `Ectype: content: `. `<item>` is `<kind> <guid> from <owner>`. 
 | `refused <item>: component <guid> is already registered for loot, and a component never drops on its own. Remove its LootTables registration.` | Drop the `LootTables.Register` call for the component. |
 | `refused <item>: GUID <guid> is already published by <owner> as <kind>.` | Two publications of one GUID with a different owner or kind. The first stands. |
 | `refused <item>: a <kind>'s asset must be ...` and `ContentAssets.Asset is null.` | The asset is not what the kind takes: a `CompositeWeaponData`, a prefab with a `CellModule`, or a prefab with a `CarryableObject`. |
-| `refused <item>: the entry has no Owner (the publishing plugin's GUID).`, `the entry has no DisplayName.`, `the GUID is null.`, `no ModContentEntry.`, `no ContentAssets.`, `unknown content kind <n>.` | A required argument is missing. |
+| `refused <item>: no owner; expected the registering plugin's BepInEx GUID.`, `refused <item>: owner '<o>' is not the GUID of a loaded BepInEx plugin; expected the registering plugin's BepInEx GUID.` and the other owner problems in [identifiers.md](identifiers.md), `the entry has no DisplayName.`, `the GUID is null.`, `no ModContentEntry.`, `no ContentAssets.`, `unknown content kind <n>.` | A required argument is missing. |
 | `refused <item>: the framework is disabled ([General] Enabled = false).` and `the framework is inert this session (patching did not complete).` | Nothing is published in this session. See `FATAL` for the second. |
 | `refused <item>: the game's carryable registration threw part-way, so a retry would collide with what it registered: <message>` | The game's own carryable registration failed. Report it with the log. |
 | `refused <item>: Publish threw: <exception>` | Publish itself failed. Report it with the log. |
@@ -931,7 +946,7 @@ value for the key, usually because the host does not run the mod.
 | --- | --- |
 | `Ectype: mod stats: <n> declared in <m> file(s): <owner/name>=<id> (<collection>), ...` | The stats files were read and these stats registered. A reader computing the id by formula gets the same numbers. |
 | `Ectype: mod stats: none declared (<m> file(s) read).` | Stats files were found and none of their stats registered. The errors above say why. With `VerboseLogging` the line also appears with 0 files. |
-| `Ectype: mod stats: <declarer> rejected: <problem>.` | The whole file was refused and every other file still registers: not JSON, not an object, no `owner` or an owner outside lower-case letters, digits, `.`, `_` and `-`, a reserved owner (`ectype`, `framework`), an owner that is a role's id (`owner '<o>' is the role id of '<role>' (<assembly>); a role's stats come from its manifest's customStats`: move the stats into that manifest's `customStats`, or pick another owner), a `default` no float can hold (`stat #<i> ('<name>'): "default" <n> is not a number a float can hold`), no `stats` array or more than 256 entries, larger than 65536 bytes, or unreadable. `<declarer>` is `<assembly> resource <name>` or the file's path under `plugins/`. |
+| `Ectype: mod stats: <declarer> rejected: <problem>.` | The whole file was refused and every other file still registers: not JSON, not an object, no `owner`, an owner that is not a plugin GUID (`owner '<o>' is not a BepInEx plugin GUID (letters, digits, '.', '_' and '-' only); expected the registering plugin's BepInEx GUID`), a reserved owner (`ectype`, `framework`), an owner that is not one of the file's own plugins (`owner '<o>' is not the GUID of a plugin <its assembly declares\|in its folder>; expected '<guid>'`, or `expected one of '<guid>', ...` when the assembly or folder holds several: set the owner to the GUID it names), an owner that is a role's id (`owner '<o>' is the role id of '<role>' (<assembly>); a role's stats come from its manifest's customStats`: move the stats into that manifest's `customStats`, or pick another owner), a `default` no float can hold (`stat #<i> ('<name>'): "default" <n> is not a number a float can hold`), no `stats` array or more than 256 entries, larger than 65536 bytes, or unreadable. `<declarer>` is `<assembly> resource <name>` or the file's path under `plugins/`. |
 | `Ectype: mod stats: <declarer> stat #<i> ('<name>') skipped: <problem>.` | One stat was refused and the rest of the file stands: a bad name, a `kind` other than `field` or `factor`, a field with no `default`, a non-number `default`, a factor whose `default` is not exactly 1, a `collection` other than `session`, `ship` or `character`, a `displayType` other than `value` or `percentage`, a non-string `display`, `tooltip`, `iconFrom` or `displayType`, or a non-boolean `lowerIsBetter`. |
 | `Ectype: mod stats: <declarer> declares '<owner/name>' (id <id>), already declared as '<owner/name>' (id <id>) by <declarer>; the later declaration is skipped.` | Two declarations of one id, or of one name in different capitals. An embedded declaration wins over a loose one, then the smaller assembly name, then the resource or file name, so every machine keeps the same one. A mod that ships its file both ways declares every stat twice: ship one copy. |
 | `Ectype: mod stats: '<owner/name>' from <declarer> skipped: the session collection holds at most 128 stats.` | More session stats are declared than the session data can carry. Declare fewer. |
@@ -967,7 +982,7 @@ session collection's lifecycle.
 
 | Line | Cause and fix |
 | --- | --- |
-| `Ectype: mutators: '<owner>/<key>' refused: <reason>.` | A mutator was refused, from `SessionStatMutators.Register` or a role manifest's `mutators` block (owner is the `roleId`). The reason is one of: `no spec`; `the owner must be 1 to 128 characters with no '/' and no surrounding whitespace`; `the key '<key>' must be letters, digits, '_', '.' and '-', starting with a letter or digit, at most 64 characters`; `the guid '<g>' is not 32 hex digits (dashes allowed)`; `no display name`; `the iconDonor '<g>' is not 32 hex digits (dashes allowed)`; `no effects`; `<n> effects, more than the 16 a mutator carries`; `effect #<i>: null`, `no stat`, `unknown kind <n>`, `the amount is not a finite number` or `a factor is above 0 (1 changes nothing; <amount> was given)`; in a manifest also `null mutator entry`, `effect #<i>: unknown kind '<kind>' (flat, percent or factor)` and `effect #<i>: no amount`; `GUID <guid> is already registered by '<owner>/<key>'`; `the framework is disabled ([General] Enabled = false)`; `the framework is inert this session (patching did not complete)`; `Register threw: <exception>`. Once the stats files are read: `stat '<stat>' is not declared (name a stats file's stat as "owner/Name")` and `stat '<stat>' is a <character\|ship\|perk-target> stat; a mutator contributes to session stats only`. A mutator in a manifest is refused alone; the role still registers. Registering the same owner and key again returns the same refusal without another line. |
+| `Ectype: mutators: '<owner>/<key>' refused: <reason>.` | A mutator was refused, from `SessionStatMutators.Register` or a role manifest's `mutators` block (owner is the `roleId`). The reason is one of: `no spec`; an owner that fails the [identifier rule](identifiers.md) (`no owner`, `owner '<o>' is not the GUID of a loaded BepInEx plugin`, `owner '<o>' is not a BepInEx plugin GUID ...`, `owner '<o>' is reserved for the framework`, each ending `; expected the registering plugin's BepInEx GUID`; a manifest's own `roleId` passes); `the key '<key>' must be letters, digits, '_', '.' and '-', starting with a letter or digit, at most 64 characters`; `the guid '<g>' is not 32 hex digits (dashes allowed)`; `no display name`; `the iconDonor '<g>' is not 32 hex digits (dashes allowed)`; `no effects`; `<n> effects, more than the 16 a mutator carries`; `effect #<i>: null`, `no stat`, `unknown kind <n>`, `the amount is not a finite number` or `a factor is above 0 (1 changes nothing; <amount> was given)`; in a manifest also `null mutator entry`, `effect #<i>: unknown kind '<kind>' (flat, percent or factor)` and `effect #<i>: no amount`; `GUID <guid> is already registered by '<owner>/<key>'`; `the framework is disabled ([General] Enabled = false)`; `the framework is inert this session (patching did not complete)`; `Register threw: <exception>`. Once the stats files are read: `stat '<stat>' is not declared (name a stats file's stat as "owner/Name")` and `stat '<stat>' is a <character\|ship\|perk-target> stat; a mutator contributes to session stats only`. A mutator in a manifest is refused alone; the role still registers. Registering the same owner and key again returns the same refusal without another line. |
 | `Ectype: mutators: '<owner>/<key>' refused: GUID <guid> is already in the mutator container, put there by something other than this registration.` | Another mod registered a mutator under the same GUID first. Give one of them another key or an explicit `guid`. |
 | `Ectype: mutators: '<owner>/<key>' refused: attempt 200 failed at [<stage>]: <message>.` | Registration failed 200 times and was given up. The stage and message of the last attempt say where. |
 | `Ectype: mutators: '<name>' registration attempt <n> failed at [<stage>]: <message> (retrying; repeats of this message are not logged).` | One attempt threw, for example `verification failed: <problem>`. It is retried on the next registration pass. |

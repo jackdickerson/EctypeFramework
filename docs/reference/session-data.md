@@ -6,11 +6,11 @@ whose value is the host's on every client.
 
 ```csharp
 // A value fixed for the whole session.
-SessionData.Register<int>("my.plugin.guid/WaveSize",
+SessionData.Register<int>("com.example.mymod/WaveSize",
     () => waveSize.Value,                    // host: produce once per session
     v  => Waves.Size = v,                    // every client, the host included
     new SessionDataOptions { MaxBytes = 256 });
-int size = SessionData.Current<int>("my.plugin.guid/WaveSize");
+int size = SessionData.Current<int>("com.example.mymod/WaveSize");
 
 // A setting only the host's config decides.
 HostValue<float> spread = SessionData.HostValue(Config.Bind("General", "ArrivalSpread", 450f, "..."));
@@ -19,7 +19,8 @@ spread.Changed += v => { /* ... */ };
 ```
 
 Register at plugin `Awake`, on every client, from a key that is the same literal on every
-client. Prefix keys with your plugin GUID.
+client. A key is `"<plugin GUID>/<name>"`, the [identifier rule](../identifiers.md); `Register`
+and `HostValue` refuse any other.
 
 ## How a session reaches every client
 
@@ -34,7 +35,7 @@ its own start sequence. The host never rebuilds its own session from the JSON.
 The framework adds one key to that JSON, `"ectype"`:
 
 ```json
-"ectype": { "v": 1, "a": 1, "keys": { "my.plugin.guid/WaveSize": 6 } }
+"ectype": { "v": 1, "a": 1, "keys": { "com.example.mymod/WaveSize": 6 } }
 ```
 
 `a` is the actor number of the host that produced the values. Values are converted with the
@@ -193,7 +194,8 @@ start, the host included. Mid-mission, the host's own `Value` is the frozen valu
 and clients agree.
 
 The key defaults to `<config file name>/<section>.<key>`, the same on every client running the
-same mod. The value also travels in the session data under that key, so it reaches late joiners
+same mod. The plugin's own `Config` file is named after its GUID, so the default follows the
+identifier rule; an entry bound in a config file of another name needs an explicit key. The value also travels in the session data under that key, so it reaches late joiners
 and resumed runs like any other session value.
 
 ### The hub channel
@@ -251,7 +253,7 @@ the next session it starts.
 | `Ectype: session data: GameSession.AsJObject / FromJObject or GameSessionManager.PrepareNextSession not found (game update?); session data and host values follow each client's own config.` | A game update renamed a hook. |
 | `Ectype: session data: PhotonService.OnEvent(EventData) not found (game update?); the session data's sender is not checked.` | The envelope's stamp is still checked against the master on receipt. |
 | `Ectype: session data: GameSession.GetPreservedState not found (game update?); a saved run's sidecar is written at mission start instead, under the id the session started with.` | The sidecar holds the values the mission started with. A run saved by a host who took over mid-run loses its values on resume, because its save carries another id. |
-| `Ectype: session data: Register('<key>') refused: <problem>.` | The key is empty, longer than 128 characters, holds a control character or is already registered; no producer was given; or `T` does not survive JSON. |
+| `Ectype: session data: Register('<key>') refused: <problem>.` | The key is empty, longer than 128 characters, holds a control character, does not follow the [identifier rule](../identifiers.md) or is already registered; no producer was given; or `T` does not survive JSON. |
 | `Ectype: session data: '<key>' not registered: the session-data patches are not applied this session, so no host value reaches this client.` | The framework is inert or a hook is missing. `HostValue` then follows the local config. |
 | `Ectype: session data: sending <n> key(s) with <hub\|mission> session <id> (<bytes> bytes[, <k> restored from the saved run]).` | Host: the values that go out with this session. |
 | `Ectype: session data: received <n> key(s) from the host (actor <a>[, from the room cache]) with <hub\|mission> session <id>.` | Client: a session carrying values arrived. A late joiner's comes from the room cache. |
@@ -274,7 +276,7 @@ the next session it starts.
 | `Ectype: session data: refreshing the saved-run sidecar failed: <exception>` | Writing the sidecar at a save threw. |
 | `Ectype: session data: pruning saved-run sidecars failed: <message>` | Old sidecars stay until the next write. |
 | `Ectype: session data: saved-run sidecar written for session <id>.` and `Ectype: session data: pruned <n> old saved-run sidecar(s).` | Verbose. |
-| `Ectype: host value '<key>' refused: <problem>; it follows the local config only.` | `T` is not a bool, number, enum or string. |
+| `Ectype: host value '<key>' refused: <problem>; it follows the local config only.` | `T` is not a bool, number, enum or string, or the key does not follow the [identifier rule](../identifiers.md). |
 | `Ectype: host value '<key>' is already bound to another config entry; this one follows the local config only.` | Two `HostValue` calls named one key for different entries. Give one an explicit key. |
 | `Ectype: host value '<key>' could not be serialised; not published in the hub: <message>` | Host: the config value did not convert to JSON. |
 | `Ectype: host value '<key>' is over the 4096-byte cap; not published in the hub.` | Host: the value is too big for the room property. Clients read it from the next session's data. |

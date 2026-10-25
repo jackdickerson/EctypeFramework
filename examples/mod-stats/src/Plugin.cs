@@ -22,13 +22,14 @@ namespace ExampleModStats
     [BepInProcess("Void Crew.exe")]
     public class Plugin : BaseUnityPlugin
     {
-#error Replace every REPLACE_ME (the plugin GUID) with your own unique value, then delete this line.
+#error Replace every REPLACE_ME (the plugin GUID here and the owner in stats\example.ectype-stats.json, which must be the same string) with your own unique value, then delete this line.
         public const string PLUGIN_GUID = "REPLACE_ME";
         // Keep equal to <Version> in the csproj.
         public const string PLUGIN_VERSION = "0.1.0";
 
-        // The owner in stats\example.ectype-stats.json, and the framework's own owner.
-        private const string Owner = "example.modstats";
+        // The owner in stats\example.ectype-stats.json is this plugin's GUID; "ectype" is the
+        // framework's own owner.
+        private const string Owner = PLUGIN_GUID;
         private const string FrameworkOwner = "ectype";
 
         // This mod's constants: the base when the stat exists, the value when it does not.

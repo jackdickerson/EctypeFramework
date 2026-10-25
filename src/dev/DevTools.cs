@@ -37,6 +37,7 @@ namespace Ectype
             ContentSelfTest.Run();
             CharacterStatusSelfTest.RunOffline();
             DiscoverySelfTest.Run();
+            IdentifiersSelfTest.Run();
             ScopeSelfTest.Run();
         }
 

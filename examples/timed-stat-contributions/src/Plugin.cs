@@ -40,7 +40,7 @@ namespace ExampleTimedStat
             }
         }
 
-        private const string BoostKey = PLUGIN_GUID + ".thrust";
+        private const string BoostKey = PLUGIN_GUID + "/thrust";
 
         private void OnDestroy()
         {

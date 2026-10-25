@@ -16,7 +16,8 @@ namespace Ectype
     /// <summary>What a mod supplies for one button on the HUD ability bar.</summary>
     public sealed class HudButtonSpec
     {
-        /// <summary>Unique across mods; namespace it with the registering mod's GUID.</summary>
+        /// <summary>Unique across mods: <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>, where the GUID is the
+        /// registering plugin's BepInEx GUID.</summary>
         public string Id;
 
         /// <summary>Square glyph, white on transparent. Drawn white on the dark plate while
@@ -84,6 +85,7 @@ namespace Ectype
                 Plugin.Log.LogWarning("Ectype: HUD bar refused a button with no id.");
                 return null;
             }
+            Identifiers.WarnId("HUD bar button", spec.Id);
             foreach (HudButton b in Buttons)
             {
                 if (b.Spec.Id == spec.Id)
