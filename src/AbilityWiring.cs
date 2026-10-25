@@ -72,7 +72,17 @@ namespace Ectype
                     new List<KeyValuePair<RoleRecord, ClassAbility>>();
                 foreach (RoleRecord rec in RoleRegistry.Roles)
                 {
-                    ClassAbility a = InstallOne(rec, loco);
+                    // Each role on its own: one role's throw skips that role only.
+                    ClassAbility a;
+                    try { a = InstallOne(rec, loco); }
+                    catch (Exception e)
+                    {
+                        rec.AbilityInstances.Remove(loco);
+                        rec.AbilityInstallFailed = true;
+                        Plugin.Log.LogError("Ectype: installing '" + rec.Manifest.roleId +
+                                            "' ability into the locomotion failed: " + e);
+                        continue;
+                    }
                     if (a != null) added.Add(new KeyValuePair<RoleRecord, ClassAbility>(rec, a));
                 }
                 if (added.Count > 0) StartInstalled(loco, added);
@@ -166,16 +176,42 @@ namespace Ectype
                 // arrival order gave it, which differs per client and breaks index parity.
                 RebuildArray(loco);
             }
-            catch (Exception e)
+            catch (Exception batch)
             {
+                // The setter runs every ability's Initialize and Awake, so one bad ability fails
+                // the whole batch. Find it: take every new ability out, then add them back one
+                // rebuild at a time, and fail only the role whose rebuild throws.
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: one rebuild for " + added.Count + " role ability(ies) " +
+                                       "threw; retrying one role at a time: " + batch.Message);
+                foreach (KeyValuePair<RoleRecord, ClassAbility> kv in added)
+                    kv.Key.AbilityInstances.Remove(loco);
+                List<KeyValuePair<RoleRecord, ClassAbility>> kept =
+                    new List<KeyValuePair<RoleRecord, ClassAbility>>();
                 foreach (KeyValuePair<RoleRecord, ClassAbility> kv in added)
                 {
-                    kv.Key.AbilityInstances.Remove(loco);
-                    kv.Key.AbilityInstallFailed = true;
+                    kv.Key.AbilityInstances[loco] = kv.Value;
+                    try
+                    {
+                        RebuildArray(loco);
+                        kept.Add(kv);
+                    }
+                    catch (Exception e)
+                    {
+                        kv.Key.AbilityInstances.Remove(loco);
+                        kv.Key.AbilityInstallFailed = true;
+                        Plugin.Log.LogError("Ectype: installing '" + kv.Key.Manifest.roleId +
+                                            "' ability into the locomotion failed: " + e);
+                    }
                 }
-                Plugin.Log.LogError("Ectype: installing " + added.Count + " role ability(ies) into " +
-                                    "the locomotion failed: " + e);
-                return;
+                // Leave the array without the failed ones, which the last rebuild may still hold.
+                try { RebuildArray(loco); }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError("Ectype: rebuilding the ability array after a failed install " +
+                                        "failed: " + e);
+                }
+                added = kept;
             }
 
             foreach (KeyValuePair<RoleRecord, ClassAbility> kv in added)
