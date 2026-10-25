@@ -14,7 +14,15 @@ namespace Ectype
 {
     /// <summary>
     /// The characterShip perk target, PerkBuffTarget value 4: a perk's effects land on the
-    /// player ship's stat collection for every player holding it, seated or not.
+    /// holder's ship's stat collection for every player holding it, seated or not.
+    ///
+    /// Which ship. With one ship object in the room it is that ship. With several, the game's
+    /// player-ship getter can return a different ship on each client (a multi-ship mod points it
+    /// at the ship the viewer is looking at), so each holder is resolved on its own through
+    /// Topology.CrewShipOf, from data every client shares: the holder's crew ship, else the ship
+    /// the holder is aboard when it is of the holder's own faction. A holder with no answer
+    /// (spectating, not yet placed, crew ship dying) stays pending. Resolution is repeated twice a
+    /// second and on every topology change, and only a holder whose ship changed is rebuilt.
     ///
     /// The effects live on the perk asset's own levels, where the tooltip already renders
     /// them from; ReApplyPerks's target switch has no case for 4, so vanilla never applies
@@ -59,12 +67,18 @@ namespace Ectype
             public readonly List<StatTagCollection> Detached = new List<StatTagCollection>();
             public readonly List<StatMod> Applied = new List<StatMod>();
             public string LoggedState;
+            public string LoggedShip;
         }
+
+        private const float PassSeconds = 0.5f;
 
         private static readonly List<Holder> _holders = new List<Holder>();
         private static readonly HashSet<string> _reported = new HashSet<string>();
         private static ClientGame _boundGame;
         private static bool _busBound;
+        private static bool _topologyBound;
+        private static bool _passDue;
+        private static float _nextPass;
 
         /// <summary>Rebuilds one holder's contribution from its current perk levels.</summary>
         public static void Reapply(PlayerPerkLoader loader)
@@ -114,7 +128,9 @@ namespace Ectype
                 }
             }
 
-            PlayerControlledShip ship = ClientGame.Current != null ? ClientGame.Current.PlayerShip : null;
+            string source;
+            PlayerControlledShip ship = Resolve(h, out source);
+            if (h.Applied.Count > 0) LogShip(h, ship, source);
             if (h.Applied.Count > 0 && ship != null && ship.Stats != null)
             {
                 ship.Stats.ApplyModifiers(h.Applied);
@@ -143,6 +159,83 @@ namespace Ectype
             for (int i = 0; i < _holders.Count; i++)
                 if (ReferenceEquals(_holders[i].Loader, loader)) return _holders[i];
             return null;
+        }
+
+        /// <summary>The ship a holder's contribution sits on, or null while it is pending or the
+        /// holder carries no characterShip perk.</summary>
+        internal static PlayerControlledShip ShipOf(PlayerPerkLoader loader)
+        {
+            Holder h = Find(loader);
+            return h != null ? h.Ship : null;
+        }
+
+        /// <summary>The holder's ship. The player-ship getter is read only while one ship object
+        /// exists, where it is the same on every client.</summary>
+        private static PlayerControlledShip Resolve(Holder h, out string source)
+        {
+            if (!Topology.Multi)
+            {
+                source = "single";
+                return ClientGame.Current != null ? ClientGame.Current.PlayerShip : null;
+            }
+            return Topology.ResolveCrewShip(Topology.ActorOf(h.Player), h.Player, out source);
+        }
+
+        /// <summary>Verbose: "actor N → ship K (source)" whenever a holder's resolution changes.</summary>
+        private static void LogShip(Holder h, PlayerControlledShip ship, string source)
+        {
+            if (!Plugin.Verbose || h.Player == null) return;
+            string line = "Ectype: characterShip - actor " + Topology.ActorOf(h.Player) + " → " +
+                          (ship != null ? "ship " + Topology.ShipNumberOf(ship) : "no ship") +
+                          " (" + source + ").";
+            if (line == h.LoggedShip) return;
+            h.LoggedShip = line;
+            Plugin.Log.LogInfo(line);
+        }
+
+        /// <summary>Driven from EctypeDriver.Update: runs the pass twice a second, and on the frame
+        /// after a topology change or a ship set.</summary>
+        internal static void Poll()
+        {
+            if (_holders.Count == 0) { _passDue = false; return; }
+            BindTopology();
+            float now = UnityEngine.Time.unscaledTime;
+            if (!_passDue && now < _nextPass) return;
+            _passDue = false;
+            _nextPass = now + PassSeconds;
+            Pass();
+        }
+
+        private static void BindTopology()
+        {
+            if (_topologyBound) return;
+            _topologyBound = true;
+            Topology.Changed += () => _passDue = true;
+        }
+
+        /// <summary>Re-resolves every holder and rebuilds only those whose ship changed: a new
+        /// resolution, a pending holder whose ship now exists, or a ship destroyed under it.</summary>
+        private static void Pass()
+        {
+            foreach (Holder h in _holders.ToArray())
+            {
+                if (h.Loader == null)
+                {
+                    RemoveFromShip(h);
+                    _holders.Remove(h);
+                    continue;
+                }
+                if (h.Applied.Count == 0) continue;
+                string source;
+                PlayerControlledShip now = Resolve(h, out source);
+                bool destroyed = !ReferenceEquals(h.Ship, null) && h.Ship == null;
+                if (!destroyed && ReferenceEquals(now, h.Ship)) continue;
+                try { Reapply(h.Loader); }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError("Ectype: characterShip rebuild for a ship change failed: " + e);
+                }
+            }
         }
 
         private static void RemoveFromShip(Holder h)
@@ -263,27 +356,12 @@ namespace Ectype
             }
         }
 
-        /// <summary>ClientGame.OnPlayerShipSet: every holder's contribution moves to the new
-        /// ship, rebuilt from the perk asset.</summary>
+        /// <summary>ClientGame.OnPlayerShipSet: a ship finished spawning. Each ship's start raises
+        /// it, so a mission with several ships raises it several times; the pass these requests
+        /// trigger runs once, on the next frame, and moves only holders whose ship changed.</summary>
         private static void OnShipSet()
         {
-            try
-            {
-                foreach (Holder h in _holders.ToArray())
-                {
-                    if (h.Loader == null)
-                    {
-                        RemoveFromShip(h);
-                        _holders.Remove(h);
-                        continue;
-                    }
-                    Reapply(h.Loader);
-                }
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError("Ectype: characterShip ship-change handling failed: " + e);
-            }
+            _passDue = true;
         }
 
         /// <summary>ModelEventBus.OnPlayerRemoved: the leaving player's contribution comes off
