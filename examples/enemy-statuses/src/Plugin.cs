@@ -43,6 +43,7 @@ namespace ExampleEnemyStatuses
                 {
                     DisplayName = "Slowed",
                     MaxStacks = 1,                    // re-applying refreshes the timer
+                    Stance = StatusStance.Hostile,    // only a client on another side may apply it
                     OnApplied = (target, stacks) => Log.LogInfo("Slow applied to " + target.name),
                     OnRemoved = target => Log.LogInfo("Slow ended on " + (target != null ? target.name : "(destroyed)")),
                 }.AddStat("MaxFlightSpeed", "percent", -0.5f));
@@ -66,10 +67,12 @@ namespace ExampleEnemyStatuses
                 OrbitObject target = NearestEnemy();
                 if (target == null) { Log.LogInfo("No NPC ship in the sector."); return; }
 
-                // Any client may apply; the application reaches every peer that registered
-                // the key. The attacker is optional and credits damage-over-time kills.
-                EnemyStatuses.Apply(target, SlowKey, seconds: 5f, magnitude: 1f,
-                                    attacker: ClientGame.Current.PlayerShip);
+                // Any client on another side from the target may apply; the application
+                // reaches every peer that registered the key, and each judges the stance
+                // again. The attacker is optional and credits damage-over-time kills.
+                StatusRefusal why = EnemyStatuses.TryApply(target, SlowKey, seconds: 5f, magnitude: 1f,
+                                                           attacker: ClientGame.Current.PlayerShip);
+                if (why != StatusRefusal.None) Log.LogInfo("Slow not applied: " + why);
             }
             catch (Exception e)
             {

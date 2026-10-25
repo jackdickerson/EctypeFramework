@@ -68,6 +68,8 @@ namespace Ectype
                                AbilityActiveMessage.Receive);
             EctypeNet.Register(EctypeNet.EnemyStatus, "enemy-status",
                                EnemyStatusMessage.Receive);
+            EctypeNet.Register(EctypeNet.EnemyStatusStacks, "enemy-status-applyN",
+                               EnemyStatusMessage.ReceiveStacks);
 
             // Resolved and patched gate by gate, so a renamed game member costs only the
             // system that needs it.
@@ -160,6 +162,7 @@ namespace Ectype
 #if ECTYPE_DEV
             Step("layout poll", DevLayout.Poll);
             Step("dev self-test", DevSelfTest.Poll);
+            Step("status self-test", StatusSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);

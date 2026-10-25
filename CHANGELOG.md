@@ -4,6 +4,52 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.23.0
+
+- `EnemyStatusDef.Stance`: `Any` (default), `Hostile` or `Friendly`. Every client that receives
+  an application judges its sender's side against the target and drops one the stance
+  forbids; the applying client checks first. A sender's side is its character's faction, else
+  its crew ship's, else under Void Crew Fleet its team's; a sender with none is refused by any
+  stance other than `Any`. When the master applies with an NPC as the attacker, the NPC's side
+  is judged instead, so an enemy's debuff on a player ship can be `Hostile`; a receiver that
+  can no longer find that NPC accepts the master's application. Refusals log as
+  warnings, at most once per sender, operation and status per 30 s. Templates that keep `Any`
+  apply and remove as before.
+- A removal is accepted from the master and from any sender the stance would let apply the
+  status: anyone for `Any`, a sender on another side from the target for `Hostile`, one on its
+  side for `Friendly`. The rule depends only on the sender and the target, so clients that
+  agree on the sides reach the same verdict. Each client remembers a removal for `CoalesceMs`
+  plus 2 s and ignores applications started before it, so one already in flight does not
+  re-create the status.
+- `EnemyStatuses.TryApply` and `TryRemove` return a `StatusRefusal` saying why nothing
+  happened. `Apply` and `Remove` keep their signatures and log a stance refusal once per key.
+- Re-applying a status that refreshes moves its end only later, never earlier, so
+  applications from several clients leave the same end in any arrival order.
+- A damage-over-time status registered with `Stance = Any` logs one warning recommending
+  `Hostile`. A `Hostile` one skips each tick while the client that created it (or its NPC
+  attacker) is no longer on another side from the target.
+- A client that creates a status from a message that arrived more than `CoalesceMs` plus
+  500 ms after the status's start pays ticks, and starts ability suspension, from that grace
+  before arrival rather than from the start.
+- An `OnRemoved` callback that applies the same key again starts a new status; it used to
+  stack onto the ending one and leave stat modifiers behind.
+- `EnemyStatusDef.Visibility`: `All` (default), `OwnForce`, `TargetForce` or `HostileToTarget`
+  decides which viewers draw the marker and the visual. `OwnForce` draws for every side that
+  applied the status. The status itself runs everywhere.
+- `EnemyStatusDef.CoalesceMs` (default 0): this client's applications of the status to one
+  target travel as one message per window, carrying how many there were and the local
+  status's timer, so stacks from several clients add up. The applying client still applies
+  each at once. A batch never spans two lives of the status, and a removal, sent or received,
+  drops the queued batch. A status applied per projectile hit should set about 150; a
+  duration within `CoalesceMs` plus 500 ms logs a warning, since it can end before its batch
+  arrives.
+- Past `[EnemyStatuses] MarkerCap` or `VfxCap`, a new status takes the slot of the one
+  farthest from the ship this client views when it is nearer by 10% of that distance or 25 m,
+  whichever is larger, and freed slots go to the nearest statuses without one.
+- `CharacterStatuses.Apply` on a character this client does not own logs one warning per key.
+- Network contract 2: a new message subtype carries coalesced status applications. A
+  framework on contract 1 is refused at join.
+
 ## 0.22.0
 
 - `Topology`: which player ships exist and which is whose, answered the same on every client.

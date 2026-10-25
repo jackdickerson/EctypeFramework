@@ -43,12 +43,17 @@ namespace Ectype
         private static readonly Dictionary<EnemyStatusEffect, Entry> Entries =
             new Dictionary<EnemyStatusEffect, Entry>();
         private static readonly List<EnemyStatusEffect> Scratch = new List<EnemyStatusEffect>();
+        /// <summary>A status went without a marker for the cap, so a freed slot is worth filling.</summary>
+        private static bool _capMissed;
+        private static float _nextBackfill;
 
         /// <summary>
         /// Show (or, on refresh, restart) the countdown marker for one live status. Markers
         /// are live UI entities the viewer repositions every frame, so the guards live here:
-        ///  * a global cap ([EnemyStatuses] MarkerCap) - past it a status simply runs
-        ///    markerless until a slot frees;
+        ///  * a global cap ([EnemyStatuses] MarkerCap) - past it a newcomer takes the slot
+        ///    of the marker farthest from the view ship when it is clearly nearer, else it runs
+        ///    markerless until a slot frees and the backfill offers it one;
+        ///  * the template's visibility rule, judged for this viewer;
         ///  * lock-gated markers exist only WHILE locked - a hidden marker entity
         ///    would still be walked by the viewer, so the entity is created and
         ///    destroyed on lock change instead of toggled;
@@ -61,6 +66,11 @@ namespace Ectype
         {
             if (!EctypeConfig.StatusMarkers.Value) return;
             if (!fx.Def.ShowMarker || fx.Target == null) return;
+            if (!EnemyStatusVisibility.Visible(fx))
+            {
+                Hide(fx);
+                return;
+            }
             if (!EnsureInstalled()) return;
 
             OrbitObject target = fx.Target;
@@ -82,8 +92,12 @@ namespace Ectype
             }
             else if (EnemyStatuses.CapReached(Entries.Count,
                                               EctypeConfig.StatusMarkerCap.Value,
-                                              "marker", "a marker", "MarkerCap"))
+                                              "marker", "a marker", "MarkerCap") &&
+                     !EvictFarthestFor(fx))
+            {
+                _capMissed = true;
                 return;
+            }
 
             ObjectMarkerData data = new ObjectMarkerData(target.transform);
             data.MarkerType = ObjectMarkerData.EMarkerType.Ability;
@@ -159,13 +173,81 @@ namespace Ectype
             }
         }
 
-        /// <summary>Driven from EnemyStatuses.Poll: re-install after a scene swap and
-        /// keep the target-lock subscription pointed at the current player ship.</summary>
+        /// <summary>Driven from EnemyStatuses.Poll: re-install after a scene swap, keep the
+        /// target-lock subscription pointed at the current player ship, and redraw statuses
+        /// with a visibility rule when this client's side changes.</summary>
         internal static void Poll(bool anyLive)
         {
             if (!anyLive && Entries.Count == 0) return;
             EnsureInstalled();
             EnsureLockSubscription();
+            if (EnemyStatusVisibility.ViewerSideChanged()) RedrawRuled();
+            if (_capMissed && Time.unscaledTime >= _nextBackfill)
+            {
+                _nextBackfill = Time.unscaledTime + 1f;
+                Backfill();
+            }
+            EnemyStatusVfx.Poll();
+        }
+
+        /// <summary>
+        /// Past the cap, a newcomer takes the slot of the marker farthest from the view ship
+        /// when it is clearly nearer (<see cref="EnemyStatusRank.Displaces"/>); otherwise the
+        /// newcomer goes without. The ranking runs only when a status asks for a slot at the
+        /// cap, and the margin keeps two statuses at about the same distance from trading the
+        /// slot on every re-application.
+        /// </summary>
+        private static bool EvictFarthestFor(EnemyStatusEffect fx)
+        {
+            float mine = EnemyStatusRank.DistanceFromView(fx.Target);
+            EnemyStatusEffect farthest = null;
+            float far = -1f;
+            foreach (KeyValuePair<EnemyStatusEffect, Entry> kv in Entries)
+            {
+                float d = EnemyStatusRank.DistanceFromView(kv.Key.Target);
+                if (d > far) { far = d; farthest = kv.Key; }
+            }
+            if (farthest == null || !EnemyStatusRank.Displaces(mine, far)) return false;
+            if (Plugin.Verbose)
+                Plugin.Log.LogInfo("Ectype: status marker for '" + farthest.Def.Key + "' on " +
+                                   EnemyStatusRank.NameOf(farthest.Target) + " evicted at " +
+                                   far.ToString("0") + " m from the view ship, for '" + fx.Def.Key +
+                                   "' on " + EnemyStatusRank.NameOf(fx.Target) + " at " +
+                                   mine.ToString("0") + " m (MarkerCap " +
+                                   EctypeConfig.StatusMarkerCap.Value + ").");
+            Hide(farthest);
+            _capMissed = true;   // the evicted status takes a slot again when one frees
+            return true;
+        }
+
+        /// <summary>Fills free slots with the nearest live statuses that went without a marker.</summary>
+        private static void Backfill()
+        {
+            int cap = Math.Max(0, EctypeConfig.StatusMarkerCap.Value);
+            if (Entries.Count >= cap) return;
+            Scratch.Clear();
+            EnemyStatuses.CollectLive(Scratch);
+            Scratch.RemoveAll(fx => fx.Target == null || !fx.Def.ShowMarker || Entries.ContainsKey(fx));
+            EnemyStatusRank.SortNearestFirst(Scratch);
+            for (int i = 0; i < Scratch.Count && Entries.Count < cap; i++) Show(Scratch[i]);
+            // Every candidate was offered a slot; whatever stayed hidden did so for its lock
+            // gate or its visibility rule, not for the cap.
+            if (Entries.Count < cap) _capMissed = false;
+        }
+
+        /// <summary>Shows or hides the marker and visual of every live status whose template
+        /// has a visibility rule; Show and Attach judge the rule.</summary>
+        private static void RedrawRuled()
+        {
+            Scratch.Clear();
+            EnemyStatuses.CollectLive(Scratch);
+            for (int i = 0; i < Scratch.Count; i++)
+            {
+                EnemyStatusEffect fx = Scratch[i];
+                if (fx.Def.Visibility == StatusVisibility.All) continue;
+                Show(fx);
+                EnemyStatusVfx.Attach(fx);
+            }
         }
 
         // ---------------------------------------------------------------- wiring
@@ -292,6 +374,127 @@ namespace Ectype
         }
     }
 
+    /// <summary>Distance from the ship this client views: the ranking both presentation caps
+    /// use to decide which statuses keep their marker and visual.</summary>
+    internal static class EnemyStatusRank
+    {
+        internal static float DistanceFromView(OrbitObject target)
+        {
+            if (target == null) return float.MaxValue;
+            Vector3 from;
+            // Presentation only: the ranking is per viewer, so the getter's ship (the one this
+            // client views, which a multi-ship mod moves with the view) is the right origin.
+            ClientGame game = ClientGame.Current;
+            OrbitObject ship = game != null ? game.PlayerShip : null;
+            if (ship != null) from = ship.transform.position;
+            else
+            {
+                Camera cam = Camera.main;
+                if (cam == null) return 0f;
+                from = cam.transform.position;
+            }
+            return Vector3.Distance(from, target.transform.position);
+        }
+
+        /// <summary>The fixed part of the eviction margin, in metres.</summary>
+        internal const float MarginMetres = 25f;
+        /// <summary>The proportional part of the eviction margin: a share of the farther distance.</summary>
+        internal const float MarginShare = 0.1f;
+
+        /// <summary>Whether a newcomer at <paramref name="nearer"/> metres takes the slot of a
+        /// decorated status at <paramref name="farther"/>: only when nearer by 10% of the
+        /// farther distance or 25 m, whichever is larger.</summary>
+        internal static bool Displaces(float nearer, float farther)
+        {
+            return nearer < farther - Math.Max(farther * MarginShare, MarginMetres);
+        }
+
+        internal static void SortNearestFirst(List<EnemyStatusEffect> list)
+        {
+            if (list.Count < 2) return;
+            Dictionary<EnemyStatusEffect, float> d = new Dictionary<EnemyStatusEffect, float>(list.Count);
+            for (int i = 0; i < list.Count; i++) d[list[i]] = DistanceFromView(list[i].Target);
+            list.Sort((a, b) => d[a].CompareTo(d[b]));
+        }
+
+        internal static string NameOf(OrbitObject target)
+        {
+            return target != null ? target.name : "(destroyed)";
+        }
+    }
+
+    /// <summary>
+    /// Who draws a status (EnemyStatusDef.Visibility), judged on this client from three
+    /// sides: the viewer's (this client's player through Topology.ForceOf: the character's
+    /// faction, else the crew ship's or, under Void Crew Fleet, the team's), the appliers'
+    /// (every side an accepted application came from) and the target's faction. A viewer whose
+    /// side is unknown sees only statuses ruled All. Presentation only: the status runs on
+    /// every client whatever this answers.
+    /// </summary>
+    internal static class EnemyStatusVisibility
+    {
+        private static int _viewerSide = int.MinValue;
+        private static float _nextSideCheck;
+
+        internal static bool Visible(EnemyStatusEffect fx)
+        {
+            StatusVisibility rule = fx.Def.Visibility;
+            if (rule == StatusVisibility.All || fx.Target == null)
+            {
+                fx.HiddenLogged = false;
+                return true;
+            }
+            int viewer = ViewerSide();
+            bool visible;
+            switch (rule)
+            {
+                case StatusVisibility.OwnForce:
+                    visible = viewer >= 0 && fx.ApplierSides.Contains(viewer);
+                    break;
+                case StatusVisibility.TargetForce:
+                    visible = viewer >= 0 && viewer == fx.Target.Faction;
+                    break;
+                case StatusVisibility.HostileToTarget:
+                    visible = viewer >= 0 && Topology.Hostile(PhotonNetwork.LocalPlayer, fx.Target);
+                    break;
+                default:
+                    visible = true;
+                    break;
+            }
+            if (visible) fx.HiddenLogged = false;
+            else if (!fx.HiddenLogged)
+            {
+                fx.HiddenLogged = true;
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status " + fx.Def.Key + " on " + fx.Target.name +
+                                       " hidden by visibility " + rule + " (viewer side " + viewer +
+                                       ", applier sides " +
+                                       (fx.ApplierSides.Count > 0 ? string.Join(",", fx.ApplierSides) : "-1") +
+                                       ", target side " +
+                                       fx.Target.Faction + ").");
+            }
+            return visible;
+        }
+
+        private static int ViewerSide()
+        {
+            return Topology.ForceOf(PhotonNetwork.LocalPlayer);
+        }
+
+        /// <summary>True, at most twice a second, when this client's side differs from the
+        /// last check: a spawn, a death, a team change, a spectated ship.</summary>
+        internal static bool ViewerSideChanged()
+        {
+            if (Time.unscaledTime < _nextSideCheck) return false;
+            _nextSideCheck = Time.unscaledTime + 0.5f;
+            int now = ViewerSide();
+            if (now == _viewerSide) return false;
+            bool first = _viewerSide == int.MinValue;
+            _viewerSide = now;
+            return !first;
+        }
+    }
+
     /// <summary>
     /// The optional looping visual on the affected object. Two routes, tried in order:
     /// the template's own factory (full control - it returns a fresh GameObject and this
@@ -314,9 +517,20 @@ namespace Ectype
             EnemyStatusDef def = fx.Def;
             if (def.CreateVfx == null && string.IsNullOrEmpty(def.VfxDonorName)) return;
             if (!EctypeConfig.StatusVfx.Value) return;
-            if (Attached.ContainsKey(fx) || fx.Target == null) return;
+            if (fx.Target == null) return;
+            if (!EnemyStatusVisibility.Visible(fx))
+            {
+                Detach(fx);
+                return;
+            }
+            if (Attached.ContainsKey(fx)) return;
             if (EnemyStatuses.CapReached(Attached.Count, EctypeConfig.StatusVfxCap.Value,
-                                         "vfx", "a visual", "VfxCap")) return;
+                                         "vfx", "a visual", "VfxCap") &&
+                !EvictFarthestFor(fx))
+            {
+                _capMissed = true;
+                return;
+            }
             try
             {
                 GameObject go = def.CreateVfx != null
@@ -345,6 +559,52 @@ namespace Ectype
             if (!Attached.TryGetValue(fx, out go)) return;
             Attached.Remove(fx);
             if (go != null) UnityEngine.Object.Destroy(go);
+        }
+
+        private static bool _capMissed;
+        private static float _nextBackfill;
+        private static readonly List<EnemyStatusEffect> Scratch = new List<EnemyStatusEffect>();
+
+        /// <summary>The marker layer's rule: a newcomer past the cap replaces the visual farthest
+        /// from the view ship when it is clearly nearer than that one.</summary>
+        private static bool EvictFarthestFor(EnemyStatusEffect fx)
+        {
+            float mine = EnemyStatusRank.DistanceFromView(fx.Target);
+            EnemyStatusEffect farthest = null;
+            float far = -1f;
+            foreach (KeyValuePair<EnemyStatusEffect, GameObject> kv in Attached)
+            {
+                float d = EnemyStatusRank.DistanceFromView(kv.Key.Target);
+                if (d > far) { far = d; farthest = kv.Key; }
+            }
+            if (farthest == null || !EnemyStatusRank.Displaces(mine, far)) return false;
+            if (Plugin.Verbose)
+                Plugin.Log.LogInfo("Ectype: status visual for '" + farthest.Def.Key + "' on " +
+                                   EnemyStatusRank.NameOf(farthest.Target) + " evicted at " +
+                                   far.ToString("0") + " m from the view ship, for '" + fx.Def.Key +
+                                   "' on " + EnemyStatusRank.NameOf(fx.Target) + " at " +
+                                   mine.ToString("0") + " m (VfxCap " +
+                                   EctypeConfig.StatusVfxCap.Value + ").");
+            Detach(farthest);
+            _capMissed = true;
+            return true;
+        }
+
+        /// <summary>Driven from the marker poll: fills free visual slots with the nearest live
+        /// statuses that went without one, at most once a second and only after a miss.</summary>
+        internal static void Poll()
+        {
+            if (!_capMissed || Time.unscaledTime < _nextBackfill) return;
+            _nextBackfill = Time.unscaledTime + 1f;
+            int cap = Math.Max(0, EctypeConfig.StatusVfxCap.Value);
+            if (Attached.Count >= cap) return;
+            Scratch.Clear();
+            EnemyStatuses.CollectLive(Scratch);
+            Scratch.RemoveAll(fx => fx.Target == null || Attached.ContainsKey(fx) ||
+                                    (fx.Def.CreateVfx == null && string.IsNullOrEmpty(fx.Def.VfxDonorName)));
+            EnemyStatusRank.SortNearestFirst(Scratch);
+            for (int i = 0; i < Scratch.Count && Attached.Count < cap; i++) Attach(Scratch[i]);
+            if (Attached.Count < cap) _capMissed = false;
         }
 
         private static GameObject CloneDonor(EnemyStatusDef def, OrbitObject target)

@@ -172,7 +172,9 @@ namespace Ectype
         /// <summary>
         /// Apply (or re-apply: refresh/stack per the template) a status to a character for
         /// a duration. Magnitude scales every stat amount. Local to this client - see the
-        /// authority note on CharacterStatusDef.
+        /// authority note on CharacterStatusDef. On a character this client does not own the
+        /// status still lands on the local copy, which that player's damage never reads, and
+        /// one warning per key says so.
         /// </summary>
         public static void Apply(Player target, string key, float seconds, float magnitude = 1f)
         {
@@ -187,6 +189,8 @@ namespace Ectype
                     return;
                 }
                 if (def.Replicated) CharacterStatusReplication.WarnNotImplemented(def.Key);
+                if (target.photonView != null && !target.photonView.IsMine)
+                    CharacterStatusReplication.WarnNotOwned(def.Key, target);
 
                 string mapKey = MapKey(target, def.Key);
                 CharacterStatus live;
@@ -495,6 +499,17 @@ namespace Ectype
             Plugin.Log.LogWarning("Ectype: character status '" + key + "' asks for " +
                                   "replication, which is not implemented. It runs on the " +
                                   "applying client only; callbacks and visuals are not shared.");
+        }
+
+        /// <summary>Applied to another player's character: it lands on this client's copy,
+        /// which no damage path of that player reads.</summary>
+        internal static void WarnNotOwned(string key, Player target)
+        {
+            if (!CharacterStatuses.WarnOnce("notmine:" + key)) return;
+            Plugin.Log.LogWarning("Ectype: character status '" + key + "' applied to " +
+                                  target.name + ", a character this client does not own. It " +
+                                  "runs on this client's copy only and changes nothing for " +
+                                  "that player; character statuses are not replicated.");
         }
     }
 }
