@@ -64,6 +64,11 @@ namespace Ectype
         /// and stable identity; roleName is display text. Resolution lives in
         /// Suppression.</summary>
         public List<string> suppressRoles = new List<string>();
+
+        /// <summary>Mutators this role registers in the game's Mutators menu, each a set of
+        /// session-stat modifiers. Registered through SessionStatMutators with the roleId as
+        /// owner.</summary>
+        public List<MutatorManifestSpec> mutators;
     }
 
     public class PerkSpec

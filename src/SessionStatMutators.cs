@@ -219,6 +219,7 @@ namespace Ectype
         private static readonly Dictionary<string, MutatorHandle> _refused =
             new Dictionary<string, MutatorHandle>(StringComparer.Ordinal);
         private static readonly HashSet<GUIDUnion> _unlocked = new HashSet<GUIDUnion>();
+        private static readonly HashSet<RoleRecord> _rolesRead = new HashSet<RoleRecord>();
 
         // The session the host predicted for, and what it contributed.
         private static GameSession _predictedFor;
@@ -467,6 +468,7 @@ namespace Ectype
         /// </summary>
         internal static void Pump()
         {
+            ReadManifests();
             if (!ReadyToRegister()) return;
             List<MutatorRecord> pending = new List<MutatorRecord>();
             foreach (MutatorRecord rec in _byGuid.Values)
@@ -762,6 +764,73 @@ namespace Ectype
                     break;
             }
             return m.Stat + " " + amount;
+        }
+
+        // ------------------------------------------------------------------ manifests
+
+        /// <summary>Registers each role manifest's mutators once, with the role's id as the
+        /// owner.</summary>
+        private static void ReadManifests()
+        {
+            if (!RoleRegistry.Discovered) return;
+            foreach (RoleRecord role in RoleRegistry.Roles)
+            {
+                if (!_rolesRead.Add(role)) continue;
+                List<MutatorManifestSpec> list = role.Manifest.mutators;
+                if (list == null) continue;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    string why;
+                    MutatorSpec spec = FromManifest(role.Manifest.roleId, list[i], role.SourceAssembly, out why);
+                    if (spec == null)
+                    {
+                        string key = list[i] != null && list[i].key != null ? list[i].key : "#" + i;
+                        Refuse(new MutatorHandle(role.Manifest.roleId, key), role.Manifest.roleId + "/" + key, why);
+                        continue;
+                    }
+                    Register(spec);
+                }
+            }
+        }
+
+        /// <summary>A manifest entry as a spec, or null and the reason. Checks only what the
+        /// manifest form adds: the kind strings and the amount's presence.</summary>
+        internal static MutatorSpec FromManifest(string roleId, MutatorManifestSpec m, Assembly asm, out string why)
+        {
+            why = null;
+            if (m == null) { why = "null mutator entry"; return null; }
+            MutatorSpec spec = new MutatorSpec
+            {
+                Owner = roleId, Key = m.key, Guid = m.guid, DisplayName = m.name, Description = m.description,
+                Icon = asm != null && !string.IsNullOrEmpty(m.icon) ? IconStore.Get(asm, m.icon) : null,
+                IconDonor = m.iconDonor,
+            };
+            if (m.effects == null) { why = "no effects"; return null; }
+            for (int i = 0; i < m.effects.Count; i++)
+            {
+                MutatorEffectManifestSpec e = m.effects[i];
+                if (e == null) { why = "effect #" + i + ": null"; return null; }
+                SessionStatModifierKind kind;
+                if (!TryParseKind(e.kind, out kind))
+                {
+                    why = "effect #" + i + ": unknown kind '" + e.kind + "' (flat, percent or factor)";
+                    return null;
+                }
+                if (!e.amount.HasValue) { why = "effect #" + i + ": no amount"; return null; }
+                spec.Effects.Add(new SessionStatEffect { Stat = e.stat, Kind = kind, Amount = e.amount.Value });
+            }
+            return spec;
+        }
+
+        internal static bool TryParseKind(string s, out SessionStatModifierKind kind)
+        {
+            switch (s)
+            {
+                case "flat": kind = SessionStatModifierKind.Flat; return true;
+                case "percent": kind = SessionStatModifierKind.Percent; return true;
+                case "factor": kind = SessionStatModifierKind.Factor; return true;
+                default: kind = SessionStatModifierKind.Flat; return false;
+            }
         }
 
         // ------------------------------------------------------------------ session
@@ -1113,5 +1182,43 @@ namespace Ectype
             }
             return null;
         }
+    }
+
+    /// <summary>A role manifest's <c>mutators</c> entry.</summary>
+    public class MutatorManifestSpec
+    {
+        /// <summary>Stable key within the role. Part of the derived GUID.</summary>
+        public string key;
+
+        /// <summary>Optional explicit GUID (32 hex digits, dashes allowed).</summary>
+        public string guid;
+
+        /// <summary>The menu card's title.</summary>
+        public string name;
+
+        /// <summary>The menu card's body.</summary>
+        public string description;
+
+        /// <summary>Icon key: an embedded PNG resource in the role's assembly.</summary>
+        public string icon;
+
+        /// <summary>A registered mutator's GUID whose icon this one borrows.</summary>
+        public string iconDonor;
+
+        /// <summary>The modifiers.</summary>
+        public List<MutatorEffectManifestSpec> effects;
+    }
+
+    /// <summary>One modifier of a manifest mutator.</summary>
+    public class MutatorEffectManifestSpec
+    {
+        /// <summary>A session stat: <c>"owner/Name"</c>, or a framework stat's name.</summary>
+        public string stat;
+
+        /// <summary><c>"flat"</c>, <c>"percent"</c> or <c>"factor"</c>.</summary>
+        public string kind;
+
+        /// <summary>The addend, the fraction or the factor.</summary>
+        public float? amount;
     }
 }
