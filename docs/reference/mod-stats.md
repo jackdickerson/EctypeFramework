@@ -196,8 +196,10 @@ stats file's.
   at its base, raises `SessionStats.Opening`, and publishes the composed value of every float
   stat in it under the session data key `framework/sessionStats` as `{"<id>": value}`. Inside
   `Opening`, `SessionStats.Collection` is the new collection and `SessionStats.SessionId` is
-  null.
-- **Every other client.** When the session arrives, the framework builds its own collection and
+  null. This happens before the quest is generated and before the first sector exists, so a
+  reader in the first sector already sees the new values.
+- **Every other client.** When session data applies the host's values, at the same point of the
+  client's own session start, the framework builds its own collection and
   sets each stat's base to the host's value, which reproduces it exactly. A stat the host
   published that this client does not declare is registered at the host's value, so a reader by
   id still gets it. A late joiner gets the values with the cached session, as it joins.
