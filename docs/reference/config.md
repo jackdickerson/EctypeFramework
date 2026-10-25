@@ -13,9 +13,9 @@ launch.
 | `[Presentation] ScrollExcludeDocuments` | (empty) | Comma-separated, case-insensitive substrings. A document whose `UIDocument` name, GameObject name or visual-tree-asset name matches any of them keeps its authored layout, with no scroller. The layout-failed warning (needs `VerboseLogging`) prints each document's names. |
 | `[Presentation] RoleWording` | `true` | Where the game's English text calls a playable role a "Class", it says "Role": the ability keybind in Settings -> Controls, the ability cooldown and duration lines on item tooltips, the stock hero-perk descriptions and the hub's "Class: <role>" projection headers. Display text only, and other languages are untouched. Off restores the game's wording; a screen already open keeps its text until the game rebuilds it. |
 | `[EnemyStatuses] Markers` | `true` | Countdown markers over objects carrying a status. Off runs statuses markerless. Each marker is a live UI entity the game's viewer repositions every frame, hence the cap. |
-| `[EnemyStatuses] MarkerCap` | `10` | Most status markers alive at once, across all statuses and targets. Past the cap a status runs without a marker until one frees up. |
+| `[EnemyStatuses] MarkerCap` | `10` | Most status markers alive at once, across all statuses and targets. Past the cap, a status asking for a marker takes the slot of the marker farthest from the ship this client views, when it is nearer than that one; otherwise it runs without a marker. Freed slots go to the nearest statuses without one, checked once a second. |
 | `[EnemyStatuses] Vfx` | `true` | Attached status visuals. Off runs statuses without them. |
-| `[EnemyStatuses] VfxCap` | `8` | Most attached status visuals alive at once, across all statuses and targets. |
+| `[EnemyStatuses] VfxCap` | `8` | Most attached status visuals alive at once, across all statuses and targets. Ranked by distance as `MarkerCap` is. |
 
 ## The F5 page
 

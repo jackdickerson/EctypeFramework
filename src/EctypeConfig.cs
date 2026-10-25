@@ -55,7 +55,9 @@ namespace Ectype
 
             StatusMarkerCap = cfg.Bind("EnemyStatuses", "MarkerCap", 10,
                 "Most status markers alive at once, across all statuses and targets. " +
-                "Beyond the cap a status runs without a marker until one frees up.");
+                "Beyond the cap a new status takes the slot of the marker farthest from the " +
+                "ship you view when it is nearer; otherwise it runs without a marker until " +
+                "one frees up.");
 
             StatusVfx = cfg.Bind("EnemyStatuses", "Vfx", true,
                 "Attached visuals on objects carrying an enemy status; off disables " +
@@ -63,7 +65,8 @@ namespace Ectype
 
             StatusVfxCap = cfg.Bind("EnemyStatuses", "VfxCap", 8,
                 "Most attached status visuals alive at once, across all statuses and " +
-                "targets.");
+                "targets. Ranked like MarkerCap: the visual farthest from the ship you view " +
+                "gives way to a nearer one.");
 
             EnableScroll = cfg.Bind("Presentation", "EnableScroll", true,
                 "Wrap the gene-tree row in a horizontal scroller when more than four " +

@@ -29,6 +29,9 @@ CharacterStatuses.IsActive(player, "mymod.dash-guard"); // + RemainingSeconds, S
   that exists only on the victim's client is therefore read by the code that matters. The one
   non-victim-side path, a ship weapon's projectile computed on the shooter's client, is zeroed
   for same-faction targets before vulnerability is read.
+- **Apply it on the client that owns the character.** Applied to another player's character,
+  a status lands on this client's copy, which that player's damage never reads, so it changes
+  nothing for them. The framework logs one warning per key naming the character.
 - **Callbacks and visuals are not shared.** `OnApplied`, `OnTick` and `OnRemoved` run only
   where `Apply` was called. A status whose payload the crew must see needs replication, which
   is not implemented. Setting `Replicated = true` on a template makes the framework log one

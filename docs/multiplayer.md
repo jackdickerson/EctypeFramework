@@ -2,8 +2,9 @@
 
 What every player in a room needs when a mod depends on EctypeFramework, how a room's mod set
 is matched, how the game and VoidManager refuse a join, what a dependent mod has to tell its
-players, and what changes in a room with more than one player ship. The VoidManager behaviour
-described here is that of VoidManager 1.2.11.
+players, and what changes in a room with more than one player ship. The framework runs with or
+without VoidManager. VoidManager's join check and progression switch act only for the players
+who run it; where this page describes them, it describes VoidManager 1.2.11.
 
 ## The short version
 
@@ -237,7 +238,13 @@ What the framework's own features do with several ships:
   `ShipArrivals.FleetArrived` fires once per jump, after the last ship is out of the void
   ([ship-arrivals.md](reference/ship-arrivals.md)).
 - **Status markers** follow the ship this client views for target-lock gating, and take their
-  colour from the game's own affiliation rule, which a team mod can make side-relative.
+  colour from the game's own affiliation rule, which a team mod can make side-relative. Past
+  the marker cap, the markers nearest the viewed ship are the ones kept.
+- **Enemy statuses** judge who applied them. A status declared `Hostile` or `Friendly` is
+  refused on every client when the sender is on the wrong side of the target, a status is
+  removed only by its applier, the target's owner or the master, and `Visibility` limits its
+  marker to one side's players
+  ([enemy-statuses.md](reference/enemy-statuses.md#who-may-apply-and-remove)).
 - **Enemy ability suspension** lifts the enemy's modifiers from every player ship.
 
 [topology.md](reference/topology.md) lists the rules a dependent follows in such a room: never

@@ -4,7 +4,8 @@ Press F6 to slow the nearest NPC ship by half for five seconds, with `Ectype.Ene
 
 Shows:
 
-- `EnemyStatuses.Register(new EnemyStatusDef(key) { ... }.AddStat(...))` once at `Awake`, then `Apply(target, key, seconds, magnitude, attacker)`.
+- `EnemyStatuses.Register(new EnemyStatusDef(key) { ... }.AddStat(...))` once at `Awake`, then `TryApply(target, key, seconds, magnitude, attacker)`, which returns why a status was not applied. `Apply` takes the same arguments and returns nothing.
+- `Stance = StatusStance.Hostile`: only a client on another side from the target may apply the slow, and every receiver checks it again.
 - `OnApplied` and `OnRemoved` callbacks.
 - `MultiplayerType.All`: a peer without the template ignores the application, so every client needs the mod. Applying a status changes what a run contains, so the plugin sets the modded-session flag.
 
@@ -13,7 +14,7 @@ Rules:
 - Register from a literal key, on every client. The key crosses the network.
 - A stat entry bites only a stat the target registers. Every `OrbitObject` has `MaxHitPoints` and `Invulnerability`, NPC ships add `MaxFlightSpeed`. An unmatched stat does nothing and the framework logs one warning per status and target type.
 - Re-applying refreshes the timer and compounds up to `MaxStacks`.
-- Any client may apply. `OnApplied` and `OnRemoved` run on every client, `OnTick` on the target's owner only. Late joiners do not receive statuses already running.
+- Any client its `Stance` accepts may apply. Only the client that applied it, the target's owner or the master may remove it. `OnApplied` and `OnRemoved` run on every client, `OnTick` on the target's owner only. Late joiners do not receive statuses already running.
 - The framework provides no way to find a target. This sample finds one from game types: `ClientGame.Current.PlayerShip` is the player's ship, `GameSessionManager.ActiveSector` is the loaded sector, and its `TargetableShipsCategory` lists the sector's ships as `SpaceCraft`, the base type of NPC ships. The API takes any `OrbitObject`.
 
 ## Before you build
