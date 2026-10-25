@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ExampleSessionData</AssemblyName>
+    <RootNamespace>ExampleSessionData</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="EctypeFramework" HintPath="$(PluginsDir)\EctypeFramework.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="PhotonUnityNetworking" HintPath="$(ManagedDir)\PhotonUnityNetworking.dll" Private="false" />
+    <Reference Include="PhotonRealtime" HintPath="$(ManagedDir)\PhotonRealtime.dll" Private="false" />
+    <Reference Include="VoidCrewCommon" HintPath="$(ManagedDir)\VoidCrewCommon.dll" Private="false" />
+    <Reference Include="ResourceAssets" HintPath="$(ManagedDir)\ResourceAssets.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(ManagedDir)\Newtonsoft.Json.dll" Private="false" />
+    <Reference Include="Unity.InputSystem" HintPath="$(ManagedDir)\Unity.InputSystem.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\*.cs" />
+  </ItemGroup>
+
+</Project>
