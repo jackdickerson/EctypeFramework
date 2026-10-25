@@ -68,6 +68,9 @@ internal static class MenuKit
     /// </summary>
     public static void DevZone(string id, Action body)
     {
+        // A direct VoidManager read: call DevZone only from a settings page's Draw(), which
+        // only VoidManager's menu runs, so the runtime never compiles this method without
+        // VoidManager loaded.
         if (!VoidManager.Configs.IsDebugMode) return;
 
         GUILayout.Space(12f);

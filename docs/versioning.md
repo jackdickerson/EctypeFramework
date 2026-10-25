@@ -77,10 +77,37 @@ requirement.
 Set `minFrameworkVersion` to the oldest framework that has every feature the manifest and
 the role code use. A role that needs nothing newer than the first release leaves it out.
 
+## The network contract
+
+Framework clients talk to each other on one Photon event, whose payload is a subtype byte
+followed by that message's fields. The network contract is that event code, the set of
+subtypes and each message's field layout, numbered by the framework's `NET_CONTRACT_VERSION`
+constant. The field layouts are declared in one table that the sender and the receiver both
+check every message against. The number is independent of the manifest `contractVersion`
+above.
+
+Raise `NET_CONTRACT_VERSION` in the same change that adds, removes or renumbers a subtype or
+changes a message's fields, and name the new value in that version's `CHANGELOG.md` entry as
+`network contract <n>`. The release check fails when the changelog does not name the current
+value.
+
+Two things follow from the number:
+
+- **Peers filter on it.** Each framework publishes it as the Photon player property `Ectype`,
+  and messages go only to peers whose property matches.
+- **The game refuses a mismatch at join.** The framework registers one runtime asset whose
+  GUID ends in the contract number, inside the game's Required mask. The game's own asset
+  check compares the host's and the joiner's registered assets, so a joiner on another
+  contract is refused, and the rejection screen shows the asset's name,
+  `Ectype Framework <version> (network contract <n>)`, for the host's framework. This check
+  runs with or without VoidManager.
+
 ## Every player needs the same build
 
-The framework declares multiplayer type `All`, and so does every role mod. Two checks apply
-to a mod of that type when a player joins a room.
+A role mod that declares a `VoidPlugin` of multiplayer type `All` gets two VoidManager checks
+when a player joins a room, provided the host and the joiner both run VoidManager. The
+framework declares no VoidManager type, so neither check covers the framework itself: its join
+check is the network contract above, and its version is matched by the mod launcher alone.
 
 1. The joining client compares its mod list with the host's list. Mod name, GUID, version and
    multiplayer type are visible to every peer. A mod missing on either side, or present with a

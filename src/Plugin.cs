@@ -7,16 +7,14 @@ using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
 
-using VoidManager;
-using VoidManager.CustomGUI;
-using VoidManager.MPModChecks;
-
 namespace Ectype
 {
     [BepInPlugin(EctypePluginInfo.PLUGIN_GUID, EctypePluginInfo.USERS_PLUGIN_NAME,
                  EctypePluginInfo.PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
+    // Soft: loaded first when present, and the framework runs without it. Everything the
+    // framework does with VoidManager is in VoidManagerBridge.
+    [BepInDependency(VoidManagerBridge.Guid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -41,6 +39,9 @@ namespace Ectype
             DevTools.Awake(Config);
 #endif
 
+            try { VoidManagerBridge.Install(new Harmony(EctypePluginInfo.PLUGIN_GUID)); }
+            catch (Exception e) { Log.LogError("Ectype: VoidManager bridge failed: " + e); }
+
             if (!EctypeConfig.Enabled.Value)
             {
                 Log.LogWarning("Ectype: disabled via config ([General] Enabled = false).");
@@ -61,6 +62,13 @@ namespace Ectype
             }
             PatchesApplied = true;
 
+            // The framework's message types. The driver subscribes the receive path on its
+            // first frame, before any room can be joined.
+            EctypeNet.Register(EctypeNet.AbilityActive, "ability-active",
+                               AbilityActiveMessage.Receive);
+            EctypeNet.Register(EctypeNet.EnemyStatus, "enemy-status",
+                               EnemyStatusMessage.Receive);
+
             // Resolved and patched gate by gate, so a renamed game member costs only the
             // system that needs it.
             try { EnemyAbilities.ApplyPatches(harmony); }
@@ -69,6 +77,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
+            try { ProgressionGuard.Install(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }
@@ -86,33 +96,22 @@ namespace Ectype
     }
 
     /// <summary>
-    /// MultiplayerType.All, not Session: an unmodded peer throws on a framework perk GUID and
-    /// wipes that player's perk set on its own client, so everyone in the room needs this DLL -
-    /// framework and every role mod alike.
+    /// The F5 page's content. VoidManagerBridge hands these two methods to the settings menu
+    /// it builds when VoidManager is loaded; nothing else calls them.
     /// </summary>
-    public class EctypeVoidPlugin : VoidPlugin
+    internal static class SettingsPage
     {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return EctypePluginInfo.PLUGIN_AUTHORS; } }
-        public override string Description { get { return EctypePluginInfo.PLUGIN_DESCRIPTION; } }
-        public override string ThunderstoreID { get { return EctypePluginInfo.PLUGIN_THUNDERSTORE_ID; } }
+        internal static string Name() { return EctypePluginInfo.USERS_PLUGIN_NAME; }
 
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = ModFlagPolicy.FlagsSession };
-        }
-    }
-
-    public class EctypeSettingsMenu : ModSettingsMenu
-    {
-        public override string Name() { return EctypePluginInfo.USERS_PLUGIN_NAME; }
-
-        public override void Draw()
+        internal static void Draw()
         {
             GUILayout.Label("Pipeline: " + EctypeAssets.GlobalStatus);
             GUILayout.Label("Stats  : " + SafeStatCount() + " vanilla aliases, " +
                             "framework-owned " + FrameworkStats.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
+            GUILayout.Label("Network : event " + EctypeNet.EventCode + ", contract " +
+                            EctypePluginInfo.NET_CONTRACT_VERSION + ", " +
+                            ContractMarker.Status);
             GUILayout.Space(8f);
 
             if (RoleRegistry.Roles.Count == 0)
@@ -164,6 +163,9 @@ namespace Ectype
             Step("layout poll", DevLayout.Poll);
             Step("dev self-test", DevSelfTest.Poll);
 #endif
+            Step("net", EctypeNet.Poll);
+            Step("presence", PeerPresence.Publish);
+            Step("progression guard", ProgressionGuard.Poll);
             Step("topology", Topology.Poll);
             Step("characterShip", CharacterShipRoute.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);

@@ -38,7 +38,7 @@ Requires: [Dependencies]
 
 ## 🔧 Install Instructions - **Install following the normal BepInEx procedure.**
 
-Ensure that you have [BepInEx 5](https://thunderstore.io/c/void-crew/p/BepInEx/BepInExPack/) (stable version 5 **MONO**) and [VoidManager](https://thunderstore.io/c/void-crew/p/NihilityShift/VoidManager/) installed.
+Ensure that you have [BepInEx 5](https://thunderstore.io/c/void-crew/p/BepInEx/BepInExPack/) (stable version 5 **MONO**) installed. [VoidManager](https://thunderstore.io/c/void-crew/p/NihilityShift/VoidManager/) is optional: with it, the framework has an F5 status page.
 
 #### ✔️ Mod installation - **Unzip the contents into the BepInEx plugin directory**
 

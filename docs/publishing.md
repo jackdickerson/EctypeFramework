@@ -20,7 +20,8 @@ Thunderstore listing shows it (for example `0.19.7`). Use the
 version you built against: a mod compiled against one version needs that version or newer,
 and the room check requires every player to run the same build (see `versioning.md`).
 
-Every package also depends on the two packages the framework itself needs:
+Every package also depends on BepInEx, the one package the framework itself needs. A mod
+that declares a `VoidPlugin` or uses any other VoidManager API depends on VoidManager as well:
 
 ```
 BepInEx-BepInExPack-5.4.2305
@@ -94,22 +95,35 @@ plain words.
 1. **Everyone in the room needs it.** A role mod and the framework are multiplayer type
    `All`. A player without them cannot join a room that has them, and a host without them
    bounces a joiner who has them.
-2. **Everyone needs the same version.** VoidManager refuses a joiner whose version differs
-   from the host's, and the host also compares the DLL's bytes. A Thunderstore version number
-   is uploaded once, so the same package version is the same bytes on every machine. Players
-   who use the Void Crew Mod Launcher get the host's versions installed for them when they
-   join; everyone else updates by hand. State the version the listing was written for and
-   tell players to update the framework and your mod together.
+2. **Everyone needs the same version.** What enforces it at join:
+   - The game's asset check, always: it refuses a joiner whose framework speaks another
+     network contract, and one whose role content (trees, perks) differs from the host's. It
+     does not compare version numbers.
+   - VoidManager, when the host and the joiner both run it: it refuses a joiner whose version
+     of a mod declared `All` differs from the host's, and the host also compares that DLL's
+     bytes. The framework declares no VoidManager type, so this never covers the framework
+     itself.
+   - The Void Crew Mod Launcher, before the game starts: it installs the host's exact
+     versions, the framework included.
+
+   Two framework versions on the same network contract can therefore share a room when
+   players install by hand. A Thunderstore version number is uploaded once, so the same
+   package version is the same bytes on every machine. State the version the listing was
+   written for and tell players to update the framework and your mod together.
 3. **Sessions are flagged as modded.** The game tags a room as modded and shows the tag in
-   the server browser, which is how it separates modded rooms in matchmaking. VoidManager
-   also blocks cloud profile writes and Steam stats and achievements for a tagged session.
-   The tag is set when the mod loads and cannot be switched off from the mod's settings.
+   the server browser, which is how it separates modded rooms in matchmaking. The
+   framework blocks cloud profile writes and Steam stats and achievements from the first
+   tagged room until the game restarts, with or without VoidManager. The tag is set
+   when the mod loads and cannot be switched off from the mod's settings.
 4. **What the framework dependency means.** One line: the role needs the Ectype Framework
    package, which the mod manager installs automatically and which a hand installer has
    to add.
 
 The Void Crew community's categories include `All Required` and `Disables Progression`,
-which describe a role mod's requirements. The list changes over time: read the live list
+which describe a role mod's requirements. The framework's own package carries `All Required`.
+It declares no `VoidPlugin`, so a mod launcher that looks for one in the DLL finds none and
+falls back to the package's categories; the DLL also carries
+`AssemblyMetadata("MPType", "All")` for a reader that inspects assembly metadata. The list changes over time: read the live list
 (`https://thunderstore.io/api/experimental/community/void-crew/category/`) before you set
 categories.
 
@@ -119,8 +133,10 @@ A listing skeleton for the multiplayer section:
 ### Multiplayer
 
 - Everyone in the room needs this mod and the Ectype Framework, at the same version.
-- Hosting or joining a room with this mod marks the session as modded: no progression and
-  no achievements for anyone in it.
+- Hosting or joining a room with this mod marks the session as modded: progression and
+  achievements are off for everyone in it until the game restarts.
+- Players without VoidManager can join only a host that either has no VoidManager or runs no
+  mod declared `All` to it.
 - Updating: update this mod and the Ectype Framework together.
 ```
 

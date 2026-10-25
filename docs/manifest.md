@@ -99,10 +99,15 @@ back to the donor icon, then to the framework's placeholder (see
 
 A role mod's plugin carries these load-bearing parts:
 
-- `[BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]` and
-  `[BepInDependency("jack.voidcrew.ectype")]`. `jack.voidcrew.ectype` is the framework's
+- `[BepInDependency("jack.voidcrew.ectype")]`. `jack.voidcrew.ectype` is the framework's
   BepInEx plugin GUID. BepInEx load order and dependency declarations use it, and it never
   changes. The dependency fixes load order so the framework discovers your assembly.
-- A `VoidPlugin` subclass with `MPType` returning `MultiplayerType.All`, and `OnSessionChange`
-  returning `SetMod_Session = true`. The multiplayer consequences are in
-  [multiplayer.md](multiplayer.md).
+- Nothing from VoidManager is required. The role's perks and tree register in the game's
+  required-asset set, so the game refuses a join between players whose role content differs,
+  with or without VoidManager. Carry `All Required` among the Thunderstore categories so the
+  mod launcher installs the role for joiners.
+- Optional, with VoidManager: a `VoidPlugin` subclass (which makes VoidManager a hard
+  dependency) with `MPType` returning `MultiplayerType.All` and `OnSessionChange` returning
+  `SetMod_Session = true` adds VoidManager's version and DLL-hash check. A VoidManager host
+  running an `All` mod then kicks every joiner without VoidManager. The multiplayer
+  consequences are in [multiplayer.md](multiplayer.md).

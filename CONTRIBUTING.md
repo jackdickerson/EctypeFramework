@@ -74,7 +74,9 @@ at the same version, so the host's hash check bounces anyone in the room on the 
 
 A pull request is checked by a workflow that validates line endings, the example manifests
 against `docs/schemas/ectype-role.schema.json`, relative Markdown links, `release/release.json`
-and the heading for the current version in `CHANGELOG.md` and `release/CHANGELOG.md`. It does not compile. A change that compiles
+the heading for the current version in `CHANGELOG.md` and `release/CHANGELOG.md`, and that
+`CHANGELOG.md` names the current network contract (`network contract <n>`, from
+`NET_CONTRACT_VERSION`; [docs/versioning.md](docs/versioning.md)). It does not compile. A change that compiles
 only on your machine because of a local game folder is caught in review, so say in the pull
 request which game version you tested against.
 

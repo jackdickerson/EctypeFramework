@@ -9,18 +9,18 @@ using Opsive.UltimateCharacterController.Character.Abilities;
 using Photon.Pun;
 using Photon.Realtime;
 using UnityEngine;
-using VoidManager.ModMessages;
-using VoidManager.MPModChecks;
+
+using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 namespace Ectype
 {
     /// <summary>
     /// Replicates the active state of runtime-installed Opsive abilities by KEY, on a
     /// channel the framework owns, instead of by array index on the game's own RPC: the
-    /// owner's vanilla send is suppressed and (view id, key, active) goes out on
-    /// VoidManager's ModMessage channel to the peers that run this framework, each of which
-    /// resolves the key against its own replica's array and ignores keys it has no ability
-    /// for. Array order across clients stops mattering.
+    /// owner's vanilla send is suppressed and (view id, key, active) goes out on the
+    /// framework's own Photon event (EctypeNet) to the peers that run this framework, each of
+    /// which resolves the key against its own replica's array and ignores keys it has no
+    /// ability for. Array order across clients stops mattering.
     ///
     /// Two registration rules, both enforced by the sender rather than the receiver:
     ///  * the key must be computed from the same literal on every client - a string the
@@ -81,7 +81,7 @@ namespace Ectype
         {
             try
             {
-                List<Player> with = PeerPresence.PeersWithMod(EctypePluginInfo.PLUGIN_GUID);
+                List<Player> with = PeerPresence.PeersWithFramework();
                 if (with.Count == 0) return new Player[0];
                 Player me = PhotonNetwork.LocalPlayer;
                 List<Player> others = new List<Player>(with.Count);
@@ -100,17 +100,15 @@ namespace Ectype
                                   object[] startData, object[] extendedStartData, bool lateJoin)
         {
             if (to == null || to.Length == 0) return;
-            ModMessage.Send(EctypePluginInfo.PLUGIN_GUID,
-                            ModMessage.GetIdentifier(typeof(AbilityActiveMessage)),
-                            to,
-                            new object[]
-                            {
-                                viewId, key, active,
-                                startData ?? new object[0],
-                                extendedStartData ?? new object[0],
-                                lateJoin
-                            },
-                            reliable: true);
+            EctypeNet.Send(EctypeNet.AbilityActive, to,
+                           new object[]
+                           {
+                               viewId, key, active,
+                               startData ?? new object[0],
+                               extendedStartData ?? new object[0],
+                               lateJoin
+                           },
+                           reliable: true);
         }
 
         internal static object[] ExtendedStartData(Ability ability)
@@ -121,12 +119,11 @@ namespace Ectype
     }
 
     /// <summary>
-    /// Receiver. VoidManager discovers concrete ModMessage subclasses at load and routes
-    /// matching payloads to <see cref="Handle"/> - there is no registration call.
+    /// Receiver, registered with EctypeNet as subtype <see cref="EctypeNet.AbilityActive"/>.
     /// Arguments: [int viewId, string key, bool active, object[] startData,
     ///             object[] extendedStartData, bool lateJoin].
     /// </summary>
-    public sealed class AbilityActiveMessage : ModMessage
+    internal static class AbilityActiveMessage
     {
         private static readonly HashSet<string> ReportedOwnerMismatch = new HashSet<string>();
 
@@ -148,7 +145,15 @@ namespace Ectype
             new Dictionary<string, HeldStart>();
         private static float _nextRetry;
 
-        public override void Handle(object[] args, Player sender)
+        /// <summary>EctypeNet entry point: resolves the sending actor to its player in the
+        /// current room (null when it is not there) and handles the message.</summary>
+        internal static void Receive(int senderActor, object[] args)
+        {
+            Room room = PhotonNetwork.CurrentRoom;
+            Handle(args, room != null ? room.GetPlayer(senderActor) : null);
+        }
+
+        private static void Handle(object[] args, Player sender)
         {
             try
             {
@@ -369,7 +374,7 @@ namespace Ectype
             try
             {
                 if (player == null || LocomotionF == null) return;
-                if (!PeerPresence.PeerHasMod(player, EctypePluginInfo.PLUGIN_GUID)) return;
+                if (!PeerPresence.HasFramework(player)) return;
 
                 MonoBehaviourPun pun = __instance as MonoBehaviourPun;
                 PhotonView view = pun != null ? pun.photonView : null;
@@ -396,26 +401,99 @@ namespace Ectype
     }
 
     /// <summary>
-    /// Which peers run a given mod, as VoidManager's mod-list exchange reports it. Ability
-    /// replication goes only to peers running the framework, since a peer without it has no
-    /// handler for the framework's messages. The answer comes from the mod list alone.
+    /// Which peers run a framework that speaks this build's network contract. Every running
+    /// framework publishes the Photon player property <see cref="PropertyKey"/> on its local
+    /// player, carrying <see cref="EctypePluginInfo.NET_CONTRACT_VERSION"/>. Ability
+    /// replication and enemy-status replication go only to peers whose property matches,
+    /// since a peer without it has no handler for the framework's event.
+    ///
+    /// The property is set on the local player before any room is joined. PUN keeps a local
+    /// player's custom properties across rooms and sends them with every join request, so the
+    /// property is already on the joiner when other clients see the join, and a crewmate's
+    /// late-join sync can address the joiner immediately.
     /// </summary>
     internal static class PeerPresence
     {
-        /// <summary>Every peer whose mod list carries the mod. Empty in solo, or before
-        /// VoidManager has a peer manager.</summary>
-        internal static List<Player> PeersWithMod(string modGuid)
+        /// <summary>The Photon player property naming the framework's network contract.</summary>
+        internal const string PropertyKey = "Ectype";
+
+        private const float PublishInterval = 1f;
+        private static float _nextPublish;
+
+        /// <summary>Every other player in the current room whose framework speaks this
+        /// build's network contract. Empty in solo or outside a room.</summary>
+        internal static List<Player> PeersWithFramework()
         {
-            NetworkedPeerManager peers = NetworkedPeerManager.Instance;
-            if (peers == null) return new List<Player>();
-            return peers.NetworkedPeersWithMod(modGuid) ?? new List<Player>();
+            List<Player> with = new List<Player>();
+            Player[] others = PhotonNetwork.PlayerListOthers;
+            if (others == null) return with;
+            foreach (Player p in others)
+                if (HasFramework(p)) with.Add(p);
+            return with;
         }
 
-        /// <summary>Whether a player's mod list carries the mod.</summary>
-        internal static bool PeerHasMod(Player player, string modGuid)
+        private static readonly HashSet<string> ReportedMismatch = new HashSet<string>();
+
+        /// <summary>The contract number a player published, or null when it published none.</summary>
+        internal static int? ContractOf(Player player)
         {
-            NetworkedPeerManager peers = NetworkedPeerManager.Instance;
-            return peers != null && player != null && peers.NetworkedPeerHasMod(player, modGuid);
+            object v;
+            if (player == null || player.CustomProperties == null ||
+                !player.CustomProperties.TryGetValue(PropertyKey, out v) || !(v is int)) return null;
+            return (int)v;
+        }
+
+        /// <summary>
+        /// False when the player published a different network contract: such a peer is never
+        /// a recipient and its messages are dropped. Logs once per player and contract number.
+        /// A player with no property is not judged here.
+        /// </summary>
+        internal static bool ContractCompatible(Player player)
+        {
+            int? theirs = ContractOf(player);
+            if (!theirs.HasValue || theirs.Value == EctypePluginInfo.NET_CONTRACT_VERSION)
+                return true;
+            if (ReportedMismatch.Add(player.ActorNumber + "/" + theirs.Value))
+                Plugin.Log.LogWarning("Ectype: player '" + player.NickName + "' (actor " +
+                                      player.ActorNumber + ") runs a framework on network " +
+                                      "contract " + theirs.Value + ", this one speaks " +
+                                      EctypePluginInfo.NET_CONTRACT_VERSION + ": no ability or " +
+                                      "status messages are exchanged with them. Install the " +
+                                      "same framework version on both sides.");
+            return false;
+        }
+
+        /// <summary>Whether a player published this build's network contract.</summary>
+        internal static bool HasFramework(Player player)
+        {
+            if (player == null || player.CustomProperties == null) return false;
+            object v;
+            return player.CustomProperties.TryGetValue(PropertyKey, out v) && v is int &&
+                   (int)v == EctypePluginInfo.NET_CONTRACT_VERSION;
+        }
+
+        /// <summary>
+        /// Driver step: sets the property on the local player when it is missing or carries
+        /// another value. Outside a room the write stays local and rides the next join; in a
+        /// room it is sent to the room. Checked once a second.
+        /// </summary>
+        internal static void Publish()
+        {
+            if (UnityEngine.Time.unscaledTime < _nextPublish) return;
+            _nextPublish = UnityEngine.Time.unscaledTime + PublishInterval;
+
+            foreach (Player p in PhotonNetwork.PlayerListOthers) ContractCompatible(p);
+
+            Player me = PhotonNetwork.LocalPlayer;
+            if (me == null || HasFramework(me)) return;
+            me.SetCustomProperties(new Hashtable
+            {
+                { PropertyKey, EctypePluginInfo.NET_CONTRACT_VERSION }
+            });
+            if (Plugin.Verbose)
+                Plugin.Log.LogInfo("Ectype: published player property '" + PropertyKey + "' = " +
+                                   EctypePluginInfo.NET_CONTRACT_VERSION + (PhotonNetwork.InRoom
+                                       ? " to the room." : " for the next join."));
         }
     }
 }

@@ -47,6 +47,45 @@ build.
   character no longer logs an error every frame, and picks the requester up once the character
   exists.
 
+## 0.21.0
+
+- VoidManager is optional. The framework declares it as a soft BepInEx dependency, and its
+  Thunderstore package no longer depends on it, so a mod that depends on the framework pulls
+  in BepInEx and nothing else. Without VoidManager the framework runs in full and logs
+  `settings menu unavailable: VoidManager not loaded`; only the F5 page is missing. With
+  VoidManager, the F5 page is unchanged.
+- The framework no longer declares a VoidManager multiplayer type. VoidManager lists it under
+  its non-VoidManager mods as `Unmanaged`, with no author or description, never compares it at
+  join and never raises its session level for it. VoidManager therefore no longer checks the
+  framework's version or DLL bytes; the Void Crew Mod Launcher installs the host's version, and
+  the game's asset check refuses a different network contract. An `All` framework made every
+  VoidManager host kick every joiner without VoidManager.
+- Rooms can mix players with and without VoidManager. A joiner with VoidManager and the
+  framework passes VoidManager's join check for a host without VoidManager, where VoidManager's
+  own check failed. A VoidManager host that runs any mod declared `All` to VoidManager, role mods
+  included, still kicks joiners without VoidManager: that is VoidManager's policy.
+- The framework keeps modded sessions out of progression, with or without VoidManager: from
+  the first room tagged modded until the game restarts, it blocks cloud profile writes, the
+  profile save on exit, and Steam stats and achievements. Before this release nothing did so
+  by default: VoidManager's progression switch reacts only to a mod calling its
+  `DisableProgression`, never to the room's modded tag.
+- Removed `EctypeVoidPlugin`, `EctypeSettingsMenu`, `AbilityActiveMessage` and
+  `EnemyStatusMessage` from the public types. None was supported API.
+- Ability replication and enemy-status replication no longer use VoidManager's `ModMessage`.
+  They ride the framework's own Photon event, code 181, with the same message contents.
+  Recipients are the players whose Photon player property `Ectype` carries the framework's
+  network contract, which every framework sets on its local player before joining a room,
+  instead of the players VoidManager reports as running the framework. A dependent that
+  raises its own Photon events should not use 181. A peer that publishes another contract
+  number is logged once and its messages are dropped.
+- Network contract 1. The framework registers one runtime asset in the game's Required mask
+  whose GUID ends in the contract number and whose name is
+  `Ectype Framework <version> (network contract <n>)`. The game's own asset check refuses a
+  joiner on another contract and names the host's framework, with or without VoidManager.
+  The asset also tags every room the process hosts as modded, with or without VoidManager. A
+  framework disabled through its config registers no marker, so the game refuses a join
+  between it and an enabled framework.
+
 ## 0.20.1
 
 - Removed `SelectionGate`, `GateResult`, `GateVerdict`, `MemberModResult` and

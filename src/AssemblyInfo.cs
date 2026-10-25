@@ -10,7 +10,10 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // Distribution metadata, read by packaging tooling to describe the mod.
-// MPType mirrors the VoidPlugin declaration - keep the two in step.
+// MPType is the need letter for a reader that inspects the DLL without loading it: the
+// framework has no VoidPlugin, so a mod launcher finds no declared type in the assembly.
+// Keep it equal to the type VoidManagerBridge declares and to the Thunderstore category
+// (All Required).
 #if NO_SESSION_FLAG
 [assembly: AssemblyMetadata("ModCategories", "Mods")]
 #else
