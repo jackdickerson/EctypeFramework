@@ -933,12 +933,30 @@ The dev tools build also logs, at load, `Ectype: dev self-test: content registry
 | `Ectype: host values: update failed (reported once): <exception>` and `Ectype: host value writer check failed (reported once): <exception>` | The hub channel threw. Host values then follow the last accepted values or the local config. |
 | `Ectype: host values published to the room[ (the room held another value)].` | Verbose. The host wrote its values. |
 | `Ectype: host values: room property not used (<reason>).` | Verbose. The property was absent, stamped by another actor, over the cap, not JSON or not an object. |
-| `Ectype: dev self-test: session data passed (round trip through GameSession.AsJObject/FromJObject, 5 keys, <n> bytes; size caps; writer rule; sidecar write/read/prune; host-value stamp; type checks; exact text).` or `Ectype: dev self-test: session data FAILED: <failures>` (dev tools build only) | The envelope survives the game's own session serialisation, the caps refuse by key name, the writer rule decides as documented, sidecars write, replace, read and prune, and the type checks refuse what JSON cannot carry. A `FAILED` line names each difference. Logged once, on the first frame. |
+| `Ectype: host room value '<key>' refused: <problem>; it keeps its default on this client.` | The key is empty, too long, holds a control character, does not follow the [identifier rule](identifiers.md) or is already registered; `T` does not survive JSON; or the default is over the cap. |
+| `Ectype: host room value '<key>' not registered: the framework is inert this session; it keeps its default.` | Patching failed at load, or the framework is disabled. |
+| `Ectype: host room value '<key>' not written: <problem>.` | Host: the value is over its cap, could not be serialised, or does not read back as `T`. `Set` returned false. Logged once per key and problem. |
+| `Ectype: host room value '<key>' not written: it would bring the host room values to <n> bytes, over the 16384-byte cap.` | Host: the values together are too big. `Set` returned false. |
+| `Ectype: host room value '<key>': the room's value does not read as <Type> within <cap> bytes (<problem>); this client keeps the value it had.` | The host runs another version of the mod, or a value in the room is not JSON text. Logged once per key per room. |
+| `Ectype: host room value '<key>' Changed subscriber <Type>.<method> threw: <exception>` | A `Changed` subscriber threw. The others still ran. |
+| `Ectype: host room values: ignored a write of <keys> from actor <a>, who is not the master client (<m>).` | Client: another player wrote a host room value. Logged once per writer per room. |
+| `Ectype: host room values: actor <a> wrote <keys>; the host puts its own back.` | Host: the same write, seen from the host. |
+| `Ectype: host room values: this player hosts the room now and keeps the <n> value(s) it held; <k> differed in the room and are put back (<keys>).` | New host: the room held values the previous host had not put back. |
+| `Ectype: host room values: this player hosts the room now and keeps the <n> value(s) it held.` | Verbose. New host, or the player who created the room. |
+| `Ectype: host room values: wrote <n> value(s) in one room update (<keys>).` | Verbose. The host's batch for this frame. |
+| `Ectype: host room values: the room callbacks could not be added; joins and host changes are noticed at the next frame: <message>` | Photon refused the callback target. Values still follow the room a frame later. |
+| `Ectype: host room values: update failed (reported once): <exception>` and `Ectype: host room values: reading a room update failed (reported once): <exception>` | The channel threw. Values keep what they held. |
+| `Ectype: dev self-test: session data passed (round trip through GameSession.AsJObject/FromJObject, 5 keys, <n> bytes; size caps; writer rule; sidecar write/read/prune; host-value stamp; type checks; exact text; host room values).` or `Ectype: dev self-test: session data FAILED: <failures>` (dev tools build only) | The envelope survives the game's own session serialisation, the caps refuse by key name, the writer rule decides as documented, sidecars write, replace, read and prune, the type checks refuse what JSON cannot carry, and the host room values refuse, batch, adopt and put back as documented. A `FAILED` line names each difference. Logged once, on the first frame. |
 
 A client that keeps its own config for a `HostValue` (`IsFromHost` false) in the hub has no
 valid room property from the current master; in a mission, the session it is in carries no
 value for the key, usually because the host does not run the mod.
 [reference/session-data.md](reference/session-data.md) has the precedence and the writer rules.
+
+A `HostRoomValue` whose `HasValue` stays false on a client was never set by the current room's
+host, or the host runs a version of the mod that does not register the key. One whose `Set`
+returns false is on a client or outside a room (`CanSet` false), or was refused at registration.
+[reference/host-room-values.md](reference/host-room-values.md) has the writer rule and the caps.
 
 ### Mod-declared stats and session stats
 

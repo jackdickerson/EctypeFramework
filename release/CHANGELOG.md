@@ -2,6 +2,8 @@
 
 Every mod-made status, button, setting and stat carries the name of the mod that made it, so a problem in a modded game traces back to its mod from the log.
 
+Mods can keep choices only the host makes, such as fleet or team picks, in sync on every player's game for as long as the room lasts. A value changed by any other player is ignored and the host's is put back, and a player who takes over as host carries on with the same choices.
+
 ## 0.30.0
 
 Mods can add mutators to the game's Mutators menu that change run-wide numbers, such as how many hostiles spawn. Select one before a run, or have a mission force it on, and every player gets the same numbers, late joiners included. Players need the mod that adds a mutator to join a host who has it installed.
