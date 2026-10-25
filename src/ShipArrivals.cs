@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 
 using CG.Space;
@@ -55,12 +56,33 @@ namespace Ectype
     /// The postfix runs after the old state's OnExit and the new state's OnEnter. Where the exit
     /// state ran, its OnExit entered the destination sector and started its objective; a machine
     /// whose stream skipped it enters through the room property on its own schedule.
+    ///
+    /// Every player ship has its own void-jump system, so a room with several ships raises
+    /// Arrived and LeftNormalFlight once per ship per jump, each with that ship. FleetArrived is
+    /// the once-per-jump event: this machine keeps the set of ships that have left normal flight,
+    /// and raises it when the last of them is back in normal flight, having arrived, called the
+    /// jump off, died or been destroyed.
     /// </summary>
     public static class ShipArrivals
     {
-        /// <summary>Once per arrival from the void, on every machine. Each subscriber runs in its own
-        /// try/catch; a throw is logged with the subscriber's name and the rest still run.</summary>
+        /// <summary>Once per ship per arrival from the void, on every machine. With several player
+        /// ships it fires once for each, each time with that ship in <see cref="ShipArrival.Ship"/>;
+        /// compare that ship with the one the subscriber cares about rather than with the game's
+        /// player-ship getter, which with several ships can name a different ship on each client.
+        /// Each subscriber runs in its own try/catch; a throw is logged with the subscriber's name
+        /// and the rest still run.</summary>
         public static event Action<ShipArrival> Arrived;
+
+        /// <summary>
+        /// Once per jump on every machine: after every ship that left normal flight is back in it
+        /// and at least one of them arrived from the void. The value describes the jump as a
+        /// whole: <see cref="ShipArrival.Ship"/> is the last ship to arrive,
+        /// <see cref="ShipArrival.Kind"/> the worst kind any ship had (Interdiction, then Unknown,
+        /// then Normal), and <see cref="ShipArrival.ServerMs"/> the latest stamp. With one ship it
+        /// fires right after that ship's <see cref="Arrived"/>, with the same value. Same
+        /// per-subscriber isolation as <see cref="Arrived"/>.
+        /// </summary>
+        public static event Action<ShipArrival> FleetArrived;
 
         /// <summary>The ship left normal flight (Inactive or ExitVectorSet, the set vanilla allows cruise
         /// control and thruster boosts in): an alignment toward a jump began, or a joiner adopted a
@@ -76,6 +98,14 @@ namespace Ectype
 
         private static PlayerControlledShip _lastShip;
         private static VoidJumpSystem _lastSystem;
+
+        // The jump in progress on this machine: ships out of normal flight, and what the ships
+        // that already arrived reported.
+        private static readonly List<PlayerControlledShip> _inTransit = new List<PlayerControlledShip>();
+        private static int _jumpArrivals;
+        private static ShipArrival _jump;
+        private static bool _topologyBound;
+        private static bool _loggedFirstFleetArrival;
 
         /// <summary>True while the ship is in normal flight: its jump state is Inactive or
         /// ExitVectorSet. A ship with no void-jump system is always in normal flight.</summary>
@@ -111,11 +141,20 @@ namespace Ectype
                 _lastSystem = system;
             }
 
+            bool arrived = false;
             if (now is VoidJumpInactive)
             {
                 ShipArrivalKind kind;
                 int stamp;
-                if (Classify(old, out kind, out stamp)) RaiseArrived(ship, kind, stamp, old);
+                if (Classify(old, out kind, out stamp))
+                {
+                    RaiseArrived(ship, kind, stamp, old);
+                    if (ship != null)
+                    {
+                        arrived = true;
+                        BackInNormalFlight(ship, new ShipArrival { Ship = ship, Kind = kind, ServerMs = stamp });
+                    }
+                }
             }
 
             if (IsNormalFlight(old) && !IsNormalFlight(now))
@@ -123,8 +162,97 @@ namespace Ectype
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: ship left normal flight (" + old.GetType().Name +
                                        " -> " + now.GetType().Name + ").");
+                if (ship != null && !_inTransit.Contains(ship)) _inTransit.Add(ship);
+                BindTopology();
                 Raise(LeftNormalFlight, ship, "LeftNormalFlight");
             }
+            else if (!arrived && ship != null && !IsNormalFlight(old) && IsNormalFlight(now))
+            {
+                // A jump called off before the void: the ship leaves the transit set without an
+                // arrival.
+                BackInNormalFlight(ship, null);
+            }
+        }
+
+        /// <summary>A ship is back in normal flight, with its arrival or without one. When no ship
+        /// is left in transit and at least one arrived, the jump is over.</summary>
+        private static void BackInNormalFlight(PlayerControlledShip ship, ShipArrival? arrival)
+        {
+            _inTransit.Remove(ship);
+            if (arrival.HasValue)
+            {
+                ShipArrival a = arrival.Value;
+                if (_jumpArrivals == 0)
+                {
+                    _jump = a;
+                }
+                else
+                {
+                    _jump.Ship = a.Ship;
+                    if (Severity(a.Kind) > Severity(_jump.Kind)) _jump.Kind = a.Kind;
+                    if (unchecked(a.ServerMs - _jump.ServerMs) > 0) _jump.ServerMs = a.ServerMs;
+                }
+                _jumpArrivals++;
+            }
+            TryCompleteJump();
+        }
+
+        private static int Severity(ShipArrivalKind kind)
+        {
+            switch (kind)
+            {
+                case ShipArrivalKind.Interdiction: return 2;
+                case ShipArrivalKind.Unknown: return 1;
+                default: return 0;
+            }
+        }
+
+        /// <summary>Drops ships that died or were destroyed mid-jump, then raises FleetArrived
+        /// once if the jump is over.</summary>
+        private static void TryCompleteJump()
+        {
+            for (int i = _inTransit.Count - 1; i >= 0; i--)
+                if (_inTransit[i] == null || _inTransit[i].StartedDeath) _inTransit.RemoveAt(i);
+            if (_inTransit.Count > 0 || _jumpArrivals == 0) return;
+
+            ShipArrival jump = _jump;
+            int ships = _jumpArrivals;
+            _jumpArrivals = 0;
+            _jump = default(ShipArrival);
+
+            string line = "Ectype: fleet arrived from the void (" + ships + " ship(s), " + jump.Kind +
+                          ", server " + jump.ServerMs + ", " +
+                          (FleetArrived == null ? 0 : FleetArrived.GetInvocationList().Length) + " subscribers).";
+            if (!_loggedFirstFleetArrival)
+            {
+                _loggedFirstFleetArrival = true;
+                Plugin.Log.LogInfo(line + " Further fleet arrivals log under [Debug] VerboseLogging.");
+            }
+            else if (Plugin.Verbose)
+            {
+                Plugin.Log.LogInfo(line);
+            }
+            Raise(FleetArrived, jump, "FleetArrived");
+        }
+
+        /// <summary>A ship dying or destroyed mid-jump never arrives; the topology change that
+        /// reports it re-checks the jump.</summary>
+        private static void BindTopology()
+        {
+            if (_topologyBound) return;
+            _topologyBound = true;
+            Topology.Changed += () =>
+            {
+                if (_inTransit.Count == 0) return;
+                if (Topology.Ships.Count == 0)
+                {
+                    // Every ship gone (mission over, scene unloaded): no jump to complete.
+                    _inTransit.Clear();
+                    _jumpArrivals = 0;
+                    return;
+                }
+                TryCompleteJump();
+            };
         }
 
         /// <summary>
