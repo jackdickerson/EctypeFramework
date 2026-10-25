@@ -71,14 +71,28 @@ at the same version, so the host's hash check bounces anyone in the room on the 
   unless the workflow reports CRLF.
 - **Docs that match the code.** Update the page under `docs/` that describes the behaviour you
   changed.
+- **Passing offline checks, for a change to patches, by-name lookups or public API.** Run
+
+  ```
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\offline-checks.ps1
+  ```
+
+  It builds the framework and checks, without starting the game, that every Harmony patch
+  target and every member looked up by name exists in your installed game with the expected
+  signature, and that the public API matches `docs/api-snapshot.txt`. When you changed the
+  public API on purpose, rewrite the snapshot with `-UpdateSnapshot` and commit it with the
+  change: its diff is what a reviewer reads as the API change. The checks need the .NET 8 SDK
+  or later; [docs/maintainers.md](docs/maintainers.md#offline-checks) covers what they check
+  and how to read a failure.
 
 A pull request is checked by a workflow that validates line endings, the example manifests
 against `docs/schemas/ectype-role.schema.json`, relative Markdown links, `release/release.json`
 the heading for the current version in `CHANGELOG.md` and `release/CHANGELOG.md`, and that
 `CHANGELOG.md` names the current network contract (`network contract <n>`, from
-`NET_CONTRACT_VERSION`; [docs/versioning.md](docs/versioning.md)). It does not compile. A change that compiles
-only on your machine because of a local game folder is caught in review, so say in the pull
-request which game version you tested against.
+`NET_CONTRACT_VERSION`; [docs/versioning.md](docs/versioning.md)). It does not compile and does
+not run the offline checks, which need the game. A change that compiles only on your machine
+because of a local game folder is caught in review, so say in the pull request which game
+version you tested against.
 
 Testing is in game: a framework change is exercised by loading a role mod, switching loadouts
 at the terminal and reading `BepInEx\LogOutput.log` for `[Error` lines.

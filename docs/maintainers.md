@@ -4,8 +4,9 @@ Internal material for whoever maintains the framework through a game update. It 
 from the landing page and is not part of the public documentation. Nothing here is a
 supported API.
 
-Start a game-update triage with the hooks table below: a Harmony patch that fails to bind
-names itself in the log, and the row says what the patch was for.
+Start a game-update triage with the [offline checks](#offline-checks), which name every patch
+target and by-name lookup the update broke without starting the game, then the hooks table
+below, whose row says what each patch was for.
 
 ## Source map
 
@@ -46,6 +47,7 @@ Paths are relative to the framework project folder.
 | Gene-tree layout values | `src/LayoutSpec.cs` |
 | Dev tools (dev tools build only) | `src/dev/` |
 | Role wording | `src/RoleWording.cs` |
+| Offline checks (a separate console project, never shipped) and the public API snapshot | `tools/offline-checks.ps1`, `tools/OfflineChecks/`, `docs/api-snapshot.txt` |
 
 ## Hooks relied on
 
@@ -157,6 +159,111 @@ column.
 | `GameSessionManager.HostGameSession` order: `PrepareNextSession`, `LoadQuest` (`GameSession.LoadQuestMutators`: the quest asset's `ForcedMutators` through `AddMutator`), `LoadInitialSector`, `DistributeSessionData` (event 9), `LoadGameSessionPassiveAssets` (`InitStartingMutators`: `StartingMutators`, whitelist-filtered when `QuestAsset.UseMutatorWhitelist`) | why the opening predicts the active set instead of reading `ActiveMutators`: no mutator is active at the `PrepareNextSession` capture. The prediction mirrors both methods: forced list first, then the starting list skipping a GUID already active, one outside the whitelist and one the container cannot resolve; the hub (`IsHub`) has no `ActiveQuest`, so only its starting list counts. A reordering, or a new activation route, changes what clients receive |
 | `GameSession.SessionQuestAsset`, `GameSession.StartingMutators` (read at `PrepareNextSession`) | the prediction's inputs. `HubQuestManager.StartQuest` sets both on a fresh session (`StartingMutators` is the hub's `SelectedMutators`); `PreservedGameSession.GenerateGameSession` sets both from the save |
 | `ResourceAssetContainer.GetAssetIndex` (indexes `AssetDescriptions`), `GetAllItems` (returns `RuntimeDescriptions`), `PhotonPlayerUnlockSync.SetSharedUnlock` / `GetSharedUnlockIndices`, the profile's `UnlockedItems` chain (`ChainOfResponsibility.source`) | the shared-unlock republish and the runtime-list alignment: `P_SM` holds `GetAssetIndex` values and `GetSharedUnlocks` reads them back through `GetAllItems`, so the two lists must agree in order |
+
+## Offline checks
+
+The framework binds the game by name: Harmony patch targets, `AccessTools` and `Type.GetX`
+lookups, `Traverse` chains. It binds Void Crew Fleet's `FleetApi` and VoidManager by name too.
+A rename in any of them compiles cleanly and surfaces as a log line on a player's machine. The
+offline checks find it first, without starting the game:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\offline-checks.ps1
+```
+
+Run them after every game update, after a Fleet or VoidManager update, and before every
+release. The script builds the framework (Release) against the game folder the build resolves,
+then runs the checker, which reads the built DLL and every assembly in the game's `Managed`
+folder, `BepInEx\core` and `BepInEx\plugins` as metadata. Nothing is loaded or executed. It
+ends with `ALL CHECKS PASSED` and exit code 0, or lists each failure and exits 1.
+
+Without PowerShell, the same run is
+`dotnet build -c Release` and then
+`dotnet run --project tools/OfflineChecks -c Release -- --framework bin/Release/EctypeFramework.dll --game "<Void Crew folder>" --targets tools/OfflineChecks/manual-targets.txt --snapshot docs/api-snapshot.txt`.
+
+| Switch | Effect |
+| --- | --- |
+| `-VoidCrewDir <folder>` | Check against another install, for example a beta branch copied aside. |
+| `-Plugin <dll>` | Also check bindings against this plugin DLL; repeatable. Fleet installed by a launcher lives outside `BepInEx\plugins`, so pass its `VoidCrewFleet.dll` here. |
+| `-UpdateSnapshot` | Rewrite `docs/api-snapshot.txt` from the built DLL instead of comparing. |
+| `-ShowAll` | List every check with what it resolved to, not only the failures. |
+| `-NoBuild` | Check the DLL already in `bin\Release`. |
+
+### What is checked
+
+1. **Patch targets and by-name lookups.** The checker recovers every lookup from the compiled
+   IL rather than from the source. It runs each method abstractly, tracking constants
+   (strings, `typeof`, `Type[]` and `string[]` initialisers, `BindingFlags`) through the stack,
+   locals and arguments. A call into another framework method that passes a constant is
+   followed into that method with the constant bound, so a helper such as
+   `Patch(type, "Name", args, ...)` is checked at each call site with the names its callers
+   pass. Each lookup is resolved with the rules of the API that makes it:
+   - `AccessTools.Field/Method/Property` walk the base types and see private members of each.
+   - `AccessTools.Declared*` and `[HarmonyPatch]` targets see the type's own members only.
+     HarmonyX resolves an attribute target with `AccessTools.DeclaredMethod`, so a target
+     method that moved to a base class fails the patch.
+   - `Type.GetX(name, flags)` follows the flags: an inherited member is seen only when it is
+     not private, and an inherited static one only with `FlattenHierarchy`. A method that
+     walks `Type.BaseType` itself is checked against the whole chain.
+   - A method lookup without parameter types must match exactly one method: `Type.GetMethod`
+     and `AccessTools.DeclaredMethod` throw `AmbiguousMatchException` on an overload.
+   - The type checks the framework makes on what it found are checked too: a comparison of
+     `FieldType`, `ReturnType`, `PropertyType` or `EventHandlerType` with a `typeof`,
+     `typeof(F).IsAssignableFrom(...)`, the field type behind `FieldRefAccess<T, F>`, and the
+     signature of a delegate bound with `Delegate.CreateDelegate` or
+     `AccessTools.MethodDelegate`.
+   - A value read through a looked-up member has that member's type, so in
+     `Traverse.Create(sheet).Property("rules").GetValue()` followed by `.Field("m_Properties")`
+     on an element, `m_Properties` is checked on the element type of `rules`.
+   - The same name looked up twice on one type within one call is a fallback chain (a
+     property, else a field; an exact overload, else any). It passes when one link resolves.
+
+   Every patch method is then checked against the target it is applied to: it is static, and
+   each injected parameter fits. `__instance` needs an instance target whose declaring type is
+   assignable to the parameter; `__result` a non-void target whose return type fits;
+   `___name` a field of that name on the target's type or a base; `__N` an argument index in
+   range; any other name a target parameter of that name and a fitting type. A parameter
+   carrying `[HarmonyArgument]` is matched by the name or index the attribute gives. Harmony
+   checks few of these when it patches; a wrong one fails at patch time or produces bad code.
+2. **Public API snapshot.** `docs/api-snapshot.txt` lists every public type and member of
+   `EctypeFramework.dll`, plus the protected members of types a mod can derive from, one
+   signature per line, grouped by type and sorted. The check prints each removed line with
+   `-` and each added line with `+`. An intended change is committed together with the
+   rewritten snapshot (`-UpdateSnapshot`), so the diff of the snapshot in a pull request is the
+   API change.
+3. **Bindings into other plugins.** Members the framework looks up in a plugin by a type name
+   string, `VoidCrewFleet.FleetApi` and VoidManager's types, are checked like game members
+   when the plugin's DLL is under `BepInEx\plugins` or passed with `-Plugin`. A version
+   constant the framework compares, a const field looked up by name with a framework const
+   named `Supported` plus that field's name, must have the same value. A plugin that is absent
+   is skipped with one line, not failed. A type name is treated as a plugin's when no game or
+   BepInEx assembly defines a type in its top-level namespace.
+
+The run also lists lookups whose type or name is known only at run time. Those are not
+checked. When one of them reaches a game member that matters, add the member to
+`tools/OfflineChecks/manual-targets.txt`, which is checked like a recovered lookup; each entry
+says above it which framework code needs it.
+
+### Things that look like they should work
+
+- **A helper whose parameters carry the names, called with names that are not constants.** The
+  checker follows a call only when a constant goes in. A name built at run time, read from a
+  config, or taken from a list built with `Add` leaves the lookup unchecked, and it appears
+  under "not checked". Pass names as literals, or as literal arrays a `foreach` walks.
+- **A lookup on `obj.GetType()` where `obj` is declared `object`.** The declared type is the
+  only type information the IL has. Declare the variable as the game type (or cast to it) and
+  the lookup is checked on that type and its subclasses.
+- **Patching a method by name on the class that inherits it.** `AccessTools.Method` finds it,
+  `[HarmonyPatch]` and `AccessTools.DeclaredMethod` do not, and a patch on the method found
+  through the subclass patches the base class's method for every subclass. Name the declaring
+  class.
+- **An overload added by a game update to a method looked up by name alone.** The lookup that
+  resolved before the update throws `AmbiguousMatchException` after it, and in a static
+  initialiser the exception takes the whole class with it. The check lists the overloads; give
+  the lookup parameter types.
+- **Regenerating the snapshot from a dev tools build.** The dev build compiles `src/dev/` and
+  has a different public surface. The script always builds Release; with `-NoBuild` the DLL in
+  `bin\Release` must be a release build.
 
 ## Dev tools build
 

@@ -1,0 +1,8 @@
+<Project>
+  <!--
+    Keeps the framework's Directory.Build.props, two folders up, from applying to the offline
+    checker: MSBuild imports only the nearest Directory.Build.props. The framework's file
+    targets net472 and references the game's assemblies; the checker is a .NET console tool
+    that reads those assemblies as files with Mono.Cecil and loads none of them.
+  -->
+</Project>

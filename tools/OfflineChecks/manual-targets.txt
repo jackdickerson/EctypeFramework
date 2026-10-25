@@ -1,0 +1,13 @@
+# Game members the framework reaches through a type known only at run time, so the offline
+# checks cannot recover them from the IL. Each line is checked like a recovered lookup:
+#
+#   <field|method|property|event> <type full name, '+' before a nested type> <member>[(<parameter type full names>)]
+#
+# A method without parentheses must be the only one of its name; "()" means no parameters.
+# The type's own members count, never inherited ones. Say on the line above which framework
+# code needs the member.
+
+# EnemyAbilities patches Tick and PassiveTick on every BaseNpcAbility subclass it finds at run
+# time; the base class declaring both is what keeps that sweep meaningful.
+method Gameplay.NPC.AI.BaseNpcAbility Tick()
+method Gameplay.NPC.AI.BaseNpcAbility PassiveTick()
