@@ -6,13 +6,16 @@ places where the game decides an interaction, on the acting player's own game an
 game that owns the part, and refuses when any rule refuses.
 
 ```csharp
-InteractionGate.Register("mymod.host-helm", q =>
+InteractionGate.Register("com.example.mymod/host-helm", q =>
     q.Kind == InteractionKind.Helm && !q.ActorIsHost
         ? Refusal.Because("helm is host-only", "ONLY THE HOST MAY PILOT.")
         : Refusal.Allowed);
 
-InteractionGate.Unregister("mymod.host-helm");
+InteractionGate.Unregister("com.example.mymod/host-helm");
 ```
+
+The id is `"<plugin GUID>/<name>"`, the [identifier rule](../identifiers.md). `Register` refuses
+any other id with one error and returns false.
 
 A complete plugin: `examples/interaction-gate`.
 
@@ -316,6 +319,7 @@ consistency rule, which is why the vocabulary would be closed rather than free c
 | `Ectype: interaction gate '<id>' registered (<n> gate[s]).`, `Ectype: interaction gate '<id>' unregistered (<n> left).` | A gate was added or removed. |
 | `Ectype: interaction gate '<id>' is already registered; unregister it first. This registration is ignored.` | `Register` with a taken id returned false. |
 | `Ectype: interaction gate: Register needs an id and a gate; ignored.` | `Register` with an empty id or a null gate. |
+| `Ectype: interaction gate '<id>' refused: <problem>.` | `Register` with an id that does not follow the [identifier rule](../identifiers.md), which lists each `<problem>`. |
 | `Ectype: interaction gate '<id>' threw and counts as allowing (logged once per gate): <exception>` | A gate threw. It is still asked; each later throw is silent. |
 | `Ectype: interaction gate '<id>' refused <Kind> <object> by player <n> (Owner)[: <reason>] (further refusals of this kind to this player are logged in verbose mode only).` | The first owner-side refusal of a kind to a player by a gate. |
 | `Ectype: interaction gate '<id>' refused <Kind> <object> by player <n> (<Client or Owner>)[: <reason>].` (verbose) | A client-side refusal, logged when it differs from the last one logged, and each repeated owner-side one. |

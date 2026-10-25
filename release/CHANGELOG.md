@@ -2,13 +2,15 @@
 
 Mods can give every ship or every player a lasting bonus, such as a tougher hull for a team match. Every player's game applies it as each ship or player appears, so ships start at their full, larger hull and every hull bar agrees.
 
+Every mod-made status, button, setting and stat carries the name of the mod that made it, so a problem in a modded game traces back to its mod from the log.
+
 ## 0.30.0
 
 Mods can add mutators to the game's Mutators menu that change run-wide numbers, such as how many hostiles spawn. Select one before a run, or have a mission force it on, and every player gets the same numbers, late joiners included. Players need the mod that adds a mutator to join a host who has it installed.
 
 ## 0.29.0
 
-Role perks can buff every ship on your side, the ship you are standing in, or every ship on your side while you sit at a station, and can share one bonus across a fleet instead of giving each ship the whole of it. Perks and role abilities can depend on where the player is: aboard their own ship, an ally's or an enemy's, or out in space, whether their ship still flies, and whether a team match is on. Each player's game decides these for its own player and tells everyone else, so every player sees the same bonuses. In a room with one ship the new perks act like the existing ones. Players need this version to join a host running it.
+Role perks can buff every ship on your side, the ship you are standing in, or every ship on your side while you sit at a station, and can share one bonus across a fleet instead of giving each ship the whole of it. Perks and role abilities can depend on where the player is: aboard their own ship, an ally's or an enemy's, or out in space, whether their ship still flies, and whether a team match is on. Each player's game decides these, and which ship its player is standing in, for its own player and tells everyone else, so every player sees the same bonuses. Players need this version to join a host running it.
 
 ## 0.28.0
 

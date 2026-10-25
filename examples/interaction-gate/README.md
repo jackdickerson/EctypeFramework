@@ -4,7 +4,7 @@ Only the room's host may take the helm, with `Ectype.InteractionGate`.
 
 Shows:
 
-- `InteractionGate.Register(id, gate)` at `Awake` and `Unregister(id)` in `OnDestroy`. The id is prefixed with the plugin GUID, because ids are unique across every mod.
+- `InteractionGate.Register(id, gate)` at `Awake` and `Unregister(id)` in `OnDestroy`. The id is `"<plugin GUID>/<name>"`, because ids are unique across every mod.
 - A gate that refuses one `InteractionKind` (`Helm`) for one kind of actor, with `Refusal.Because(reason, text)`, and allows everything else with `Refusal.Allowed`.
 - Thunderstore category `All Required`: the gate runs on the acting player's game for the prompt and the warning, and on the seat owner's game for authority. A client that skipped its own check would see the helm's prompt and have its request dropped by the host with no word, so every player runs the mod. Nothing in the game compares this mod's version at join; the Void Crew Mod Launcher installs the host's version for each joiner.
 

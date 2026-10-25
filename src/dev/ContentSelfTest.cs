@@ -103,7 +103,7 @@ namespace Ectype
             {
                 ModContentEntry entry = new ModContentEntry
                 {
-                    Owner = "ectype.dev.selftest",
+                    Owner = EctypePluginInfo.PLUGIN_GUID,
                     DisplayName = "Self-test item",
                     IsComponent = component,
                 };
@@ -124,7 +124,7 @@ namespace Ectype
                     new ContentAssets { Crafting = new CraftingRules() },
                     new ModContentEntry
                     {
-                        Owner = "ectype.dev.selftest",
+                        Owner = EctypePluginInfo.PLUGIN_GUID,
                         DisplayName = "Self-test item",
                         IsComponent = true,
                     });
@@ -148,7 +148,7 @@ namespace Ectype
                 {
                     Guid = guid,
                     Kind = ContentKind.Carryable.ToString(),
-                    Owner = "ectype.dev.selftest",
+                    Owner = EctypePluginInfo.PLUGIN_GUID,
                     DisplayName = "Self-test item",
                     Category = "Other_Basic",
                     Tier = 2,

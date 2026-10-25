@@ -51,8 +51,9 @@ namespace Ectype
     /// list of session-stat modifiers.</summary>
     public sealed class MutatorSpec
     {
-        /// <summary>Namespace of <see cref="Key"/>, conventionally the registering plugin's GUID
-        /// (a role's id for a manifest mutator). Part of the derived GUID.</summary>
+        /// <summary>Namespace of <see cref="Key"/>: the registering plugin's BepInEx GUID, exactly
+        /// as its <c>BepInPlugin</c> attribute spells it (a role's id for a manifest mutator). Part
+        /// of the derived GUID.</summary>
         public string Owner;
 
         /// <summary>Stable key within the owner: letters, digits, <c>_</c>, <c>.</c> and
@@ -264,6 +265,13 @@ namespace Ectype
         /// </summary>
         public static MutatorHandle Register(MutatorSpec spec)
         {
+            return RegisterCore(spec, null);
+        }
+
+        /// <summary><see cref="Register(MutatorSpec)"/>, accepting as the owner any id
+        /// <paramref name="isRole"/> accepts: a manifest's mutators are owned by their role.</summary>
+        internal static MutatorHandle RegisterCore(MutatorSpec spec, Func<string, bool> isRole)
+        {
             string owner = spec != null ? spec.Owner : null;
             string key = spec != null ? spec.Key : null;
             MutatorHandle h = new MutatorHandle(owner, key);
@@ -273,7 +281,7 @@ namespace Ectype
                 MutatorHandle known;
                 if (_refused.TryGetValue(refusalKey, out known)) return known;
 
-                string why = Validate(spec);
+                string why = Validate(spec, isRole);
                 if (why != null) return Refuse(h, refusalKey, why);
                 if (EctypeConfig.Enabled != null && !EctypeConfig.Enabled.Value)
                     return Refuse(h, refusalKey, "the framework is disabled ([General] Enabled = false)");
@@ -324,15 +332,15 @@ namespace Ectype
 
         // ------------------------------------------------------------------ validation
 
-        /// <summary>The checks a spec must pass when it is registered, in this order: owner,
+        /// <summary>The checks a spec must pass when it is registered, in this order: owner (the
+        /// identifier rule, with a role id <paramref name="isRole"/> accepts as the exception),
         /// key, GUID, name, effects. Null when they pass, else the reason. Whether each stat is a
         /// session stat is checked once the stats files have been read.</summary>
-        internal static string Validate(MutatorSpec spec)
+        internal static string Validate(MutatorSpec spec, Func<string, bool> isRole = null)
         {
             if (spec == null) return "no spec";
-            if (string.IsNullOrEmpty(spec.Owner) || spec.Owner.Trim() != spec.Owner || spec.Owner.IndexOf('/') >= 0 ||
-                spec.Owner.Length > 128)
-                return "the owner must be 1 to 128 characters with no '/' and no surrounding whitespace";
+            string ownerProblem = Identifiers.OwnerProblem(spec.Owner, isRole);
+            if (ownerProblem != null) return ownerProblem;
             if (spec.Key == null || !KeyPattern.IsMatch(spec.Key))
                 return "the key '" + spec.Key + "' must be letters, digits, '_', '.' and '-', starting with a " +
                        "letter or digit, at most 64 characters";
@@ -797,14 +805,16 @@ namespace Ectype
                 for (int i = 0; i < list.Count; i++)
                 {
                     string why;
-                    MutatorSpec spec = FromManifest(role.Manifest.roleId, list[i], role.SourceAssembly, out why);
+                    string roleId = role.Manifest.roleId;
+                    MutatorSpec spec = FromManifest(roleId, list[i], role.SourceAssembly, out why);
                     if (spec == null)
                     {
                         string key = list[i] != null && list[i].key != null ? list[i].key : "#" + i;
-                        Refuse(new MutatorHandle(role.Manifest.roleId, key), role.Manifest.roleId + "/" + key, why);
+                        Refuse(new MutatorHandle(roleId, key), roleId + "/" + key, why);
                         continue;
                     }
-                    Register(spec);
+                    RegisterCore(spec, o => o == roleId);
+
                 }
             }
         }

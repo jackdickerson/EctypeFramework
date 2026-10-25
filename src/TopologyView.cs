@@ -62,8 +62,18 @@ namespace Ectype
         /// room's ship when it is on the player's side.</summary>
         internal abstract object CrewShip(int actor);
 
+        /// <summary>The ship is the player's crew ship, or was until it started dying.</summary>
+        internal abstract bool IsCrewShip(object ship, int actor);
+
+        /// <summary>The living ship with this number, or null (none, or dying).</summary>
+        internal abstract object ShipByNumber(int number);
+
+        /// <summary>A ship's number, the same on every client; 0 for null or unknown.</summary>
+        internal abstract int NumberOf(object ship);
+
         /// <summary>The ship whose rooms or inertia bubble hold the player's character, of any
-        /// side; null in open space or without a character.</summary>
+        /// side; null in open space or without a character. Physical state as this client
+        /// samples it: only the player's own client's reading is authoritative.</summary>
         internal abstract object AboardShip(int actor);
 
         /// <summary>While the player's character is seated, the ship the seat belongs to; else
@@ -138,6 +148,26 @@ namespace Ectype
                 return only != null ? only : null;
             }
             return Topology.ResolveCrewShip(actor, character, out source);
+        }
+
+        /// <summary>With one ship object the crew ship is returned dying or not; with several, a
+        /// dying ship is never the crew ship, so it is checked by the rule that named it.</summary>
+        internal override bool IsCrewShip(object ship, int actor)
+        {
+            PlayerControlledShip s = ship as PlayerControlledShip;
+            if (s == null) return false;
+            if (ReferenceEquals(CrewShip(actor), s)) return true;
+            return Topology.CrewedDyingShip(s, actor, Topology.CharacterOf(actor));
+        }
+
+        internal override object ShipByNumber(int number)
+        {
+            return Topology.ShipByNumber(number);
+        }
+
+        internal override int NumberOf(object ship)
+        {
+            return Topology.ShipNumberOf(ship as PlayerControlledShip);
         }
 
         internal override object AboardShip(int actor)

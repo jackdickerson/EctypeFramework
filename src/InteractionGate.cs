@@ -232,8 +232,10 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Adds a gate under a unique id. Returns false, and logs a warning, when the id is empty,
-        /// the gate is null, or the id is already registered; unregister first to replace a gate.
+        /// Adds a gate under a unique id, <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c> where the GUID is the
+        /// registering plugin's BepInEx GUID. Returns false, and logs one error, when the id does not
+        /// follow that form; and false, with a warning, when the gate is null or the id is already
+        /// registered; unregister first to replace a gate.
         /// A gate is called on the main thread, possibly every frame while the player looks at
         /// something, so keep it cheap.
         /// </summary>
@@ -244,6 +246,8 @@ namespace Ectype
                 Plugin.Log.LogWarning("Ectype: interaction gate: Register needs an id and a gate; ignored.");
                 return false;
             }
+            if (!Identifiers.RefuseId("interaction gate", id)) return false;
+
             for (int i = 0; i < Gates.Count; i++)
             {
                 if (string.Equals(Gates[i].Id, id, StringComparison.Ordinal))

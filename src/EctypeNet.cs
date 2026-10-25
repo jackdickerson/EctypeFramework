@@ -69,9 +69,10 @@ namespace Ectype
         /// [int requestId, int refusal] (0 for applied).</summary>
         internal const byte CharacterStatusResult = 6;
 
-        /// <summary>A holder's own client publishing that holder's condition mask: [int mask],
-        /// one bit per owner-evaluated condition (HolderCondition). Sent on a change, and once to
-        /// each peer that has not had the current value.</summary>
+        /// <summary>A holder's own client publishing that holder's condition answer:
+        /// [int mask, int aboardShip], one bit per owner-evaluated condition (HolderCondition),
+        /// and the number of the ship the holder's character is aboard (0 for none). Sent on a
+        /// change, and once to each peer that has not had the current value.</summary>
         internal const byte ConditionMask = 7;
 
         /// <summary>
@@ -116,7 +117,7 @@ namespace Ectype
                 } },
             { ConditionMask, new[]
                 {
-                    new[] { typeof(int) },
+                    new[] { typeof(int), typeof(int) },
                 } },
         };
 

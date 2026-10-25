@@ -24,7 +24,7 @@ A stats file is JSON whose resource name or file name ends in `ectype-stats.json
 
 ```json
 {
-  "owner": "fleet",
+  "owner": "com.captainchunck.voidcrew.fleet",
   "stats": [
     { "name": "HackSeconds", "kind": "field", "default": 60, "collection": "character",
       "display": "Hack Time", "tooltip": "Seconds a hack takes.", "lowerIsBetter": true },
@@ -37,7 +37,7 @@ A stats file is JSON whose resource name or file name ends in `ectype-stats.json
 
 | Key | Required | Meaning |
 | --- | --- | --- |
-| `owner` | yes | The namespace of every stat in the file. Lower-case letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 64 characters. `ectype` (the framework's own owner) and `framework` are reserved, and so is the id of every installed role: a role's stats come from its manifest's `customStats`. Part of every id: renaming it derives new ids. |
+| `owner` | yes | The namespace of every stat in the file: the declaring plugin's BepInEx GUID, spelled exactly as its `[BepInPlugin]` attribute declares it, capitals included (the [identifier rule](../identifiers.md)). Letters, digits, `.`, `_` and `-`, at most 128 characters. An embedded file names a plugin its assembly declares; a loose file names a plugin whose DLL is in its folder. `ectype` (the framework's own owner) and `framework` are reserved, and so is the id of every installed role: a role's stats come from its manifest's `customStats`. Part of every id: renaming it derives new ids. |
 | `stats` | yes | 1 to 256 stat objects. |
 | `name` | yes | Letters, digits and `_`, starting with a letter, at most 64 characters. Part of the id. |
 | `kind` | yes | `"field"`: an absolute number whose base is `default`; the mod reads the composed value in place of its constant. `"factor"`: a multiplier whose base is 1; the mod multiplies its constant by it. |
@@ -70,7 +70,10 @@ registers a perk, so a perk can name a declared stat. It reads:
    that holds several plugins is read once.
 
 A plugin that failed to load contributes neither. Each file is parsed on its own: a file that
-fails, for any reason, is refused by name and every other file still registers. A file over
+fails, for any reason, is refused by name and every other file still registers. A file whose
+owner is not the GUID of one of its own plugins, those its assembly declares for an embedded
+file and those whose DLL shares its folder for a loose one, is refused with an error naming the
+GUIDs it could have used. A file over
 64 KB is refused. A file added while the game runs is read at the next launch.
 
 When two declarations share an id, or an `owner/name` up to capitals, one wins and the other is
@@ -88,9 +91,9 @@ is refused.
   already hold the id. The first collection built triggers discovery on demand, so a character
   that spawns before the framework's own registration pass still gets them.
 - For a `character` or `ship` stat, a name manifests resolve. A perk effect's `"stat"` names it
-  as `"owner/Name"`, for example `"fleet/HackSeconds"`. The bare name does not resolve. A
-  manifest effect naming a `session` stat is refused, because no perk target reaches the session
-  collection.
+  as `"owner/Name"`, for example `"com.captainchunck.voidcrew.fleet/HackSeconds"`. The bare name
+  does not resolve. A manifest effect naming a `session` stat is refused, because no perk target
+  reaches the session collection.
 
 The framework never reads a declared stat. The declaring mod reads it; until it does, the stat
 renders and changes nothing.
@@ -103,19 +106,19 @@ id = 0x20000000 | (LE32(MD5(UTF-8("ectype:stat:" + owner + "/" + name))[0..4]) &
 
 Take the MD5 of the UTF-8 string `ectype:stat:<owner>/<name>`, read its first four bytes as a
 little-endian 32-bit integer, keep the low 28 bits and set bit 29. The hash is case-sensitive:
-`Fleet/HackSeconds` derives a different id from `fleet/HackSeconds`. Bit 29 is set by no vanilla
-`StatType`, so a derived id never equals a vanilla one.
+`Com.Example.MyMod/HackSeconds` derives a different id from `com.example.mymod/HackSeconds`. Bit
+29 is set by no vanilla `StatType`, so a derived id never equals a vanilla one.
 
-Worked example, `fleet/HackSeconds`:
+Worked example, `com.captainchunck.voidcrew.fleet/HackSeconds`:
 
 | Step | Value |
 | --- | --- |
-| String | `ectype:stat:fleet/HackSeconds` |
-| MD5 | `d70198dac932afa77a0f9a4125623877` |
-| First four bytes | `d7 01 98 da` |
-| Little-endian | `0xda9801d7` |
-| `& 0x0FFFFFFF` | `0x0a9801d7` |
-| `\| 0x20000000` | `0x2a9801d7` = **714605015** |
+| String | `ectype:stat:com.captainchunck.voidcrew.fleet/HackSeconds` |
+| MD5 | `8c33a513dd3d46af3772f213d73a42e7` |
+| First four bytes | `8c 33 a5 13` |
+| Little-endian | `0x13a5338c` |
+| `& 0x0FFFFFFF` | `0x03a5338c` |
+| `\| 0x20000000` | `0x23a5338c` = **598029196** |
 
 The framework's own stats use owner `ectype`: `ectype/MeleeDamage` is MD5 `66d86f20...`, so
 `0x206fd866` = 544200806.
@@ -273,7 +276,7 @@ A role manifest declares the same thing in its `mutators` block; see
 
 | `MutatorSpec` field | Meaning |
 | --- | --- |
-| `Owner` | Namespace of the key, conventionally the registering plugin's GUID. 1 to 128 characters, no `/`, no surrounding whitespace. |
+| `Owner` | Namespace of the key: the registering plugin's BepInEx GUID (the [identifier rule](../identifiers.md)). A manifest's mutators are owned by its `roleId`. |
 | `Key` | Stable key within the owner: letters, digits, `_`, `.` and `-`, starting with a letter or digit, at most 64 characters. |
 | `Guid` | Optional explicit GUID, 32 hex digits with dashes allowed. Absent: derived, see below. |
 | `DisplayName` | The card's title. Required. |
@@ -296,14 +299,15 @@ to each other before they multiply. Factors multiply each other, so two mutators
 factor of 1.5 on one stat give 2.25.
 
 The GUID, when not given, is the 32 lower-case hex digits of MD5 over the UTF-8 string
-`ectype:mutator:<owner>/<key>`. For owner `fleet` and key `pilgrimage` that is
-`2bfef27d74e984361edac3fedcd19523`. A saved run records its mutators by GUID, so renaming the owner
+`ectype:mutator:<owner>/<key>`. For owner `com.captainchunck.voidcrew.fleet` and key `pilgrimage`
+that is `b0a920957ba0011396ae1e483f09c19d`. A saved run records its mutators by GUID, so renaming the owner
 or the key orphans the mutator in every saved run that used it. The run then loads without it
 (see [mutator-safety.md](mutator-safety.md)).
 
 #### Registration
 
-`Register` checks the spec at once, in this order: owner, key, GUID, name, icon donor, effects
+`Register` checks the spec at once, in this order: owner (the GUID of a loaded plugin, which a
+plugin's own GUID is from its `Awake` on), key, GUID, name, icon donor, effects
 (count, then each effect's stat, kind and amount). A refused spec returns a handle whose
 `State` is `Failed` with a `Reason`, and logs one error. Registering the same owner and key again
 returns the first handle. Another spec under a GUID already registered is refused.
@@ -454,8 +458,13 @@ ship.
 
 - **A file named `MyMod.stats.json`.** Not read: the name must end in `ectype-stats.json`.
 - **A stats file in a subfolder of the plugin's folder.** Not read: only the DLL's own folder.
-- **Owner `Fleet`.** Refused: owners are lower case, because the id hash is case-sensitive and a
-  reader computing the id must spell the owner exactly as declared.
+- **Owner `fleet`.** Refused: a short name is not a loaded plugin's GUID. The owner is the
+  plugin's GUID, `com.captainchunck.voidcrew.fleet`.
+- **The plugin's GUID in other capitals.** Refused: the owner must be spelled exactly as the
+  plugin declares it, because the id hash is case-sensitive and a reader computing the id spells
+  the owner as declared.
+- **A loose stats file in a shared folder, owned by a plugin in another folder.** Refused: a
+  loose file names a plugin whose DLL is in its own folder.
 - **`"stat": "HackSeconds"` in a manifest.** Unresolved: a declared stat is named
   `"owner/Name"`.
 - **A perk effect on `HostileSpawnScale` or another session stat.** Refused: no perk target
@@ -463,8 +472,8 @@ ship.
 - **A stats file whose owner is a role's id.** Refused: a role declares its stats in its
   manifest's `customStats`, under the same id formula.
 - **`"default": 1e40`.** The whole file is refused: no float holds it.
-- **Computing the id from `fleet/hackseconds`.** A different id. The framework's name lookup
-  ignores case; the formula does not.
+- **Computing the id from `com.captainchunck.voidcrew.fleet/hackseconds`.** A different id. The
+  framework's name lookup ignores case; the formula does not.
 - **A factor with `"default": 2`.** Refused. Declare a field when the base is not 1.
 - **Contributing to a session stat from a client.** Refused. Clients receive the host's value.
 - **Contributing mid-session and expecting clients to see it.** They see it from the next

@@ -38,12 +38,21 @@ namespace Ectype
         /// <summary>
         /// Opt an installed ability into key-based replication. Call after the ability is
         /// in its locomotion's array; the key must be identical on every client for the
-        /// same ability (a literal, namespaced by the registering mod).
+        /// same ability: a literal <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>, where the GUID is the
+        /// registering plugin's BepInEx GUID.
         /// </summary>
         public static void Register(Ability ability, string key)
         {
             if (ability == null) throw new ArgumentNullException("ability");
             if (string.IsNullOrEmpty(key)) throw new ArgumentException("key is empty", "key");
+            Identifiers.WarnId("runtime ability", key);
+            RegisterUnchecked(ability, key);
+        }
+
+        /// <summary><see cref="Register"/> without the identifier rule, for the framework's own
+        /// keys.</summary>
+        internal static void RegisterUnchecked(Ability ability, string key)
+        {
             Keys.Remove(ability);
             Keys.Add(ability, key);
         }

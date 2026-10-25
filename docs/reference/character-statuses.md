@@ -6,22 +6,25 @@ apply it for a duration. The framework drives the timer and removes everything t
 on expiry, on death, and when the character is destroyed.
 
 ```csharp
-CharacterStatuses.Register(new CharacterStatusDef("mymod.dash-guard")
+CharacterStatuses.Register(new CharacterStatusDef("com.example.mymod/dash-guard")
 {
     DisplayName = "Dash Guard",
     MaxStacks = 1,                   // re-dashing refreshes rather than compounds
 }.AddAllVulnerabilities("flat", -0.99f));
 
-CharacterStatuses.Apply(player, "mymod.dash-guard", seconds: 1f);
-CharacterStatuses.Remove(player, "mymod.dash-guard");   // early removal
-CharacterStatuses.RemoveAll(player);                    // e.g. on a role switch
-CharacterStatuses.IsActive(player, "mymod.dash-guard"); // + RemainingSeconds, Stacks
+CharacterStatuses.Apply(player, "com.example.mymod/dash-guard", seconds: 1f);
+CharacterStatuses.Remove(player, "com.example.mymod/dash-guard");   // early removal
+CharacterStatuses.RemoveAll(player);                                // e.g. on a role switch
+CharacterStatuses.IsActive(player, "com.example.mymod/dash-guard"); // + RemainingSeconds, Stacks
 ```
+
+A key is `"<plugin GUID>/<name>"`, the [identifier rule](../identifiers.md). A key that does not
+follow it logs one warning and still works.
 
 A status on another player's character is a request to that player's client:
 
 ```csharp
-CharacterStatuses.Register(new CharacterStatusDef("mymod.slow")
+CharacterStatuses.Register(new CharacterStatusDef("com.example.mymod/slow")
 {
     AcceptsRequests = true,          // other clients may request it
     Stance = StatusStance.Hostile,
@@ -31,7 +34,7 @@ CharacterStatuses.Register(new CharacterStatusDef("mymod.slow")
     Presented = true,                // other players see a copy
 }.AddStat("MotorAcceleration", "percent", -0.4f));
 
-CharacterStatuses.Request(enemyPlayer, "mymod.slow", seconds: 3f)
+CharacterStatuses.Request(enemyPlayer, "com.example.mymod/slow", seconds: 3f)
     .OnCompleted(r =>
     {
         // NoAnswer means the outcome is unknown: the status may have landed.

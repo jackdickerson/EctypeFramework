@@ -54,7 +54,7 @@ namespace ExampleTimedStat
             }
         }
 
-        private const string BoostKey = PLUGIN_GUID + ".thrust";
+        private const string BoostKey = PLUGIN_GUID + "/thrust";
         private const string HullId = PLUGIN_GUID + "/hull";
 
         private void OnDestroy()

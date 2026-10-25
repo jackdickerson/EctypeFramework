@@ -10,6 +10,11 @@ utilities without defining a role.
 Statuses, loot registrations, HUD buttons and ability keys cross the network as strings.
 Register them from literals that are identical on every client.
 
+Every identifier a mod hands the framework follows one rule: an owner is the registering
+plugin's BepInEx GUID, and a single-string id is `"<plugin GUID>/<name>"`. See
+[identifiers.md](identifiers.md) for the check, the exceptions, and what each API does with an
+identifier that does not follow it.
+
 ## Role mods
 
 | Type | Purpose |
@@ -51,7 +56,7 @@ Register them from literals that are identical on every client.
 | Type | Purpose |
 | --- | --- |
 | `LootTables` | Adds a runtime item to the stock loot rolls. `Register(LootDrop)` is idempotent and returns false when the item or anchor is missing or another owner holds the item. Anchors that decide which stock entries place the item: `AnyCompositeWeapon`, `AnyCarryable<T>()`, `AnyCarryableTagged(tagNames)`, `AnyOf(guids)`. `ToLootRarity` maps the ship rarity enum onto the loot rarity enum. `IsRegistered(guid)` and `Status` report state. |
-| `LootDrop` | The registration: `Owner` (log text), `Item`, `Rarity`, `IsAnchor`, optional `Gate` asked at each roll, `RequireRarityInTable`, `ExcludeTables`. |
+| `LootDrop` | The registration: `Owner` (the registering plugin's GUID), `Item`, `Rarity`, `IsAnchor`, optional `Gate` asked at each roll, `RequireRarityInTable`, `ExcludeTables`. |
 
 ## Content
 

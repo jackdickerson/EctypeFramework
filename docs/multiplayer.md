@@ -235,10 +235,13 @@ What the framework's own features do with several ships:
   sits or stands, each holder is resolved again, and only a holder whose ships changed is
   rebuilt. A player boarding an enemy ship never buffs it, and when one side's ship is the last
   one left, the other side's players contribute nothing to it.
-- **`characterAboard`, `characterFleet` and `seatFleet` perks** land on the ship the holder is
-  aboard when it is of their side, on every living ship of their side, and while seated on every
-  living ship of the seat's side, resolved the same way
+- **`characterFleet` and `seatFleet` perks** land on every living ship of the holder's side, and
+  while seated on every living ship of the seat's side, resolved the same way
   ([manifest.md](manifest.md#ship-targets)).
+- **`characterAboard` perks** land on the ship the holder's own client says their character is
+  aboard, sent with its condition answer, once each client has checked that the ship is living
+  and of the holder's side. Each client's copy of another player's character crosses an inertia
+  bubble's edge at its own moment, so no client decides this for anyone but its own player.
 - **Perk and ability conditions** (`when`, `abilityWhen`) are decided by the holder's own
   client and sent to every other player on a change; every client applies that answer, so a
   conditional perk switches on every client together, a fraction of a second after the holder's.

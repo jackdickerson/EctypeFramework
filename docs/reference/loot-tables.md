@@ -7,7 +7,7 @@ driver may retry it.
 ```csharp
 LootTables.Register(new LootDrop
 {
-    Owner    = "My mod",                                   // log lines only
+    Owner    = MyPluginGuid,                               // your BepInEx plugin GUID
     Item     = myItemGuid,
     Rarity   = LootTables.ToLootRarity(RarityType.Rare),   // the two enums differ; mapped by name
     IsAnchor = LootTables.AnyCarryable<PayloadBattery>(),  // which stock entries place it
@@ -109,5 +109,8 @@ See [../multiplayer.md](../multiplayer.md) for how rooms are composed.
 
 `LootTables.Status` reports the patch state. `[Info]` lines name each table an owner's items
 were first added to. If the postfix fails to apply, loot alone is affected.
+
+`Owner` is the registering plugin's GUID, the [identifier rule](../identifiers.md). An owner that
+does not follow it logs one warning and still registers.
 
 Sample: [examples/loot-tables](../../examples/loot-tables/).

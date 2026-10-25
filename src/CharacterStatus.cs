@@ -56,9 +56,9 @@ namespace Ectype
     /// </summary>
     public sealed class CharacterStatusDef
     {
-        /// <summary>Identity. Namespace it with the owning mod ("myrole.dash-guard").
-        /// Requests and presentation copies carry it, so every client must register the
-        /// same literal.</summary>
+        /// <summary>Identity: <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>, where the GUID is the
+        /// registering plugin's BepInEx GUID. Requests and presentation copies carry it, so every
+        /// client must register the same literal.</summary>
         public readonly string Key;
 
         /// <summary>Shown by GetHeader to anything that renders modifier sources.</summary>
@@ -244,6 +244,7 @@ namespace Ectype
                                     invalid + ".");
                 return;
             }
+            Identifiers.WarnId("character status", def.Key);
             if (Defs.ContainsKey(def.Key))
                 Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' " +
                                       "re-registered; replacing the previous template.");

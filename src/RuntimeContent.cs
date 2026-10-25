@@ -279,8 +279,8 @@ namespace Ectype
                 return "unknown content kind " + (int)kind + ".";
             if (guid.IsNull) return "the GUID is null.";
             if (entry == null) return "no ModContentEntry.";
-            if (string.IsNullOrEmpty(entry.Owner))
-                return "the entry has no Owner (the publishing plugin's GUID).";
+            string ownerProblem = Identifiers.OwnerProblem(entry.Owner);
+            if (ownerProblem != null) return ownerProblem + ".";
             if (string.IsNullOrEmpty(entry.DisplayName)) return "the entry has no DisplayName.";
             if (assets == null) return "no ContentAssets.";
             if (entry.IsComponent && kind != ContentKind.Carryable)

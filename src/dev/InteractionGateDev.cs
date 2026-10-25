@@ -20,7 +20,7 @@ namespace Ectype
     /// </summary>
     internal static class InteractionGateDev
     {
-        private const string SeatGateId = "ectype.dev.refuse-seats";
+        private const string SeatGateId = EctypePluginInfo.PLUGIN_GUID + "/dev.refuse-seats";
 
         internal static ConfigEntry<bool> RefuseAllSeats;
 
@@ -80,8 +80,8 @@ namespace Ectype
 
         private static void Evaluation(List<string> failures)
         {
-            const string first = "ectype.dev.selftest.first";
-            const string second = "ectype.dev.selftest.second";
+            const string first = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest.first";
+            const string second = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest.second";
             try
             {
                 InteractionGate.Register(first, q => q.Kind == InteractionKind.Helm

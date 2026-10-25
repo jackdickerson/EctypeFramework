@@ -27,7 +27,9 @@ namespace Ectype
         /// the game shows.</summary>
         public string DisplayName;
 
-        /// <summary>The publishing plugin's BepInEx GUID. Required.</summary>
+        /// <summary>The publishing plugin's BepInEx GUID, exactly as its <c>BepInPlugin</c>
+        /// attribute spells it. Required; a publication whose owner is not a loaded plugin's GUID
+        /// is refused.</summary>
         public string Owner;
 
         /// <summary>A category hint for a catalog's tabs. Empty means the game's own category:
@@ -41,9 +43,11 @@ namespace Ectype
         public int Tier;
 
         /// <summary>
-        /// True for an inner part of another item, such as a payload inside a battery: it is
-        /// registered in every container so it spawns, but it is never listed as a loose item
-        /// and never added to a loot roll on its own. A component still needs crafting data.
+        /// True for an item never offered as a loose item: an inner part of another item, such as
+        /// a payload inside a battery, or an item only its mod's fabricator entry hands out. It is
+        /// registered in every container so it spawns and prints, but it is never listed in its
+        /// container's authored list and never added to a loot roll on its own. A component still
+        /// needs crafting data.
         /// </summary>
         public bool IsComponent;
 

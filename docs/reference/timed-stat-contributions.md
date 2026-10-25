@@ -5,13 +5,16 @@ a function of progress through a fixed window.
 
 ```csharp
 TimedStatContribution c = TimedStatContributions.Start(
-    "mymod.afterburn", ship.Stats, "ForwardPower", ModifierType.ExponentialMultiplier,
+    "com.example.mymod/afterburn", ship.Stats, "ForwardPower", ModifierType.ExponentialMultiplier,
     TimedStatContributions.LinearDecay(0.5f),          // amount at progress u, 0..1
     durationSeconds: 8f, startServerMs: PhotonNetwork.ServerTimestamp,
     keepAlive: () => stillWanted);                     // optional
 TimedStatContributions.End(c);                         // early
-TimedStatContributions.Find(ship.Stats, "mymod.afterburn");  // + c.Active, Progress, Amount, EndReason
+TimedStatContributions.Find(ship.Stats, "com.example.mymod/afterburn");  // + c.Active, Progress, Amount, EndReason
 ```
+
+- **The key is `"<plugin GUID>/<name>"`**, the [identifier rule](../identifiers.md). A key that
+  does not follow it logs one warning and still works.
 
 - **The amount moves through the game's dynamic-value path.** The mod carries a
   `ModDynamicValue`. Ten times a second its recalculation rewrites the amount in place, and

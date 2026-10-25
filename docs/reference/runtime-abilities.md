@@ -10,7 +10,9 @@ peer without the ability simply ignores the message.
 
 - Call `Register` after the ability is in its locomotion's array. `Unregister` and `KeyOf`
   are the other two members.
-- Register with a literal key. A key derived from runtime state can differ between clients.
+- Register with a literal key, `"<plugin GUID>/<name>"`: the [identifier rule](../identifiers.md).
+  A key that does not follow it logs one warning and still works. A key derived from runtime
+  state can differ between clients.
 - The framework registers its own role abilities as `ectype:<roleId>`.
 - A running registered ability is also synchronised to a late joiner. The message is sent to
   the joiner alone, and only when the joiner's `Ectype` player property carries this build's

@@ -56,11 +56,11 @@ namespace Ectype
     /// </summary>
     internal static class CharacterStatusSelfTest
     {
-        private const string AcceptKey = "ectype.dev.selftest-char-accept";
-        private const string PlainKey = "ectype.dev.selftest-char-plain";
-        private const string ExtendKey = "ectype.dev.selftest-char-extend";
-        private const string PresentedKey = "ectype.dev.selftest-char-presented";
-        private const string RelapseKey = "ectype.dev.selftest-char-relapse";
+        private const string AcceptKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-char-accept";
+        private const string PlainKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-char-plain";
+        private const string ExtendKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-char-extend";
+        private const string PresentedKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-char-presented";
+        private const string RelapseKey = EctypePluginInfo.PLUGIN_GUID + "/dev.selftest-char-relapse";
         private const int Stranger = 9999;
 
         private static bool _done;
@@ -98,13 +98,13 @@ namespace Ectype
         private static void Wire(List<string> fails)
         {
             RoundTrip("request", EctypeNet.CharacterStatusRequest,
-                      CharacterStatusSync.RequestArgs(42, 7, "ectype.dev.wire", 2.5f, 0.75f, 1234), fails);
+                      CharacterStatusSync.RequestArgs(42, 7, EctypePluginInfo.PLUGIN_GUID + "/dev.wire", 2.5f, 0.75f, 1234), fails);
             RoundTrip("answer", EctypeNet.CharacterStatusResult,
                       CharacterStatusSync.ResultArgs(42, CharacterStatusRefusal.OutOfRange), fails);
             RoundTrip("announcement", EctypeNet.CharacterStatusApplied,
-                      CharacterStatusSync.AppliedArgs(7, "ectype.dev.wire", 123456, 0.75f), fails);
+                      CharacterStatusSync.AppliedArgs(7, EctypePluginInfo.PLUGIN_GUID + "/dev.wire", 123456, 0.75f), fails);
             RoundTrip("end", EctypeNet.CharacterStatusApplied,
-                      CharacterStatusSync.EndedArgs(7, "ectype.dev.wire"), fails);
+                      CharacterStatusSync.EndedArgs(7, EctypePluginInfo.PLUGIN_GUID + "/dev.wire"), fails);
             object[] req = CharacterStatusSync.RequestArgs(1, 7, "k", 2.5f, 1f, 0);
             if ((int)req[3] != 2500) fails.Add("2.5 s travelled as " + req[3] + " ms, expected 2500");
         }
@@ -133,7 +133,7 @@ namespace Ectype
 
         private static CharacterStatusDef Strict()
         {
-            return new CharacterStatusDef("ectype.dev.judge")
+            return new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.judge")
             {
                 AcceptsRequests = true, Stance = StatusStance.Hostile, MaxRange = 5f,
                 RequiresLineOfSight = true, RefuseSeated = true, RefuseInTube = true,
@@ -165,7 +165,7 @@ namespace Ectype
             CharacterRequestFacts f;
             Expect("a clear request", d, Clear(), 3f, 1f, CharacterStatusRefusal.None, fails);
             Expect("no template", null, Clear(), 3f, 1f, CharacterStatusRefusal.NotRegistered, fails);
-            Expect("a key without AcceptsRequests", new CharacterStatusDef("ectype.dev.plain"), Clear(), 3f, 1f,
+            Expect("a key without AcceptsRequests", new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.plain"), Clear(), 3f, 1f,
                    CharacterStatusRefusal.NotAccepted, fails);
             Expect("0.1 s against MinSeconds 0.25", d, Clear(), 0.1f, 1f, CharacterStatusRefusal.InvalidDuration, fails);
             Expect("NaN s", d, Clear(), float.NaN, 1f, CharacterStatusRefusal.InvalidDuration, fails);
@@ -259,7 +259,7 @@ namespace Ectype
 
         private static void HandleCases(List<string> fails)
         {
-            CharacterStatusRequest h = new CharacterStatusRequest(null, "ectype.dev.handle");
+            CharacterStatusRequest h = new CharacterStatusRequest(null, EctypePluginInfo.PLUGIN_GUID + "/dev.handle");
             h.Complete(CharacterStatusRefusal.Stance);
             int calls = 0;
             CharacterStatusRefusal seen = CharacterStatusRefusal.None;
@@ -297,12 +297,12 @@ namespace Ectype
         {
             CharacterStatusDef[] bad =
             {
-                new CharacterStatusDef("ectype.dev.bad1") { Burst = 0 },
-                new CharacterStatusDef("ectype.dev.bad2") { MaxRange = -1f },
-                new CharacterStatusDef("ectype.dev.bad3") { MinInterval = float.NaN },
-                new CharacterStatusDef("ectype.dev.bad4") { MaxSeconds = 0f },
-                new CharacterStatusDef("ectype.dev.bad5") { MinSeconds = 5f, MaxSeconds = 2f },
-                new CharacterStatusDef("ectype.dev.bad6") { MaxMagnitude = 0f },
+                new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.bad1") { Burst = 0 },
+                new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.bad2") { MaxRange = -1f },
+                new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.bad3") { MinInterval = float.NaN },
+                new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.bad4") { MaxSeconds = 0f },
+                new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.bad5") { MinSeconds = 5f, MaxSeconds = 2f },
+                new CharacterStatusDef(EctypePluginInfo.PLUGIN_GUID + "/dev.bad6") { MaxMagnitude = 0f },
             };
             foreach (CharacterStatusDef d in bad)
                 if (CharacterStatusSync.Validate(d) == null) fails.Add(d.Key + " passed validation");
