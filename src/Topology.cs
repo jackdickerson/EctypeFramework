@@ -49,6 +49,9 @@ namespace Ectype
         /// <summary>Every root view id seen this mission, ascending: the fallback ship numbering.
         /// A lost ship stays in it so the others keep their numbers.</summary>
         private static readonly List<int> _seenViews = new List<int>();
+        /// <summary>Every faction a player ship has carried this mission. More than one means
+        /// sides exist (a multi-ship mod repaints one team's ships and characters).</summary>
+        private static readonly HashSet<int> _shipFactions = new HashSet<int>();
 
         /// <summary>A change Changed has not announced yet.</summary>
         private static bool _dirty = true;
@@ -86,20 +89,29 @@ namespace Ectype
             get { Prune(); return _all.Count > 1; }
         }
 
-        /// <summary>"fleet" when Void Crew Fleet's API is bound, "single" otherwise.</summary>
+        /// <summary>"fleet" while Void Crew Fleet's API is bound and the Fleet plugin is enabled,
+        /// "single" otherwise.</summary>
         public static string Provider
         {
-            get { return Fleet.Bound ? "fleet" : "single"; }
+            get { return Fleet.Active ? "fleet" : "single"; }
         }
 
         /// <summary>
         /// The ship a player crews, identical on every client, or null while none can be named (a
-        /// spectator, a player not yet placed, a crew whose ship is dying).
+        /// spectator, a player Fleet has not placed or whose ship was lost, a crew whose ship is
+        /// dying).
         ///
-        /// Resolution, first answer wins: the only ship object when there is one; the only living
-        /// ship; the ship Fleet's API names for the player; the ship the player's character is
-        /// aboard (its zoned platform, else its platform) when that ship's faction equals the
-        /// character's, so a boarder never resolves to the enemy's ship.
+        /// Resolution, first rule that applies wins:
+        /// 1. One ship object in the room: that ship, if it is on the player's side.
+        /// 2. One living ship: that ship, if it is on the player's side.
+        /// 3. Fleet active: the living ship Fleet names for the player. Fleet naming none (its 0:
+        ///    waiting, dead or spectating), or naming a ship that is not alive, is pending.
+        /// 4. Fleet not active: the living ship the player's character is aboard (its zoned
+        ///    platform, else its platform) when that ship's faction equals the character's.
+        /// 5. Otherwise pending.
+        /// "On the player's side": under a Fleet team match, the ship's team is the player's;
+        /// otherwise, once ships of more than one faction have been seen this mission, the ship's
+        /// faction is the character's. A one-faction room puts every player on every ship's side.
         /// </summary>
         public static PlayerControlledShip CrewShipOf(Photon.Realtime.Player player)
         {
@@ -239,22 +251,33 @@ namespace Ectype
             Prune();
             if (_all.Count <= 1)
             {
-                source = "single";
-                if (_all.Count == 1) return _all[0];
-                // Registry empty (patch missed, or before the first Awake): with no second ship
-                // object the getter is the room's one ship.
-                ClientGame game = ClientGame.Current;
-                return game != null ? game.PlayerShip : null;
+                PlayerControlledShip only;
+                if (_all.Count == 1) only = _all[0];
+                else
+                {
+                    // Registry empty (patch missed, or before the first Awake): with no second
+                    // ship object the getter is the room's one ship. A destroyed ship the field
+                    // still holds is not returned.
+                    ClientGame game = ClientGame.Current;
+                    only = game != null ? game.PlayerShip : null;
+                    if (only == null) only = null;
+                }
+                return SideChecked(only, actor, character, "single", out source);
             }
             IReadOnlyList<PlayerControlledShip> living = Ships;
-            if (living.Count == 1) { source = "only living ship"; return living[0]; }
+            if (living.Count == 1) return SideChecked(living[0], actor, character, "only living ship", out source);
             if (living.Count == 0) { source = "no living ship"; return null; }
 
-            int number = Fleet.ShipOfPlayer(actor);
-            if (number > 0)
+            if (Fleet.Active)
             {
+                // Fleet's 0 means the player is waiting, dead with a lost ship, or spectating: no
+                // crew ship, whatever they stand on.
+                int number = Fleet.ShipOfPlayer(actor);
+                if (number <= 0) { source = "fleet: not playing"; return null; }
                 PlayerControlledShip crew = ShipByNumber(number);
-                if (crew != null) { source = "fleet crew"; return crew; }
+                if (crew == null) { source = "fleet ship " + number + " not alive"; return null; }
+                source = "fleet crew";
+                return crew;
             }
 
             PlayerControlledShip aboard = AboardShipOf(character);
@@ -263,8 +286,41 @@ namespace Ectype
                 source = "aboard, same faction";
                 return aboard;
             }
-            source = number > 0 ? "fleet ship " + number + " not found" : "pending";
+            source = "pending";
             return null;
+        }
+
+        /// <summary>The ship when it is on the player's side, else null with "other side's ship"
+        /// as the source.</summary>
+        private static PlayerControlledShip SideChecked(PlayerControlledShip ship, int actor,
+                                                        CG.Game.Player.Player character, string rule,
+                                                        out string source)
+        {
+            if (ship == null) { source = rule + ", no ship"; return null; }
+            if (!OnSide(ship, actor, character)) { source = rule + ", other side's ship"; return null; }
+            source = rule;
+            return ship;
+        }
+
+        /// <summary>
+        /// Whether a ship is on a player's side. Under a Fleet team match the teams decide. Otherwise,
+        /// once ships of more than one faction have been seen this mission, the character's faction
+        /// must equal the ship's; a player with no character is not refused. In a room where every
+        /// ship has had one faction, every player is on every ship's side, so a one-ship or co-op room
+        /// never refuses.
+        /// </summary>
+        internal static bool OnSide(PlayerControlledShip ship, int actor, CG.Game.Player.Player character)
+        {
+            if (ship == null) return false;
+            int team = Fleet.TeamOf(actor);
+            if (team >= 0)
+            {
+                int shipTeam = Fleet.TeamOfShip(ShipNumberOf(ship));
+                if (shipTeam >= 0) return shipTeam == team;
+            }
+            Prune();
+            if (_shipFactions.Count > 1 && character != null) return ship.Faction == character.Faction;
+            return true;
         }
 
         internal static int ActorOf(CG.Game.Player.Player character)
@@ -345,8 +401,9 @@ namespace Ectype
                 Plugin.Log.LogInfo("Ectype: topology: ship " + ShipNumberOf(ship) + " started dying.");
         }
 
-        /// <summary>Drops destroyed ships. A ship's view id is assigned after Awake, so the
-        /// fallback numbering picks it up here rather than at registration.</summary>
+        /// <summary>Drops destroyed ships and records each ship's view id and faction. Both are
+        /// read here rather than only at registration: a ship without a view id yet is picked up
+        /// later, and a multi-ship mod can repaint a ship's faction after it spawns.</summary>
         private static void Prune()
         {
             for (int i = _all.Count - 1; i >= 0; i--)
@@ -355,11 +412,17 @@ namespace Ectype
             }
             if (_all.Count == 0)
             {
-                if (_seenViews.Count > 0) { _seenViews.Clear(); MarkDirty(); }
+                if (_seenViews.Count > 0 || _shipFactions.Count > 0)
+                {
+                    _seenViews.Clear();
+                    _shipFactions.Clear();
+                    MarkDirty();
+                }
                 return;
             }
             for (int i = 0; i < _all.Count; i++)
             {
+                if (_shipFactions.Add(_all[i].Faction)) MarkDirty();
                 int view = ViewId(_all[i]);
                 if (view == 0) continue;
                 int at = _seenViews.BinarySearch(view);
@@ -392,9 +455,10 @@ namespace Ectype
 
         /// <summary>
         /// Fleet's published ship list when it passes its shape check, else null. Shape: an int[]
-        /// of at most six entries, each 0 (no ship in that slot), a view id that resolves to a
-        /// player ship, or a view id that resolves to nothing (a lost ship keeps its index); at
-        /// least one entry must resolve to a player ship. A failed check logs once and the ship
+        /// of one to six entries, each 0 (no ship in that slot) or a view id, no view id twice. An
+        /// id that resolves to no player ship is a lost ship, which keeps its index. Until at least
+        /// one entry resolves to a player ship the list is not used yet and is read again at the
+        /// next poll. A failed check logs once and the ship
         /// numbers come from view-id rank instead. Read at 2 Hz; the room replaces the value object
         /// on every write, so an unchanged reference needs no second check.
         /// </summary>
@@ -429,11 +493,14 @@ namespace Ectype
                 for (int i = 0; i < views.Length && why == null; i++)
                 {
                     if (views[i] == 0) continue;
+                    for (int j = 0; j < i; j++)
+                        if (views[j] == views[i]) why = "entries " + j + " and " + i + " name view " + views[i];
+                    if (why != null) break;
+                    // An id that resolves to nothing, or to something other than a player ship,
+                    // is a lost ship: its index is kept, and the room can hand its id to a new
+                    // object once view ids wrap.
                     PhotonView pv = PhotonView.Find(views[i]);
-                    if (pv == null) continue;
-                    if (pv.GetComponent<PlayerControlledShip>() == null)
-                        why = "entry " + i + " (view " + views[i] + ") is not a player ship";
-                    else resolved++;
+                    if (pv != null && pv.GetComponent<PlayerControlledShip>() != null) resolved++;
                 }
                 // Before the ships have spawned on this client nothing resolves yet; that is not
                 // a shape failure, so retry at the next poll.
@@ -490,7 +557,7 @@ namespace Ectype
             int living = CountLiving();
             string line = "Ectype: topology: " + living + " ship(s), provider=" + Provider +
                           (_all.Count > living ? ", " + (_all.Count - living) + " dying" : "") +
-                          (Fleet.Bound ? ", numbers from " + (_fleetShips != null ? FleetShipsKey : "view-id rank") : "") +
+                          (Fleet.Active ? ", numbers from " + (_fleetShips != null ? FleetShipsKey : "view-id rank") : "") +
                           ".";
             if (line == _lastLogged) return;
             _lastLogged = line;
@@ -517,19 +584,42 @@ namespace Ectype
 
         /// <summary>
         /// Void Crew Fleet's public API, bound by reflection at first use so the framework needs no
-        /// reference to it. Each member is probed by name and signature; a missing one is logged
-        /// once and its answer falls back to game data. Every call is wrapped so a throw reads as
-        /// "unknown".
+        /// reference to it. The API version must be the one these members were written against;
+        /// each member is probed by name and signature, and a missing one is logged once and its
+        /// answer falls back to game data. Answers are used only while the Fleet plugin is enabled
+        /// (its component and its own [General] Enabled setting). Every call is wrapped so a throw
+        /// reads as "unknown".
         /// </summary>
         private static class Fleet
         {
+            /// <summary>The FleetApi.ApiVersion these members were written against.</summary>
+            private const int SupportedApiVersion = 1;
+
             private static bool _tried;
             private static float _nextTry;
             private static Func<int, int> _shipOfPlayer;
             private static Func<int, int> _teamOf;
             private static Func<int, int> _teamOfShip;
+            private static BepInEx.BaseUnityPlugin _instance;
+            private static BepInEx.Configuration.ConfigEntry<bool> _enabled;
 
-            internal static bool Bound { get { EnsureBound(); return _shipOfPlayer != null; } }
+            /// <summary>Bound, and the plugin is enabled.</summary>
+            internal static bool Active
+            {
+                get
+                {
+                    EnsureBound();
+                    if (_shipOfPlayer == null) return false;
+                    try
+                    {
+                        // A plugin object the game destroyed says nothing about Fleet's own
+                        // state; its statics keep answering.
+                        if (_instance != null && !_instance.enabled) return false;
+                        return _enabled == null || _enabled.Value;
+                    }
+                    catch (Exception) { return true; }
+                }
+            }
 
             internal static int ShipOfPlayer(int actor) { return Call(_shipOfPlayer, actor, 0); }
             internal static int TeamOf(int actor) { return Call(_teamOf, actor, -1); }
@@ -537,8 +627,7 @@ namespace Ectype
 
             private static int Call(Func<int, int> f, int arg, int fallback)
             {
-                EnsureBound();
-                if (f == null) return fallback;
+                if (f == null || !Active) return fallback;
                 try { return f(arg); }
                 catch (Exception) { return fallback; }
             }
@@ -590,6 +679,23 @@ namespace Ectype
                 int apiVersion = -1;
                 FieldInfo ver = api.GetField("ApiVersion", BindingFlags.Public | BindingFlags.Static);
                 if (ver != null && ver.FieldType == typeof(int)) apiVersion = (int)ver.GetValue(null);
+                if (apiVersion != SupportedApiVersion)
+                {
+                    // Fleet raises ApiVersion when a member's meaning changes; a member with an
+                    // unchanged signature could then answer in different terms.
+                    Plugin.Log.LogWarning("Ectype: topology: Void Crew Fleet " + info.Metadata.Version +
+                                          " has API v" + (apiVersion >= 0 ? apiVersion.ToString() : "?") +
+                                          "; this framework reads v" + SupportedApiVersion +
+                                          ", so answers come from game data alone.");
+                    return;
+                }
+
+                _instance = info.Instance;
+                try
+                {
+                    if (_instance != null) _instance.Config.TryGetEntry("General", "Enabled", out _enabled);
+                }
+                catch (Exception) { _enabled = null; }
 
                 List<string> missing = new List<string>();
                 _shipOfPlayer = IntToInt(api, "ShipOfPlayer", missing);

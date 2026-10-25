@@ -175,8 +175,15 @@ namespace Ectype
         {
             if (!Topology.Multi)
             {
+                PlayerControlledShip only = ClientGame.Current != null ? ClientGame.Current.PlayerShip : null;
+                // The last ship of a team match is not the other team's ship.
+                if (only != null && !Topology.OnSide(only, Topology.ActorOf(h.Player), h.Player))
+                {
+                    source = "single, other side's ship";
+                    return null;
+                }
                 source = "single";
-                return ClientGame.Current != null ? ClientGame.Current.PlayerShip : null;
+                return only != null ? only : null;
             }
             return Topology.ResolveCrewShip(Topology.ActorOf(h.Player), h.Player, out source);
         }
