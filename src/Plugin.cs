@@ -164,6 +164,7 @@ namespace Ectype
             Step("layout poll", DevLayout.Poll);
             Step("dev self-test", DevSelfTest.Poll);
 #endif
+            Step("topology", Topology.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);
             // After the status pump: an expiry this frame has released its hosts first.
             Step("enemy abilities", EnemyAbilities.Poll);
