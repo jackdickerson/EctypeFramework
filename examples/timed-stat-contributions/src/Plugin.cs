@@ -13,6 +13,9 @@ namespace ExampleTimedStat
     /// that falls linearly to nothing over eight seconds, through Ectype.TimedStatContributions.
     /// The window is anchored to the arrival's server timestamp, so every machine that runs this
     /// mod computes the same curve without any message.
+    ///
+    /// For contrast, a lasting contribution through Ectype.StatContributions: every player ship
+    /// has 25% more hull for as long as it lives, applied as each ship spawns.
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Timed Stat", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
@@ -32,6 +35,17 @@ namespace ExampleTimedStat
             try
             {
                 ShipArrivals.Arrived += OnArrived;
+                // Registered on every client, before any ship spawns. Amount answers the same on
+                // every client (a constant here); null would mean no contribution on that ship.
+                StatContributions.Register(new StatContribution
+                {
+                    Id = HullId,
+                    Target = StatTarget.PlayerShip,
+                    Stat = "MaxHitPoints",
+                    Kind = SessionStatModifierKind.Percent,   // 0.25 is +25%
+                    Amount = ship => 0.25f,
+                    Source = "Reinforced hull",
+                });
                 Log.LogInfo("Example Timed Stat v" + PLUGIN_VERSION + " loaded.");
             }
             catch (Exception e)
@@ -41,10 +55,12 @@ namespace ExampleTimedStat
         }
 
         private const string BoostKey = PLUGIN_GUID + ".thrust";
+        private const string HullId = PLUGIN_GUID + "/hull";
 
         private void OnDestroy()
         {
             ShipArrivals.Arrived -= OnArrived;
+            StatContributions.Unregister(HullId);
         }
 
         private static void OnArrived(ShipArrival arrival)

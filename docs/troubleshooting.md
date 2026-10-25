@@ -848,6 +848,33 @@ The dev tools build also logs, at load, `Ectype: dev self-test: content registry
 | `Ectype: reading <State>.enterTimestamp failed; arrivals are stamped with this machine's clock: <message>` | The replicated exit timestamp could not be read. Arrival times on different machines can differ. |
 | `Ectype: ShipArrivals.<event> subscriber <Type>.<method> threw: <exception>` | A subscriber threw. Each subscriber runs in its own `try` block, so the others still ran. |
 
+### Lasting stat contributions
+
+See [reference/stat-contributions.md](reference/stat-contributions.md).
+
+| Line | Cause | Expect |
+| --- | --- | --- |
+| `Ectype: stat contribution '<id>' applied to <target>: <stat> <kind> <amount> (now <value>).` (the process's first at `[Info]` with ` Further applications log under [Debug] VerboseLogging.`, later ones verbose) | A contribution was applied to a target as it spawned, on `Register`, or on a `Refresh` where there was none. | Every client logs the same line for the same target. With Fleet's extra ships, one line per ship. |
+| `Ectype: stat contribution '<id>' withdrawn from <target>.` (verbose) | `Amount` answered null on a refresh, the contribution was unregistered, or its target's session ended or the target was destroyed. |  |
+| `Ectype: stat contribution '<id>' registered: <target> <stat> <kind>.` (verbose) | `Register` accepted it. |  |
+| `Ectype: stat contribution '<id>' unregistered.` (verbose) | `Unregister` withdrew it everywhere. |  |
+| `Ectype: stat contributions on <target> dropped (<reason>).` (verbose) | A target with contributions was destroyed (`target destroyed`: its stats are not touched) or belongs to a session that ended (`session ended`: every contribution is withdrawn). |  |
+| `Ectype: stat contribution not registered: it needs an id ("<plugin GUID>/<name>").` | `Register` got no contribution or an empty id. |  |
+| `Ectype: stat contribution '<id>' not registered: that id is already registered; unregister it first.` | The id is live. A contribution is registered once; change what `Amount` reads and call `Refresh` instead. |  |
+| `Ectype: stat contribution '<id>' not registered: it needs a stat and an Amount function.` | `Stat` is empty or `Amount` is null. |  |
+| `Ectype: stat contribution '<id>' not registered: unknown target <n>.` and `... unknown kind <n>.` | An enum value outside `StatTarget` or `SessionStatModifierKind`. |  |
+| `Ectype: stat contribution '<id>' refreshed but not registered.` | `Refresh` named an id that is not registered. Reported once per id. |  |
+| `Ectype: stat contribution '<id>' names a stat that does not resolve; it contributes nothing: <message>` | `Stat` is not a vanilla `StatType` name, a framework stat, a declared `"<owner>/Name"` or an int id. Reported once. |  |
+| `Ectype: stat contribution '<id>' names <stat>, which <type>'s own stat collection does not register as a float stat; it has no effect there.` | The stat lives on a child collection (a module), or the target type does not register it. Reported once per contribution and target type. |  |
+| `Ectype: stat contribution '<id>' Amount threw on <target>; it contributes nothing there (reported once): <exception>` | The mod's `Amount` threw. That target gets no contribution; a later `Refresh` asks again. |  |
+| `Ectype: stat contribution '<id>' Amount is not a finite number on <target>; it contributes nothing there (reported once).` | `Amount` answered NaN or infinity. |  |
+| `Ectype: stat contribution '<id>' is a factor and Amount answered <f>; a factor is above 0, so it contributes nothing there (reported once).` | A factor of 0 or less. Answer null for no contribution. |  |
+| `Ectype: stat contribution '<id>': updating a copy threw; the copy is no longer followed: <message>` (verbose) | A copy of the modifier could not be updated, usually because the stat it was added to went away. |  |
+| `Ectype: stat contribution copy check on recalculation failed (reported once): <exception>` | The check that finds copies of a lasting modifier as their stat recalculates threw. Copies may then keep their amount after the contribution is withdrawn. |  |
+| `Ectype: registering stat contribution '<id>' failed: <exception>`, `Ectype: refreshing stat contribution '<id>' failed: <exception>`, `Ectype: unregistering stat contribution '<id>' failed: <exception>`, `Ectype: applying stat contribution '<id>' to <target> failed: <exception>`, `Ectype: withdrawing stat contribution '<id>' from <target> failed: <exception>` | An unexpected failure in that step. The other targets and contributions carry on. |  |
+| `Ectype: stat contributions on a spawning ship failed: <exception>` and `Ectype: stat contributions on a spawning character failed: <exception>` | The spawn hook threw. That target has none of its contributions; a `Refresh` does not reach it, because it was never recorded. |  |
+| `Ectype: dev self-test: stat contributions passed (validation; once per target; kinds; null withdraws; Refresh; copies inert after Unregister; Unregister everywhere).` (dev tools build only) | Registration refusals, the once-per-target rule, the kinds, withdrawal by null, in-place refresh, a deep copy following the original and reading 0 after `Unregister`, and withdrawal from every target came out as documented. A `FAILED` line names each wrong value. | Logged once per launch, at load, with one `applied to dev target` line. |
+
 ### Interaction gate
 
 | Line | Meaning |

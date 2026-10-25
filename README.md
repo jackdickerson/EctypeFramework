@@ -46,6 +46,7 @@ it; a mismatched version bounces the joiner.
 - [Topology: which ship is whose](docs/reference/topology.md)
 - [Interaction gate](docs/reference/interaction-gate.md)
 - [Timed stat contributions](docs/reference/timed-stat-contributions.md)
+- [Lasting stat contributions](docs/reference/stat-contributions.md)
 - [Ship speed surge](docs/reference/ship-speed-surge.md)
 - [HUD ability bar](docs/reference/hud-ability-bar.md)
 - [Framework stats](docs/reference/framework-stats.md)

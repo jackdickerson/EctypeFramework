@@ -1,3 +1,7 @@
+## 0.31.0
+
+Mods can give every ship or every player a lasting bonus, such as a tougher hull for a team match. Every player's game applies it as each ship or player appears, so ships start at their full, larger hull and every hull bar agrees.
+
 ## 0.30.0
 
 Mods can add mutators to the game's Mutators menu that change run-wide numbers, such as how many hostiles spawn. Select one before a run, or have a mission force it on, and every player gets the same numbers, late joiners included. Players need the mod that adds a mutator to join a host who has it installed.
