@@ -4,8 +4,9 @@ Internal material for whoever maintains the framework through a game update. It 
 from the landing page and is not part of the public documentation. Nothing here is a
 supported API.
 
-Start a game-update triage with the hooks table below: a Harmony patch that fails to bind
-names itself in the log, and the row says what the patch was for.
+Start a game-update triage with the [offline checks](#offline-checks), which name every patch
+target and by-name lookup the update broke without starting the game, then the hooks table
+below, whose row says what each patch was for.
 
 ## Source map
 
@@ -24,15 +25,18 @@ Paths are relative to the framework project folder.
 | Enemy abilities and suspension | `src/EnemyAbilities.cs` |
 | Character statuses | `src/CharacterStatus.cs`; requests, validation and presentation copies in `src/CharacterStatusSync.cs` |
 | Session data and host-synced settings | `src/SessionData.cs` |
+| Host room values (the host's copy, the channel, `HostRoomValue<T>`) | `src/HostRoomValues.cs` |
 | Ship arrivals | `src/ShipArrivals.cs` |
 | Ship registry and per-player ship resolution | `src/Topology.cs`; the per-actor facts other features read, and the dev build's synthetic-view seam, in `src/TopologyView.cs` |
 | Framework-routed perk targets (scope table, ship sets, distribution, the per-holder route) | `src/PerkScopes.cs`, `src/CharacterShipRoute.cs` |
 | Owner-evaluated conditions (parsing, evaluation, the condition-mask message) | `src/HolderConditions.cs` |
 | `RoleContext` | `src/RoleContext.cs` |
-| Interaction gate (API and throttle, classifier, chokepoints and RPC sender) | `src/InteractionGate.cs`, `src/InteractionClassifier.cs`, `src/InteractionGatePatches.cs` |
+| Interaction gate (API, kinds and throttle, classifier, chokepoints) | `src/InteractionGate.cs`, `src/InteractionClassifier.cs`, `src/InteractionGatePatches.cs` |
+| `RpcContext` (the sender of the RPC or event being dispatched) | `src/RpcContext.cs` |
 | Crafting-data audit | `src/CraftingAudit.cs` |
 | Content registry (publication, `ModContent`, ordered authored-list insert) | `src/RuntimeContent.cs`, `src/ModContent.cs`, `src/AssetDescriptionOrder.cs` |
 | Timed stat contributions | `src/TimedStatContributions.cs` |
+| Lasting stat contributions | `src/StatContributions.cs`; the kind mapping in `SessionStatMutators.MapKind`, the character spawn call in `Player_Awake_Patch` (`src/CharacterStats.cs`) |
 | Ship speed surge | `src/ShipSpeedSurge.cs` |
 | HUD ability bar | `src/HudAbilityBar.cs` |
 | How-to hints | `src/HowToHints.cs` |
@@ -46,6 +50,7 @@ Paths are relative to the framework project folder.
 | Gene-tree layout values | `src/LayoutSpec.cs` |
 | Dev tools (dev tools build only) | `src/dev/` |
 | Role wording | `src/RoleWording.cs` |
+| Offline checks (a separate console project, never shipped) and the public API snapshot | `tools/offline-checks.ps1`, `tools/OfflineChecks/`, `docs/api-snapshot.txt` |
 
 ## Hooks relied on
 
@@ -108,6 +113,9 @@ column.
 | `StatTagCollection.ApplyModifier(StatMod)` and `ApplyModifiers(IEnumerable<StatMod>, IModifierSource, bool)` postfixes | finds a copy of a timed-stat modifier when a collection applies it: the game copies a dynamic value's initialised flag and never initialises the copy again, so this is the only place a copy of an applied value can be found and put back on the curve. Inert until the first contribution starts |
 | `ModDynamicValue<FloatModifier, float>` (subclassed), `StatTagCollection.ApplyModifiers` / `RemoveModifier` (called) | a timed stat contribution's amount is rewritten in place through the game's dynamic-value recalculation, which dirties the stat in each collection that registers it; removal is by source |
 | `Player.Awake` postfix | registers the character's field-backed stats and `SystemModuleConstructionSpeed` onto the player's own collection; covers the local player and every replica, idempotent per collection |
+| `GameSession.ApplyGlobalOrbitObjectSpawnProperties(OrbitObject)` postfix | applies lasting stat contributions to a `PlayerControlledShip`. `OrbitObject.Start` calls it on every client for every orbit object, and its next lines set `EstimatedHitPoints` to `MaxHitPoints` on every client and `HitPoints` on the master client (replicated by `OrbitObject.OnPhotonSerializeView`), so a `MaxHitPoints` contribution is the hull a ship starts with. For a `Player` it records the session the character belongs to, read there because `Awake` can run before that session is active, and queues the character for the after-Start notification: one frame later the driver raises `OnValueChange` on every stat and `OnModifiersChange` on every collection a contribution was applied to before then, because `CustomCharacterHealth` subscribes to `MaxHitPoints` in its `Start` and `CharacterOxygen` to `JetpackOxygen` in its `Awake`, neither with an initial read. A miss: lasting contributions never reach ships, characters are never withdrawn at a session change, and a character's health and oxygen keep the prefab maximum |
+| `Player.Awake` postfix (lasting contributions) | applies lasting stat contributions to a character, after the stat surfaces above are registered |
+| `ModifiableFloat.RecalculateValue` prefix, `ModifiableFloat.AddModifier` / `RemoveModsFromSource` / `Modifiers` / `MarkDirty` / `OnValueChange` (called) | a lasting contribution is one `FloatModifier` on the target's own stat, added and removed by source; the prefix finds copies of it as their stat recalculates and keeps them on the original's amount, or 0 once withdrawn. Inert until the first contribution is applied |
 | `BuildProcess.Run` prefix | master only (the game runs build processes there): advances a `ConstructionProcess` / `DeconstructionProcess` / `UpgradeProcess`'s private `StateTimer`, in the `Working` and `Completing` states, by `deltaTime * (SystemModuleConstructionSpeed - 1)` of the requesting player |
 | `BaseNpcAbility.TryActivateAbility(bool)` prefix | ability suspension: refuses a non-forced start on a suspended enemy; a refusal outside a cast behaviour's tick is held for replay. See [reference/enemy-abilities.md](reference/enemy-abilities.md) |
 | every declared `Tick` / `PassiveTick` in the `BaseNpcAbility` hierarchy, prefix | ability suspension: an enumerated set, so a subclass a game update adds is held too |
@@ -117,7 +125,7 @@ column.
 | `NpcAbilityMarkerProvider.Markers`, `MarkerVE.abilitySchedule` / `abilityTime` / `AbilityProgress` (read, written) | the game's cast and call countdown, paused and resumed with the enemy |
 | `RuntimeAssetsRegister` / `PerkBuffContainer` / `PerkTreeContainer` / `StatTable` | runtime asset + stat surface |
 | `RuntimeAssetsRegister.GetAllIds`, `CarryableContainer.HasItem`, `CraftingDataContainer.HasItem` (called) | the crafting-data audit: a carryable with no crafting definition makes `GetPlayerShipRecycledAlloyValue` throw when it dereferences the missing definition's crafting rules |
-| `Client.Utils.ObjectExtensions.DeepCopy` (called, dev tools build only) | the timed-stat copy self-test runs the game's own copier, the one the perk loader runs on every reapply |
+| `Client.Utils.ObjectExtensions.DeepCopy` (called, dev tools build only) | the timed-stat and lasting-contribution copy self-tests run the game's own copier, the one the perk loader runs on every reapply |
 | `RuntimeAssetConverter.RegisterCarryableToContainers(GUIDUnion, string, string, Sprite)` (called) | a published carryable's spawnable-object, carryable, unlock and crafting defs, the game's own path for a carryable it converts at runtime. Unguarded (`Dictionary.Add` in each container), so it is called once per GUID and a throw part-way refuses the publication |
 | `ResourceAssetContainer<,,>.AssetDescriptions` (public `List<TDef>`, inserted into), `RegisterRuntimeAsset`, `HasItem`, `TryGetByGuid` on the composite-weapon, module, carryable, spawnable-object (`CloneStarObjectContainer`), crafting and unlock containers | the content registry. The authored list is what `GetAssetDefBySelfRef`, `GetAssetIndex`, `GetFullAssetRefList`, the debug spawn menus and catalog mods read; the game sends an index into an authored list over the network for mutators, pings and emote and multi-slot cosmetic choices, none of them a container the registry writes. Runtime entries are inserted in GUID order after the authored ones; role perk defs by GUID and tree defs by tree ordinal, the order the role argmax breaks ties in |
 | `CompositeWeaponDataDef.contextInfo` / `buildBoxIcon` (written by field), `CraftableItemDef.SetCraftingRules`, `PurchasableResourceAssetDef.SetPurchaseCategory`, `UnlockItemDef.UnlockOptions` / `rarity`, `AbstractCloneStarObject.ContainerGuid`, `CompositeWeaponData.ContainerGuid` (written) | the content registry's per-kind data. The purchasable defs' `ContextInfo` property setter resolves the presentable owner of its own GUID and recurses once the def is published; the framework never calls it |
@@ -139,11 +147,12 @@ column.
 | `CarryableInteract.StartInteraction(AbstractInteractable, bool)` and `PickupGrabable(AbstractInteractable)` prefixes with `player` and `lockInteraction`, `InteractiveCarryableModuleUpgrader.IsInvalidUpgradeTarget(CellModule)` postfix | interaction gate, client side. `StartInteraction` judges what the raycast offered; at an occupied socket while carrying it judges the swap's insert, release and follow-up pick-up. `PickupGrabable` runs at the end of the click's frame from `DelayedPickupGrabable` (`WaitForEndOfFrame`), also after a swap with no click of its own; a refusal there clears the `lockInteraction` the caller set and `Carrier.OverrideSentPayloadToNull`, which the game clears only in the insert promise's callbacks. The upgrader is judged only while its `Carrier` is the local player; a true result stops it |
 | `DoorActor.Start`, `AirlockButtonPanel.Initialize`, `EnhancementCrypticActivator.Awake`, `EnhancementSwitchActivator.Awake`, `TakeoverChair.Awake`, `TerminalModuleMediator.Start`, `RepairObject.Initialize`, `Defect.Awake` postfixes; private fields `clickers`, `pressurizationSwitch`, `safetySwitch`, `cryptic`, `crypticClicker`, `switchClicker`, `clicker`, and `Defect.clicker`, `TakeoverChair.Clicker` / `ConnectedPhotonViews` (read) | the interaction classifier's registrations: controls that sit outside the object they control, and the seats whose connected views follow their pilot. Each owner registers once, so the map is never cleared; entries whose control is destroyed are pruned every 30 s. Each postfix is patched in its own `try`, so one failure costs that registration alone. A miss leaves those controls classified by type and parents |
 | `Grabbable.Carryable`, `CarryableObject.Carrier`, `SocketInteractable.SocketActor.Socket` (read) | the canonical component every query starts from: an item is its `CarryableObject`, an item in a socket and a socket's interactable are the `CarryablesSocket`. The raycast hands the gate a `Grabbable` or a `SocketInteractable`, the ownership events a view on the item, so without this one thing would reach a gate as different components at different chokepoints |
-| `AbstractModuleMediator<T>.PowerSwitch` (read by reflection per mediator type, found through `IShipModuleMediator`), `SwitchClicker.ControlledValue` (`MemberReference.Component`) | the classifier's switch rule: a mediator's power switch is `PowerSwitch`; otherwise a switch is classified exactly as the component holding its value, the component `ChangeResponsivePun` names when the owner judges the request, so both sides run one computation on one component; a switch with no mediator above it and no holder is `PowerSwitch`, computed three times in all, 2 s apart, in case its module was still being assembled |
-| `TakeoverChair.RequestSitInChair(PhotonMessageInfo)`, `DoorController.RequestOpenOnMaster(bool, int, PhotonMessageInfo)` with `_shipDoors` and the `NotifyClientOfOutcome` RPC, `AirlockController.NetworkAirlockOpenRequest` / `NetworkStartPressurization` / `NetworkSafetyRequest` with `airlocks` prefixes | interaction gate, owner side, sender from the message info. A refused door answers the asker with the door's real state; the game's `TakeoverRejected` is not an RPC, so a refused seat is dropped as the game drops one under its `BlockedNoReply` |
-| `ChangeResponsivePun.RequestBool` / `RequestByte` / `RequestInt` with `ChangeResponsives` and `MemberReference.Component`, `PowerDrain.RequestSetPowerState`, `PowerPropagator.RequestSetPowerState`, `PowerSystem.RequestPowerChange`, `Enhancement.StateChangePun` prefixes | interaction gate, owner side, sender from the RPC sender. A call outside an RPC (game logic calling the method directly) has no sender and passes |
+| `AbstractModuleMediator<T>.PowerSwitch` (read by reflection per mediator type, found through `IShipModuleMediator`), `IShipModuleMediator.Module`, `CentralShipComputerMediator` / `CentralShipComputerModule` (type tests), `SwitchClicker.ControlledValue` (`MemberReference.Component`), `PowerSystem`, `PowerPropagator`, `PowerDrain`, `PowerBreaker`, `PowerDistributor`, `Airlock` (type tests) | the classifier's switch rule: a switch is classified exactly as the component holding its value, the component `ChangeResponsivePun` names when the owner judges the request, so both sides run one computation on one component; where it holds nothing placeable, a mediator's power switch is `ModulePowerSwitch`, or `ShipPowerSwitch` for the central computer's mediator, whose `Awake` initializes its switch with `ControlledPowerSystem.IsOn` (every other mediator's base initializes it with the module's `PowerDrain.IsOn`). Power types name their kind most derived first: `PowerSystem` (and `ProtectedPowerSystem`, `SelfTogglePowerSystem`) `ShipPowerSwitch`, `PowerPropagator` `PowerLineSwitch`, `PowerDrain` `ModulePowerSwitch`, `PowerBreaker` `Breaker`, any other `PowerDistributor` `OtherPowerSwitch`; `Airlock` is `AirlockPressurize`. A switch with no mediator above it and no holder is `Breaker` when a `PowerBreaker` is on it or above it, else `OtherPowerSwitch`, which is never cached and is computed again 2 s after each query, in case its module is still being assembled. A breaker's and a line switch's clicker wiring lives in prefabs and is not readable in the decompile |
+| `TakeoverChair.RequestSitInChair(PhotonMessageInfo)`, `DoorController.RequestOpenOnMaster(bool, int, PhotonMessageInfo)` with `_shipDoors` and the `NotifyClientOfOutcome` RPC, `AirlockController.NetworkAirlockOpenRequest` / `NetworkStartPressurization` / `NetworkSafetyRequest` with `airlocks` prefixes | interaction gate, owner side, sender from the message info. The airlock open request is `Door`, the pressurisation request `AirlockPressurize`, the safety request `AirlockSafety`. A refused door answers the asker with the door's real state; the game's `TakeoverRejected` is not an RPC, so a refused seat is dropped as the game drops one under its `BlockedNoReply` |
+| `ChangeResponsivePun.RequestBool` / `RequestByte` / `RequestInt` with `ChangeResponsives` and `MemberReference.Component`, `PowerDrain.RequestSetPowerState`, `PowerPropagator.RequestSetPowerState`, `PowerSystem.RequestPowerChange`, `Enhancement.StateChangePun` prefixes | interaction gate, owner side, sender from `RpcContext.TryGetSender` on the component's own view. A power request's kind is the asked component's type (drain, propagator, power system), the synced request's the classification of the value's holder. A call outside an RPC (game logic calling the method directly) has no sender and passes |
 | `Carrier.OnOwnershipRequest(PhotonView, Player)` prefix; `CarrierCarryableHandler.TryInsertCarryable` / `TryReleaseCarryable` / `TryEjectCarryable` prefixes with `photonView` and `carrier` | interaction gate, owner side. Every carrier hears every request-type ownership request; only the holder of the requested item on its owner's game is judged. Socket requests are Photon events 3, 4 and 5 whose `data[0]` is the carrier's view id, answered by the carrier inside Photon's dispatch; a refusal returns a rejected promise, which the handler turns into the game's failure reply (event 6) |
-| `PhotonNetwork.ExecuteRpc(Hashtable, Player)` prefix + finalizer, `LoadBalancingClient.OnEvent` prefix + finalizer, `PhotonNetwork.OnEvent` prefix | the interaction gate's Photon hooks: the RPC sender (key byte 0 of the RPC data is the target view id), the socket request being dispatched (the wrapper spans the whole `LoadBalancingClient.OnEvent`, carriers' callbacks included, so subscription order does not matter), and ownership events 209 (sender takes the view; `data[1]` is the owner it expects), 210 (`data[1]` is the new owner) and 212 (`int[]` of view id, new owner pairs; PUN applies it from any sender to any view, the game's host alone sends it). **Patched from the driver once a gate is registered and `GameStateMachine.Instance.CurrentState` is neither `GSNull` nor `GSLoading`, never at plugin load**: patching `PhotonNetwork` at start-up sets Photon up before the game does and the connection never passes the name server |
+| `PhotonNetwork.ExecuteRpc(Hashtable, Player)` prefix + finalizer, `LoadBalancingClient.OnEvent(EventData)` prefix + finalizer | `RpcContext`: a stack of one frame per message being dispatched, the outer frame saved in `__state` and restored by the finalizer. `ExecuteRpc` is PUN's single entry for every RPC: `PhotonNetwork.OnEvent` calls it for event 200 with the room's player for `EventData.Sender` (null for an actor not in the room), and `RPC` calls it directly with `LocalPlayer` for an RPC that targets the local player; key byte 0 of the RPC data is the target view id. A network RPC with a null player takes its actor number from the enclosing event 200. `LoadBalancingClient.OnEvent` dispatches every received event to PUN and to every `EventReceived` listener, carriers' callbacks included, so subscription order does not matter; `EventData.Sender` is -1 when parameter 254 is absent, reported as 0. The gate's socket requests read the innermost event from it. **Patched from the driver once `RpcContext.Enable()` was called, a gate is registered or a member was read, and `GameStateMachine.Instance.CurrentState` is neither `GSNull` nor `GSLoading`, never at plugin load**: patching `PhotonNetwork` at start-up sets Photon up before the game does and the connection never passes the name server. Nothing asking, nothing patched |
+| `PhotonNetwork.OnEvent` prefix | the interaction gate's ownership hook: ownership events 209 (sender takes the view; `data[1]` is the owner it expects), 210 (`data[1]` is the new owner) and 212 (`int[]` of view id, new owner pairs; PUN applies it from any sender to any view, the game's host alone sends it). **Patched from the driver once a gate is registered and `GameStateMachine.Instance.CurrentState` is neither `GSNull` nor `GSLoading`, never at plugin load**: patching `PhotonNetwork` at start-up sets Photon up before the game does and the connection never passes the name server |
 | `PhotonView.TransferOwnership(int)` (called), `CarryableObject.OwnerChange` (invoked) | ownership changes are decided by the view's owner, or the host for a view whose owner is absent. PUN applies a Takeover 209/210 on each client independently and only when the event arrives, the sender's own echo included. The deciding client ignores a refused change and transfers the view back to itself (to 0 for a room object); the server orders that 210 after the refused event for every receiver, so clients that applied it converge. Skipped: a 210 sent by the master, the owner or the controller (the game's own hand-offs, such as `CarryablesSocket.OnOwnerChange` passing its payload to the socket's new owner, sent by every client) and a view following its holder (a socket's payload to the socket's owner, a seat's `ConnectedPhotonViews` to the seat's owner). The taker's own client judges its own 209 and on a refusal invokes the item's `OwnerChange` with the unchanged owner: `CarrierCarryableHandler.CarryableOwnerChange`, its only subscriber, then rejects the insert promise with "Carryable given to different owner", and `PickupGrabable`'s `Catch` clears `lockInteraction`. Without that, the promise stays pending, `lockInteraction` stays set and every later carrier request is refused as "another request pending". The taker then transfers a Takeover view to the owner it still records; on every client that applied the 209 the taker is the owner, so that 210 passes as an owner's hand-off and the room converges even when the decider allowed it. A 210 handing a view the taker refused in the last 5 s back to it (a request-only owner that allowed it) is applied and transferred back from the driver once the taker owns it. A 210 naming the owner a client already records is not judged. A non-master 212's refused pairs are rewritten in the event's own `int[]` (PUN reads the same cached array) to the current owner. An `IPunOwnershipCallbacks` listener, added when the Photon hooks are patched, settles the local player's pick-up the same way on `OnOwnershipTransferFailed` (PUN refuses a Takeover 209 whose expected owner `data[1]` is stale) |
 | `ViewEventBus.OnShowQuickWarning` (published) | the interaction gate's warning, the game's own quick-warning line |
 | Every interaction gate hook carries `HarmonyAfter("com.captainchunck.voidcrew.fleet")` | Void Crew Fleet patches the same chokepoints. Running after it, a client hook sees `__runOriginal == false`, or a pick Fleet already cleared, when Fleet refused and stays silent. HarmonyX runs every prefix even after one returned false |
@@ -151,12 +160,120 @@ column.
 | `PhotonService.OnEvent(EventData)` prefix + finalizer | records the sender of event 9 for the `FromJObject` postfix, which acts only inside that handler. The game's case 9 checks only that the receiver is not the master, and the game never calls `SetMasterClient`. Photon delivers the room's global cache as actor 0, so a late joiner checks only that the envelope's `a` stamp does not name a present player other than the master; a forger who caches a session stamped with the master's number or any number not in the room, a never-joined one included, passes for joiners until the host's next session clears the cache. The prefix also keeps the event's raw string: the game parses it with Newtonsoft's default date detection, so the `FromJObject` postfix re-reads the envelope from that string with date detection off. A miss leaves only the stamp check |
 | `GameSession.GetPreservedState` postfix; `PreservedGameSession.GameSessionID` (read) | the saved-run sidecar under `BepInEx/config/jack.voidcrew.ectype.sessions/`, written at every save and named by the id the save carries; the game holds one saved run per profile (`PlayerPreservedSessionData.PreservedSession`). Without this hook the sidecar is written at mission start instead. `GameSessionID` is `Guid.NewGuid().ToString()` from `GenerateSessionID`; a fresh session gets one on the host and on every client as it activates, and `PreservedGameSession.GenerateGameSession` copies the saved id on resume while dropping the envelope. A host who took over mid-run saves under its own client-side id, which the sidecar follows |
 | Room property `Ectype.HostValues` (written by the master in the hub, read), `LoadBalancingClient.EventReceived` event 253 (subscribed: `Sender`, parameter 253 target actor, parameter 251 properties) | `HostValue<T>`'s hub channel, one property for every key. `EventReceived` runs after `LoadBalancingClient` has merged the change into the room's copy, so the writer and the merged value are seen together. A join response carries properties with no writer |
+| Room properties `Ectype.Value:<key>` (written by the master, read), `LoadBalancingClient.EventReceived` event 253 (the same subscription as `Ectype.HostValues`), `PhotonNetwork.AddCallbackTarget` with `IMatchmakingCallbacks.OnJoinedRoom` / `OnLeftRoom` and `IInRoomCallbacks.OnMasterClientSwitched` | `HostRoomValue<T>`. The join callback runs as the join response is read, before any property event of the room is dispatched, so a joiner's first read is the join response's and a later foreign write is judged by its sender. The master-switch callback runs as the leave event is read, before the departed host's successor dispatches anything. `Room.SetCustomProperties` with `BroadcastPropsChangeToAll` (the default; the game's `RoomOptions` leave it) echoes the host's own write back with the host as sender, which the host ignores. The game's `RoomOptions` leave `DeleteNullProperties` false, so a value put back as none stays as a null property |
 | `GameSession.InitStartingMutators` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
 | `MutatorsElementListVE.UpdateMutatorsList(ReadOnlyCollection<GUIDUnion>)` prefix | not role-related; see [reference/mutator-safety.md](reference/mutator-safety.md) |
-| `GameSessionManager.PrepareNextSession(bool)` prefix, `GameSession.InitStartingMutators` postfix, `UnlockContainer.IsUnlocked(GUIDUnion)` postfix, all patched by name after the attribute pass | `SessionStatMutators`. The prefix re-verifies every registered mutator before the host snapshots its required assets and before a joiner compares them. The postfix compares the mutators the opening contributed with the session's `ActiveMutators`. The unlock postfix answers true for a registered framework mutator, which `PhotonPlayerUnlockSync`'s constructor reads when it writes the `P_SM` player property in full |
+| `GameSessionManager.PrepareNextSession(bool)` prefix, `GameSession.InitStartingMutators` postfix, `UnlockContainer.IsUnlocked(GUIDUnion)` postfix, all patched by name after the attribute pass | `SessionStatMutators`. The prefix attempts every pending mutator and re-verifies every registered one before the host snapshots its required assets and before a joiner compares them. The postfix compares the mutators the opening contributed with the session's `ActiveMutators`. The unlock postfix answers true for a registered framework mutator, which `PhotonPlayerUnlockSync`'s constructor reads when it writes the `P_SM` player property in full |
 | `GameSessionManager.HostGameSession` order: `PrepareNextSession`, `LoadQuest` (`GameSession.LoadQuestMutators`: the quest asset's `ForcedMutators` through `AddMutator`), `LoadInitialSector`, `DistributeSessionData` (event 9), `LoadGameSessionPassiveAssets` (`InitStartingMutators`: `StartingMutators`, whitelist-filtered when `QuestAsset.UseMutatorWhitelist`) | why the opening predicts the active set instead of reading `ActiveMutators`: no mutator is active at the `PrepareNextSession` capture. The prediction mirrors both methods: forced list first, then the starting list skipping a GUID already active, one outside the whitelist and one the container cannot resolve; the hub (`IsHub`) has no `ActiveQuest`, so only its starting list counts. A reordering, or a new activation route, changes what clients receive |
 | `GameSession.SessionQuestAsset`, `GameSession.StartingMutators` (read at `PrepareNextSession`) | the prediction's inputs. `HubQuestManager.StartQuest` sets both on a fresh session (`StartingMutators` is the hub's `SelectedMutators`); `PreservedGameSession.GenerateGameSession` sets both from the save |
-| `ResourceAssetContainer.GetAssetIndex` (indexes `AssetDescriptions`), `GetAllItems` (returns `RuntimeDescriptions`), `PhotonPlayerUnlockSync.SetSharedUnlock` / `GetSharedUnlockIndices`, the profile's `UnlockedItems` chain (`ChainOfResponsibility.source`) | the shared-unlock republish and the runtime-list alignment: `P_SM` holds `GetAssetIndex` values and `GetSharedUnlocks` reads them back through `GetAllItems`, so the two lists must agree in order |
+| `ResourceAssetContainer.GetAssetIndex` (indexes `AssetDescriptions`), `GetAllItems` (returns `RuntimeDescriptions`), `PhotonPlayerUnlockSync.GetSharedUnlockIndices`, `Player.SetCustomProperties` (in a room with `BroadcastPropsChangeToAll`, the local cache updates only on the server's echo) | the shared-unlock republish and the runtime-list alignment: `P_SM` holds `GetAssetIndex` values and `GetSharedUnlocks` reads them back through `GetAllItems`, so the two lists must agree in order. The republish writes every missing index in one merged `P_SM` array and waits 5 s for the echo before writing again |
+| `RuntimeAssetsRegister._assets`, `_assetsEffects`, `_assetRegistrationInfo`; `ResourceAssetContainer.assetDefLUT`, `AssetDescriptions`, `RuntimeDescriptions` (reached by name) | removing a finally refused session-stat mutator's own entries; the game has no removal call for either table. A rename logs `could not be taken out of` and leaves the entry |
+| `RuntimeAssetsRegister.TryGetAsset`, `ResourceAssetContainer.TryGetByGuid` on the mutator and unlock containers | the claim check a session-stat mutator passes before its first write |
+
+## Offline checks
+
+The framework binds the game by name: Harmony patch targets, `AccessTools` and `Type.GetX`
+lookups, `Traverse` chains. It binds Void Crew Fleet's `FleetApi` and VoidManager by name too.
+A rename in any of them compiles cleanly and surfaces as a log line on a player's machine. The
+offline checks find it first, without starting the game:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\offline-checks.ps1
+```
+
+Run them after every game update, after a Fleet or VoidManager update, and before every
+release. The script builds the framework (Release) against the game folder the build resolves,
+then runs the checker, which reads the built DLL and every assembly in the game's `Managed`
+folder, `BepInEx\core` and `BepInEx\plugins` as metadata. Nothing is loaded or executed. It
+ends with `ALL CHECKS PASSED` and exit code 0, or lists each failure and exits 1.
+
+Without PowerShell, the same run is
+`dotnet build -c Release` and then
+`dotnet run --project tools/OfflineChecks -c Release -- --framework bin/Release/EctypeFramework.dll --game "<Void Crew folder>" --targets tools/OfflineChecks/manual-targets.txt --snapshot docs/api-snapshot.txt`.
+
+| Switch | Effect |
+| --- | --- |
+| `-VoidCrewDir <folder>` | Check against another install, for example a beta branch copied aside. |
+| `-Plugin <dll>` | Also check bindings against this plugin DLL; repeatable. Fleet installed by a launcher lives outside `BepInEx\plugins`, so pass its `VoidCrewFleet.dll` here. |
+| `-UpdateSnapshot` | Rewrite `docs/api-snapshot.txt` from the built DLL instead of comparing. |
+| `-ShowAll` | List every check with what it resolved to, not only the failures. |
+| `-NoBuild` | Check the DLL already in `bin\Release`. |
+
+### What is checked
+
+1. **Patch targets and by-name lookups.** The checker recovers every lookup from the compiled
+   IL rather than from the source. It runs each method abstractly, tracking constants
+   (strings, `typeof`, `Type[]` and `string[]` initialisers, `BindingFlags`) through the stack,
+   locals and arguments. A call into another framework method that passes a constant is
+   followed into that method with the constant bound, so a helper such as
+   `Patch(type, "Name", args, ...)` is checked at each call site with the names its callers
+   pass. Each lookup is resolved with the rules of the API that makes it:
+   - `AccessTools.Field/Method/Property` walk the base types and see private members of each.
+   - `AccessTools.Declared*` and `[HarmonyPatch]` targets see the type's own members only.
+     HarmonyX resolves an attribute target with `AccessTools.DeclaredMethod`, so a target
+     method that moved to a base class fails the patch.
+   - `Type.GetX(name, flags)` follows the flags: an inherited member is seen only when it is
+     not private, and an inherited static one only with `FlattenHierarchy`. A method that
+     walks `Type.BaseType` itself is checked against the whole chain.
+   - A method lookup without parameter types must match exactly one method: `Type.GetMethod`
+     and `AccessTools.DeclaredMethod` throw `AmbiguousMatchException` on an overload.
+   - The type checks the framework makes on what it found are checked too: a comparison of
+     `FieldType`, `ReturnType`, `PropertyType` or `EventHandlerType` with a `typeof`,
+     `typeof(F).IsAssignableFrom(...)`, the field type behind `FieldRefAccess<T, F>`, and the
+     signature of a delegate bound with `Delegate.CreateDelegate` or
+     `AccessTools.MethodDelegate`.
+   - A value read through a looked-up member has that member's type, so in
+     `Traverse.Create(sheet).Property("rules").GetValue()` followed by `.Field("m_Properties")`
+     on an element, `m_Properties` is checked on the element type of `rules`.
+   - The same name looked up twice on one type within one call is a fallback chain (a
+     property, else a field; an exact overload, else any). It passes when one link resolves.
+
+   Every patch method is then checked against the target it is applied to: it is static, and
+   each injected parameter fits. `__instance` needs an instance target whose declaring type is
+   assignable to the parameter; `__result` a non-void target whose return type fits;
+   `___name` a field of that name on the target's type or a base; `__N` an argument index in
+   range; any other name a target parameter of that name and a fitting type. A parameter
+   carrying `[HarmonyArgument]` is matched by the name or index the attribute gives. Harmony
+   checks few of these when it patches; a wrong one fails at patch time or produces bad code.
+2. **Public API snapshot.** `docs/api-snapshot.txt` lists every public type and member of
+   `EctypeFramework.dll`, plus the protected members of types a mod can derive from, one
+   signature per line, grouped by type and sorted. The check prints each removed line with
+   `-` and each added line with `+`. An intended change is committed together with the
+   rewritten snapshot (`-UpdateSnapshot`), so the diff of the snapshot in a pull request is the
+   API change.
+3. **Bindings into other plugins.** Members the framework looks up in a plugin by a type name
+   string, `VoidCrewFleet.FleetApi` and VoidManager's types, are checked like game members
+   when the plugin's DLL is under `BepInEx\plugins` or passed with `-Plugin`. A version
+   constant the framework compares, a const field looked up by name with a framework const
+   named `Supported` plus that field's name, must have the same value. A plugin that is absent
+   is skipped with one line, not failed. A type name is treated as a plugin's when no game or
+   BepInEx assembly defines a type in its top-level namespace.
+
+The run also lists lookups whose type or name is known only at run time. Those are not
+checked. When one of them reaches a game member that matters, add the member to
+`tools/OfflineChecks/manual-targets.txt`, which is checked like a recovered lookup; each entry
+says above it which framework code needs it.
+
+### Things that look like they should work
+
+- **A helper whose parameters carry the names, called with names that are not constants.** The
+  checker follows a call only when a constant goes in. A name built at run time, read from a
+  config, or taken from a list built with `Add` leaves the lookup unchecked, and it appears
+  under "not checked". Pass names as literals, or as literal arrays a `foreach` walks.
+- **A lookup on `obj.GetType()` where `obj` is declared `object`.** The declared type is the
+  only type information the IL has. Declare the variable as the game type (or cast to it) and
+  the lookup is checked on that type and its subclasses.
+- **Patching a method by name on the class that inherits it.** `AccessTools.Method` finds it,
+  `[HarmonyPatch]` and `AccessTools.DeclaredMethod` do not, and a patch on the method found
+  through the subclass patches the base class's method for every subclass. Name the declaring
+  class.
+- **An overload added by a game update to a method looked up by name alone.** The lookup that
+  resolved before the update throws `AmbiguousMatchException` after it, and in a static
+  initialiser the exception takes the whole class with it. The check lists the overloads; give
+  the lookup parameter types.
+- **Regenerating the snapshot from a dev tools build.** The dev build compiles `src/dev/` and
+  has a different public surface. The script always builds Release; with `-NoBuild` the DLL in
+  `bin\Release` must be a release build.
 
 ## Dev tools build
 
@@ -199,9 +316,14 @@ What it adds:
 - An interaction gate self-test at load, logging `dev self-test: interaction gate passed` or
   `FAILED`: the warning throttle on a test clock, registration order, null and silent answers,
   unregistering, and the classifier on game components added to an inactive object (so their
-  `Awake` never runs), including a switch outside any module reading `PowerSwitch` twice in a
-  row, and an item, a socket and a switch with its value holder reaching gates as one component
-  with one kind from every entry. It makes no Photon call, since touching `PhotonNetwork` during
+  `Awake` never runs), including a switch outside any module reading `OtherPowerSwitch` twice in a
+  row without being cached; a module-named switch holding the power system reading its holder's
+  kind; the sender test of `RpcContext` (an absent sender needs an actor number) and a finalizer
+  whose prefix did not run; each power type, a switch holding each power component's value, a switch under a breaker,
+  and a module's and the central computer's mediator-named switch reading their split kind;
+  `IsPowerSwitch` and `IsAirlockControl` covering exactly the split kinds; and an item, a socket
+  and a switch with its value holder reaching gates as one component with one kind from every
+  entry. It makes no Photon call and does not read `RpcContext`, since touching `PhotonNetwork` during
   plugin load sets Photon up before the game does.
 - A refused pick-up check: half a second after the local player's pick-up is refused, the
   framework reads the carry ability's `lockInteraction` and logs `dev check: a refused pick-up
@@ -389,9 +511,10 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 ## Manifest notes
 
 - `src/shared/ModFlagPolicy.cs` is a compile-time switch for whether a build flags the session.
-  Its `MPType` is `Session` or `Client` and never `All`, so a role mod that declares a
-  `VoidPlugin` declares `MPType => MultiplayerType.All` itself and returns
-  `SetMod_Session = true` from `OnSessionChange`. The framework compiles with
+  Its `MPType` is `Session` or `Client` and never `All`, so a mod that declares an
+  `All` `VoidPlugin` declares `MPType => MultiplayerType.All` itself and returns
+  `SetMod_Session = true` from `OnSessionChange`. A role mod that follows the examples declares
+  no `VoidPlugin`, so none of this applies to it. The framework compiles with
   `VOIDMANAGER_OPTIONAL`, which leaves `MPType` out, and declares no VoidManager type: an `All`
   framework would make every VoidManager host kick every joiner without VoidManager, and a
   `Client` one would make the mod launcher advertise it as client-side only.

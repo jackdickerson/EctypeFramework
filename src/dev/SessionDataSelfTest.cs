@@ -30,6 +30,13 @@ namespace Ectype
     ///   not. Token kinds are checked against the value type.
     /// - Type checks: scalars and plain data pass; Unity types are refused, and anything but a
     ///   scalar is refused for a host value.
+    /// - Host room values: registration refuses a Unity type, a delegate, a key outside the
+    ///   identifier rule and a default over the cap; a value is copied on encoding and keeps a
+    ///   date-shaped string and a long decimal exact; the host's copy batches the writes of a frame
+    ///   (a later write of a key replaces an earlier one, an unchanged one writes nothing); a new
+    ///   host keeps what it held and puts back the keys the room holds differently; another
+    ///   player's write is put back only when it differs; unsent writes are dropped when the host
+    ///   role is lost; the writer rule takes the master and an unreported writer only.
     /// The capture point itself (GameSessionManager.PrepareNextSession) needs a live session start
     /// and is outside this test.
     /// </summary>
@@ -67,10 +74,12 @@ namespace Ectype
             Run("host-value room format", Stamp, failures);
             Run("type checks", Types, failures);
             Run("exact text", Exact, failures);
+            Run("host room values", HostRoom, failures);
 
             if (failures.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: session data passed (" + roundTrip + "; size caps; " +
-                                   "writer rule; sidecar write/read/prune; host-value stamp; type checks; exact text).");
+                                   "writer rule; sidecar write/read/prune; host-value stamp; type checks; exact text; " +
+                                   "host room values).");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: session data FAILED: " +
                                     string.Join("; ", failures.ToArray()));
@@ -370,6 +379,91 @@ namespace Ectype
                 try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
                 catch { }
             }
+        }
+
+        private sealed class Pick
+        {
+            public List<int> Types = new List<int>();
+            public string When = null;
+            public decimal Exact = 0m;
+        }
+
+        private static void HostRoom(List<string> failures)
+        {
+            string key = EctypePluginInfo.PLUGIN_GUID + "/selftest-room";
+            if (SessionData.HostRoomValueProblem(key, new List<int>(), SessionData.DefaultKeyCapBytes) != null ||
+                SessionData.HostRoomValueProblem(key, new Pick(), SessionData.DefaultKeyCapBytes) != null ||
+                SessionData.HostRoomValueProblem(key, 3, SessionData.DefaultKeyCapBytes) != null)
+                failures.Add("host room: plain data was refused");
+            if (SessionData.HostRoomValueProblem(key, default(UnityEngine.Vector3), SessionData.DefaultKeyCapBytes) == null ||
+                SessionData.HostRoomValueProblem(key, new List<UnityEngine.Color>(), SessionData.DefaultKeyCapBytes) == null ||
+                SessionData.HostRoomValueProblem<Action>(key, null, SessionData.DefaultKeyCapBytes) == null)
+                failures.Add("host room: a Unity type or a delegate was accepted");
+            if (SessionData.HostRoomValueProblem("no-guid-here", 1, SessionData.DefaultKeyCapBytes) == null ||
+                SessionData.HostRoomValueProblem("com.example.notloaded/x", 1, SessionData.DefaultKeyCapBytes) == null)
+                failures.Add("host room: a key outside the identifier rule was accepted");
+            if (SessionData.HostRoomValueProblem(key, new string('x', 100), 50) == null)
+                failures.Add("host room: a default over the cap was accepted");
+
+            Pick pick = new Pick { Types = new List<int> { 1, 2 }, When = DateShaped, Exact = LongDecimal };
+            string json;
+            Pick copy;
+            string problem = HostRoomValue<Pick>.Encode(pick, SessionData.DefaultKeyCapBytes, out json, out copy);
+            if (problem != null) failures.Add("host room: encoding a plain class failed: " + problem);
+            else
+            {
+                pick.Types.Add(3);
+                if (copy.Types.Count != 2 || ReferenceEquals(copy.Types, pick.Types))
+                    failures.Add("host room: the held value shares the object it was set from");
+                Pick back;
+                string error;
+                if (!HostRoomValue<Pick>.Decode(json, out back, out error) || back.When != DateShaped ||
+                    back.Exact != LongDecimal)
+                    failures.Add("host room: a date-shaped string or a long decimal changed through the room text");
+            }
+            if (HostRoomValue<string>.Encode(new string('x', 100), 50, out json, out string unused) == null)
+                failures.Add("host room: a value over its cap was encoded");
+
+            // Batching: the writes of a frame leave together, the latest value of each key.
+            HostRoomCopy host = new HostRoomCopy();
+            host.Write("a", "1");
+            host.Write("b", "[2]");
+            host.Write("a", "3");
+            List<KeyValuePair<string, string>> batch = host.TakeBatch();
+            if (batch.Count != 2 || batch[0].Key != "a" || batch[0].Value != "3" || batch[1].Key != "b")
+                failures.Add("host room: a frame's writes did not batch into one update of the latest values");
+            if (host.TakeBatch().Count != 0 || host.Write("a", "3") || host.PendingCount != 0)
+                failures.Add("host room: an unchanged value was written again");
+            if (host.TotalBytesWith("a", "12345") != 5 + 3)
+                failures.Add("host room: the total size counted a replaced value");
+
+            // Another player's write: put back only when it differs.
+            if (!host.Foreign("a", "9") || host.Foreign("b", "[2]") || !host.Foreign("b", 5))
+                failures.Add("host room: a foreign write was judged wrongly");
+            batch = host.TakeBatch();
+            if (batch.Count != 2 || batch[0].Value != "3" || batch[1].Value != "[2]")
+                failures.Add("host room: the host did not put its own values back");
+
+            // A client that becomes host keeps what it accepted, and puts back what the room holds
+            // differently (a refused forged write, and a key it never accepted a value for).
+            HostRoomCopy client = new HostRoomCopy();
+            client.Accept("a", "1");
+            client.Accept("b", "[2]");
+            Dictionary<string, object> room = new Dictionary<string, object> { { "a", "1" }, { "b", "[9]" }, { "c", "5" } };
+            List<string> back2 = client.Adopt(new[] { "a", "b", "c", "d" },
+                                              k => room.TryGetValue(k, out object raw) ? raw : null);
+            batch = client.TakeBatch();
+            if (back2.Count != 2 || back2[0] != "b" || back2[1] != "c" || batch.Count != 2 ||
+                batch[0].Value != "[2]" || batch[1].Value != null)
+                failures.Add("host room: adoption did not keep the held values and put back the room's differences");
+
+            client.Write("a", "7");
+            List<string> dropped = client.DropPending();
+            if (dropped.Count != 1 || dropped[0] != "a" || client.PendingCount != 0)
+                failures.Add("host room: unsent writes were not dropped with the host role");
+
+            if (!HostRoomCopy.WriterAccepted(2, 2) || HostRoomCopy.WriterAccepted(3, 2) || !HostRoomCopy.WriterAccepted(0, 2))
+                failures.Add("host room: the writer rule gave the wrong answer");
         }
 
         private static void CheckExact(List<string> failures, string where, JObject keys)

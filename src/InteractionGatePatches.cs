@@ -40,16 +40,16 @@ namespace Ectype
     /// interaction and its pick-up, and the module upgrade tool.
     ///
     /// Owner side (the part owner's game, for authority): each network request a player's game
-    /// sends the owner of a part. The sender of most of the game's requests is recovered from
-    /// <see cref="RpcSender"/>; the rest carry it. Requests from the local player and from the
-    /// host are never refused there: the host's game logic sends requests of its own, and the
-    /// host's own actions are judged on its client side.
+    /// sends the owner of a part. The sender of most of the game's requests, and the socket
+    /// request being dispatched, are read from <see cref="RpcContext"/>; the rest carry their
+    /// sender. Requests from the local player and from the host are never refused there: the
+    /// host's game logic sends requests of its own, and the host's own actions are judged on its
+    /// client side.
     ///
-    /// The Photon hooks (the RPC sender, the socket request context and the ownership events)
-    /// are patched from the driver once a gate is registered and the game's state machine has
-    /// left its loading states:
-    /// patching PhotonNetwork at start-up sets Photon up before the game does, and its
-    /// connection then never gets past the name server.
+    /// A registered gate asks for <see cref="RpcContext"/>'s hooks, and the ownership event hook
+    /// is patched from the driver once a gate is registered and the game's state machine has
+    /// left its loading states: patching PhotonNetwork at start-up sets Photon up before the game
+    /// does, and its connection then never gets past the name server.
     /// </summary>
     internal static class InteractionGatePatches
     {
@@ -70,9 +70,6 @@ namespace Ectype
         private static Harmony _harmony;
         private static bool _photonPatched;
         private static AccessTools.FieldRef<TakeoverChair, bool> _chairInUse;
-
-        /// <summary>The socket request event Photon is dispatching right now, or null.</summary>
-        private static EventData _socketEvent;
 
         private static HarmonyMethod Hook(string name)
         {
@@ -144,9 +141,9 @@ namespace Ectype
                   "door requests are not refused by the host");
             Patch(ref ok, ref total, typeof(AirlockController), "NetworkAirlockOpenRequest", null, "AirlockDoorPrefix", null,
                   "airlock door requests are not refused by the host");
-            Patch(ref ok, ref total, typeof(AirlockController), "NetworkStartPressurization", null, "AirlockControlPrefix", null,
+            Patch(ref ok, ref total, typeof(AirlockController), "NetworkStartPressurization", null, "AirlockPressurizePrefix", null,
                   "airlock cycling is not refused by the host");
-            Patch(ref ok, ref total, typeof(AirlockController), "NetworkSafetyRequest", null, "AirlockControlPrefix", null,
+            Patch(ref ok, ref total, typeof(AirlockController), "NetworkSafetyRequest", null, "AirlockSafetyPrefix", null,
                   "the airlock safety override is not refused by the host");
 
             Plugin.Log.LogInfo("Ectype: interaction gate: " + ok + " of " + total + " hooks patched; the " +
@@ -181,9 +178,10 @@ namespace Ectype
 
         /// <summary>
         /// Driver step. Prunes the classifier's registrations of destroyed controls on a slow
-        /// timer, and patches the Photon hooks once, when a gate is registered and the game's
-        /// state machine has left its first state and the loading screen. With no gate ever
-        /// registered, Photon is never patched.
+        /// timer, and patches the ownership event hook once, when a gate is registered and the
+        /// game's state machine has left its first state and the loading screen. With no gate
+        /// ever registered, Photon is never patched here. The RPC and event senders come from
+        /// <see cref="RpcContext"/>, whose hooks a registered gate asks for.
         /// </summary>
         internal static void PollLate()
         {
@@ -192,13 +190,9 @@ namespace Ectype
 #if ECTYPE_DEV
             PollPickupCheck();
 #endif
-            if (_photonPatched || _harmony == null || !InteractionGate.AnyRegistered || !GameLoaded()) return;
+            if (_photonPatched || _harmony == null || !InteractionGate.AnyRegistered || !RpcContext.GameLoaded()) return;
             _photonPatched = true;
             int ok = 0, total = 0;
-            PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "ExecuteRpc", typeof(RpcSender), "RpcPrefix", "RpcFinalizer",
-                        "power, panel and synced-switch requests are not refused by the owner");
-            PatchPhoton(ref ok, ref total, typeof(LoadBalancingClient), "OnEvent", typeof(InteractionGatePatches),
-                        "DispatchPrefix", "DispatchFinalizer", "socket requests are not refused by the owner");
             PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "OnEvent", typeof(InteractionGatePatches),
                         "OwnershipEventPrefix", null, "ownership takeovers are not refused");
             try { PhotonNetwork.AddCallbackTarget(OwnershipFailures.Instance); }
@@ -209,19 +203,6 @@ namespace Ectype
             }
             Plugin.Log.LogInfo("Ectype: interaction gate: " + ok + " of " + total + " Photon hooks patched " +
                                "after the game loaded.");
-        }
-
-        private static bool GameLoaded()
-        {
-            try
-            {
-                GameStateMachine machine = GameStateMachine.Instance;
-                if (machine == null || machine.CurrentState == null) return false;
-                // Compared by name, so a renamed state cannot break the check.
-                string state = machine.CurrentState.GetType().Name;
-                return state != "GSNull" && state != "GSLoading";
-            }
-            catch (Exception) { return false; }
         }
 
         private static void PatchPhoton(ref int ok, ref int total, Type type, string method, Type hooks,
@@ -590,7 +571,9 @@ namespace Ectype
                                           ref IPromise result, bool runOriginal)
         {
             if (!runOriginal) return false;
-            EventData ev = _socketEvent;
+            // Photon hands each event to PUN and then to every carrier inside one dispatch, which
+            // RpcContext records, so the carriers' answer runs while the request is current.
+            EventData ev = RpcContext.CurrentEvent;
             if (ev == null || ev.Code != code || view == null || !InteractionGate.AnyRegistered) return true;
             try
             {
@@ -622,7 +605,7 @@ namespace Ectype
             try
             {
                 Photon.Realtime.Player sender;
-                if (!RpcSender.TryGet(__instance.photonView, out sender)) return true;
+                if (!RpcContext.TryGetSender(__instance.photonView, out sender)) return true;
                 ChangeResponsivePun.ChangeResponsiveWrapper w =
                     ___ChangeResponsives != null && index >= 0 && index < ___ChangeResponsives.Length
                         ? ___ChangeResponsives[index] : null;
@@ -637,7 +620,8 @@ namespace Ectype
             }
         }
 
-        /// <summary>A system's, a power line's or the whole ship's power switch.</summary>
+        /// <summary>A system's, a power line's or the whole ship's power switch, named by the
+        /// component asked: a power drain, a propagator or the power system.</summary>
         private static bool PowerRequestPrefix(MonoBehaviourPun __instance, bool __runOriginal)
         {
             if (!__runOriginal) return false;
@@ -645,8 +629,10 @@ namespace Ectype
             try
             {
                 Photon.Realtime.Player sender;
-                if (!RpcSender.TryGet(__instance.photonView, out sender)) return true;
-                return !RefuseRequest(sender, __instance, InteractionKind.PowerSwitch);
+                if (!RpcContext.TryGetSender(__instance.photonView, out sender)) return true;
+                InteractionKind kind = InteractionClassifier.KindOfType(__instance.GetType());
+                if (!kind.IsPowerSwitch()) kind = InteractionKind.OtherPowerSwitch;
+                return !RefuseRequest(sender, __instance, kind);
             }
             catch (Exception e)
             {
@@ -663,7 +649,7 @@ namespace Ectype
             try
             {
                 Photon.Realtime.Player sender;
-                if (!RpcSender.TryGet(__instance.photonView, out sender)) return true;
+                if (!RpcContext.TryGetSender(__instance.photonView, out sender)) return true;
                 return !RefuseRequest(sender, __instance, InteractionKind.EnhancementPanel);
             }
             catch (Exception e)
@@ -703,10 +689,16 @@ namespace Ectype
             return AirlockRequest(index, info, ___airlocks, InteractionKind.Door, __runOriginal);
         }
 
-        private static bool AirlockControlPrefix(int index, PhotonMessageInfo info, List<Airlock> ___airlocks,
-                                                 bool __runOriginal)
+        private static bool AirlockPressurizePrefix(int index, PhotonMessageInfo info, List<Airlock> ___airlocks,
+                                                    bool __runOriginal)
         {
-            return AirlockRequest(index, info, ___airlocks, InteractionKind.AirlockControl, __runOriginal);
+            return AirlockRequest(index, info, ___airlocks, InteractionKind.AirlockPressurize, __runOriginal);
+        }
+
+        private static bool AirlockSafetyPrefix(int index, PhotonMessageInfo info, List<Airlock> ___airlocks,
+                                                bool __runOriginal)
+        {
+            return AirlockRequest(index, info, ___airlocks, InteractionKind.AirlockSafety, __runOriginal);
         }
 
         /// <summary>An airlock's door, cycle or safety override, asked of the host.</summary>
@@ -727,21 +719,7 @@ namespace Ectype
             }
         }
 
-        // ---- Photon: socket request context and ownership events -------------------------
-
-        /// <summary>Photon hands each event to PUN's handler and then to every carrier, all
-        /// inside this one dispatch. A socket request is held for the carriers' answer.</summary>
-        private static void DispatchPrefix(EventData photonEvent, out EventData __state)
-        {
-            __state = _socketEvent;
-            byte code = photonEvent != null ? photonEvent.Code : (byte)0;
-            _socketEvent = code >= InsertRequestEvent && code <= EjectRequestEvent ? photonEvent : null;
-        }
-
-        private static void DispatchFinalizer(EventData __state)
-        {
-            _socketEvent = __state;
-        }
+        // ---- Photon: ownership events -----------------------------------------------------
 
         /// <summary>
         /// Ownership events. A network object set to be taken over at will changes owner on each
@@ -1054,53 +1032,6 @@ namespace Ectype
             CellModule module = view.GetComponent<CellModule>();
             part = module != null ? (Component)module : view;
             kind = InteractionClassifier.Classify(part, false);
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// Who sent the Photon RPC that is running now. Most of the game's request RPCs take no
-    /// message info, so the method cannot tell who asked. PUN runs every RPC, from the network or
-    /// a player's RPC to themselves, inside PhotonNetwork.ExecuteRpc, which is handed the sender
-    /// the server stamped on the event and calls the RPC method before it returns. A
-    /// prefix and finalizer on it record the sender and the target view for the length of that
-    /// call, restoring the outer pair after an RPC run inside another.
-    /// </summary>
-    internal static class RpcSender
-    {
-        /// <summary>PUN's key for the target view id in an RPC's data.</summary>
-        private static readonly object ViewKey = (byte)0;
-
-        internal struct Frame
-        {
-            internal Photon.Realtime.Player Sender;
-            internal int View;
-        }
-
-        private static Frame _current;
-
-        private static void RpcPrefix(ExitGames.Client.Photon.Hashtable rpcData, Photon.Realtime.Player sender,
-                                      out Frame __state)
-        {
-            __state = _current;
-            object view = null;
-            if (rpcData != null) rpcData.TryGetValue(ViewKey, out view);
-            _current = new Frame { Sender = sender, View = view is int ? (int)view : 0 };
-        }
-
-        private static void RpcFinalizer(Frame __state)
-        {
-            _current = __state;
-        }
-
-        /// <summary>The sender of the RPC running now on this view; false outside such an RPC,
-        /// before the patch is in, or for another view.</summary>
-        internal static bool TryGet(PhotonView view, out Photon.Realtime.Player sender)
-        {
-            sender = null;
-            Frame f = _current;
-            if (f.Sender == null || view == null || f.View == 0 || f.View != view.ViewID) return false;
-            sender = f.Sender;
             return true;
         }
     }

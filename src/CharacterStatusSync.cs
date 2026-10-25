@@ -157,6 +157,15 @@ namespace Ectype
         internal bool LineClear;
     }
 
+    /// <summary>The limits one request is judged against: the template's constants, or what its
+    /// <c>...For</c> functions returned for the requester's character on the judging client.</summary>
+    internal struct CharacterRequestLimits
+    {
+        internal float MaxRange;
+        internal float MinInterval;
+        internal float MaxMagnitude;
+    }
+
     /// <summary>
     /// A token bucket per id: <c>burst</c> tokens to start with, one more every
     /// <c>interval</c> seconds up to <c>burst</c>, one taken per accepted request. A refused
@@ -305,6 +314,11 @@ namespace Ectype
                                       "checks (Stance, MaxRange, RequiresLineOfSight, RefuseSeated, " +
                                       "RefuseInTube or MinInterval) but not AcceptsRequests, so it " +
                                       "accepts no requests for them to judge.");
+            if (!def.AcceptsRequests && (def.MaxRangeFor != null || def.MinIntervalFor != null ||
+                                         def.MaxMagnitudeFor != null || def.OnRequestApplied != null))
+                Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' sets MaxRangeFor, " +
+                                      "MinIntervalFor, MaxMagnitudeFor or OnRequestApplied but not " +
+                                      "AcceptsRequests, so no request ever reaches them.");
             if (!def.Presented && (def.Visibility != StatusVisibility.All || def.CreateVfx != null))
                 Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' sets Visibility " +
                                       "or CreateVfx but is not Presented, so no presentation copy is sent.");
@@ -342,41 +356,84 @@ namespace Ectype
 
         // ---------------------------------------------------------------- judging
 
+        /// <summary>
+        /// The limits a request from <paramref name="source"/> is judged against. Each
+        /// <c>...For</c> function the template sets is called with the requester's character -
+        /// on the target's client, its replica there - and its result replaces the constant when
+        /// usable. With no requester character (<paramref name="sourceKnown"/> false) the constants
+        /// stand: the request is then refused SenderMissing whatever they are.
+        /// </summary>
+        internal static CharacterRequestLimits Limits(CharacterStatusDef def, Player source, bool sourceKnown)
+        {
+            CharacterRequestLimits lim = new CharacterRequestLimits();
+            if (def == null) return lim;
+            lim.MaxRange = Pick(def, def.MaxRangeFor, "MaxRange", def.MaxRange, false,
+                                "a finite number of metres, 0 or more", source, sourceKnown);
+            lim.MinInterval = Pick(def, def.MinIntervalFor, "MinInterval", def.MinInterval, false,
+                                   "a finite number of seconds, 0 or more", source, sourceKnown);
+            lim.MaxMagnitude = Pick(def, def.MaxMagnitudeFor, "MaxMagnitude", def.MaxMagnitude, true,
+                                    "a finite number above 0", source, sourceKnown);
+            return lim;
+        }
+
+        private static float Pick(CharacterStatusDef def, Func<Player, float> fn, string field, float constant,
+                                  bool aboveZero, string rule, Player source, bool sourceKnown)
+        {
+            if (fn == null || !sourceKnown) return constant;
+            string who = source != null ? source.name : "no character";
+            float v;
+            try { v = fn(source); }
+            catch (Exception e)
+            {
+                if (CharacterStatuses.WarnOnce("limit-threw:" + def.Key + ":" + field))
+                    Plugin.Log.LogError("Ectype: character status '" + def.Key + "' " + field + "For threw for " +
+                                        who + "; the request is judged against " + field + " " + constant +
+                                        " (logged once per status and field): " + e);
+                return constant;
+            }
+            if (Finite(v) && (aboveZero ? v > 0f : v >= 0f)) return v;
+            if (CharacterStatuses.WarnOnce("limit-bad:" + def.Key + ":" + field))
+                Plugin.Log.LogWarning("Ectype: character status '" + def.Key + "' " + field + "For returned " + v +
+                                      " for " + who + "; it must be " + rule + ", so the request is judged " +
+                                      "against " + field + " " + constant + " (logged once per status and field).");
+            return constant;
+        }
+
         /// <summary>Duration and magnitude: refused when unusable, cut to the template's
-        /// caps when above them.</summary>
-        internal static CharacterStatusRefusal Bound(CharacterStatusDef def, ref float seconds,
-                                                     ref float magnitude)
+        /// MaxSeconds and the request's magnitude limit when above them.</summary>
+        internal static CharacterStatusRefusal Bound(CharacterStatusDef def, CharacterRequestLimits lim,
+                                                     ref float seconds, ref float magnitude)
         {
             if (!Finite(seconds) || !(seconds > 0f) || seconds < def.MinSeconds)
                 return CharacterStatusRefusal.InvalidDuration;
             if (!Finite(magnitude) || !(magnitude > 0f)) return CharacterStatusRefusal.InvalidMagnitude;
             if (seconds > def.MaxSeconds) seconds = def.MaxSeconds;
-            if (magnitude > def.MaxMagnitude) magnitude = def.MaxMagnitude;
+            if (magnitude > lim.MaxMagnitude) magnitude = lim.MaxMagnitude;
             return CharacterStatusRefusal.None;
         }
 
-        /// <summary>The distance a request may span: MaxRange on the target's client; on the
-        /// requesting client, the larger of MaxRange times <see cref="RangeSlackFactor"/> and
-        /// MaxRange plus <see cref="RangeSlackMetres"/>, so a request at the edge reaches the
-        /// target's client to be judged there. 0 when the template checks no range.</summary>
-        internal static float RangeLimit(CharacterStatusDef def, bool requesterView)
+        /// <summary>The distance a request may span: the range limit on the target's client; on
+        /// the requesting client, the larger of it times <see cref="RangeSlackFactor"/> and it plus
+        /// <see cref="RangeSlackMetres"/>, so a request at the edge reaches the target's client to
+        /// be judged there. 0 when the request checks no range.</summary>
+        internal static float RangeLimit(float maxRange, bool requesterView)
         {
-            if (!(def.MaxRange > 0f)) return 0f;
-            if (!requesterView) return def.MaxRange;
-            return Math.Max(def.MaxRange * RangeSlackFactor, def.MaxRange + RangeSlackMetres);
+            if (!(maxRange > 0f)) return 0f;
+            if (!requesterView) return maxRange;
+            return Math.Max(maxRange * RangeSlackFactor, maxRange + RangeSlackMetres);
         }
 
         /// <summary>
-        /// Every check but rate, in order. Pure: the facts are whatever the caller saw, so the
-        /// requester and the target's client run the same function on their own views.
+        /// Every check but rate, in order. Pure: the facts and limits are whatever the caller saw,
+        /// so the requester and the target's client run the same function on their own views.
         /// </summary>
         internal static CharacterStatusRefusal Judge(CharacterStatusDef def, ref float seconds,
                                                      ref float magnitude, CharacterRequestFacts f,
-                                                     bool requesterView)
+                                                     CharacterRequestLimits lim, bool requesterView)
         {
             if (def == null) return CharacterStatusRefusal.NotRegistered;
             if (!def.AcceptsRequests) return CharacterStatusRefusal.NotAccepted;
-            CharacterStatusRefusal bounds = Bound(def, ref seconds, ref magnitude);
+            CharacterStatusRefusal bounds = Bound(def, lim, ref seconds, ref magnitude);
             if (bounds != CharacterStatusRefusal.None) return bounds;
             if (!f.VictimAlive) return CharacterStatusRefusal.TargetDead;
             if (!f.SourceKnown) return CharacterStatusRefusal.SenderMissing;
@@ -386,7 +443,7 @@ namespace Ectype
             if (def.Stance == StatusStance.Hostile && !f.Hostile) return CharacterStatusRefusal.Stance;
             if (def.Stance == StatusStance.Friendly && f.Hostile) return CharacterStatusRefusal.Stance;
             if (def.Stance == StatusStance.MasterOnly && !f.SourceIsMaster) return CharacterStatusRefusal.Stance;
-            float limit = RangeLimit(def, requesterView);
+            float limit = RangeLimit(lim.MaxRange, requesterView);
             if (limit > 0f && !(f.Distance <= limit)) return CharacterStatusRefusal.OutOfRange;
             if (def.RequiresLineOfSight && !f.LineClear) return CharacterStatusRefusal.NoLineOfSight;
             return CharacterStatusRefusal.None;
@@ -493,7 +550,8 @@ namespace Ectype
         /// <summary>A refusal in words, the same on the requester and on the target's client.
         /// <paramref name="seconds"/> and <paramref name="magnitude"/> are the values as received.</summary>
         internal static string Reason(CharacterStatusRefusal r, CharacterStatusDef def, CharacterRequestFacts f,
-                                      float seconds, float magnitude, bool requesterView)
+                                      CharacterRequestLimits lim, float seconds, float magnitude,
+                                      bool requesterView)
         {
             switch (r)
             {
@@ -521,12 +579,12 @@ namespace Ectype
                            (f.Hostile ? "on another side from the target" : "on the target's side");
                 case CharacterStatusRefusal.OutOfRange:
                     return "the requester is " + f.Distance.ToString("0.0") + " m from the target, beyond " +
-                           RangeLimit(def, requesterView).ToString("0.0") + " m";
+                           RangeLimit(lim.MaxRange, requesterView).ToString("0.0") + " m";
                 case CharacterStatusRefusal.NoLineOfSight:
                     return "something blocks the line between the requester and the target";
                 case CharacterStatusRefusal.RateLimited:
                     return "more than " + (requesterView ? def.Burst : def.Burst + 1) +
-                           " request(s) at once, or more often than one per " + def.MinInterval + " s";
+                           " request(s) at once, or more often than one per " + lim.MinInterval + " s";
                 case CharacterStatusRefusal.NoPeer:
                     return "the target's client does not run this framework on network contract " +
                            EctypePluginInfo.NET_CONTRACT_VERSION;
@@ -571,11 +629,12 @@ namespace Ectype
             PhotonPlayer owner = PlayerOf(targetActor);
             Player me = Topology.CharacterOf(EnemyStatuses.LocalActor());
             CharacterRequestFacts f = Gather(me, target, def);
+            CharacterRequestLimits lim = Limits(def, me, me != null);
             // Judged as it will travel, in whole milliseconds, so a duration just above MinSeconds
             // cannot pass here and fail on the target.
             float s = Finite(seconds) ? (float)(Math.Round(seconds * 1000.0) / 1000.0) : seconds;
             float m = magnitude;
-            CharacterStatusRefusal r = Judge(def, ref s, ref m, f, true);
+            CharacterStatusRefusal r = Judge(def, ref s, ref m, f, lim, true);
             if (r == CharacterStatusRefusal.None && (owner == null || !PeerPresence.HasFramework(owner)))
                 r = CharacterStatusRefusal.NoPeer;
             if (r == CharacterStatusRefusal.None && Pending.Count >= MaxPending)
@@ -587,7 +646,7 @@ namespace Ectype
                 r = CharacterStatusRefusal.RateLimited;
             }
             if (r == CharacterStatusRefusal.None &&
-                !Sent.TryTake(targetActor + "/" + def.Key, def.Burst, def.MinInterval, Time.unscaledTime))
+                !Sent.TryTake(targetActor + "/" + def.Key, def.Burst, lim.MinInterval, Time.unscaledTime))
                 r = CharacterStatusRefusal.RateLimited;
             // The target's cap across keys, kept here too, so nothing is sent that it would drop.
             if (r == CharacterStatusRefusal.None &&
@@ -597,7 +656,7 @@ namespace Ectype
             {
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: Request('" + def.Key + "') on " + target.name +
-                                       " refused: " + Reason(r, def, f, seconds, magnitude, true) + ".");
+                                       " refused: " + Reason(r, def, f, lim, seconds, magnitude, true) + ".");
                 handle.Complete(r);
                 return;
             }
@@ -839,30 +898,32 @@ namespace Ectype
 
             Player source = Topology.CharacterOf(sender);
             CharacterRequestFacts f = Gather(source, victim, def);
+            CharacterRequestLimits lim = Limits(def, source, source != null);
             float seconds = durationMs / 1000f, rawSeconds = seconds, rawMagnitude = magnitude;
-            CharacterStatusRefusal r = Judge(def, ref seconds, ref magnitude, f, false);
+            CharacterStatusRefusal r = Judge(def, ref seconds, ref magnitude, f, lim, false);
             // One token more than the requester keeps: requests the network delivered closer
             // together than they were sent still land, and the sustained rate stays MinInterval.
             if (r == CharacterStatusRefusal.None &&
-                !Accepted.TryTake(sender + "/" + key, def.Burst + 1, def.MinInterval, Time.unscaledTime))
+                !Accepted.TryTake(sender + "/" + key, def.Burst + 1, lim.MinInterval, Time.unscaledTime))
                 r = CharacterStatusRefusal.RateLimited;
             if (r != CharacterStatusRefusal.None)
             {
                 StatusRefusalLog.Report(sender, "character request", key,
                                         "Ectype: refused character status '" + key + "' request from actor " +
                                         sender + " on " + victim.name + ": " +
-                                        Reason(r, def, f, rawSeconds, rawMagnitude, false) + ".");
+                                        Reason(r, def, f, lim, rawSeconds, rawMagnitude, false) + ".");
                 return r;
             }
 
             PhotonView av = attackerView != 0 ? PhotonView.Find(attackerView) : null;
             OrbitObject attacker = av != null ? av.GetComponent<OrbitObject>() : null;
-            CharacterStatuses.ApplyLocal(victim, def, seconds, magnitude, sender, attacker,
-                                         Topology.ForceOf(source), true);
+            CharacterStatus live = CharacterStatuses.ApplyLocal(victim, def, seconds, magnitude, sender,
+                                                                attacker, Topology.ForceOf(source), true);
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: character status '" + key + "' applied on request from actor " +
                                    sender + " (" + seconds + " s, magnitude " + magnitude + ", " +
                                    f.Distance.ToString("0.0") + " m).");
+            if (live != null) live.NotifyRequest(victim, source, magnitude);
             return CharacterStatusRefusal.None;
         }
 

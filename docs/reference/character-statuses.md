@@ -88,22 +88,24 @@ character:
    | 4 | The framework's patches applied this session | `Inert` |
    | 5 | A template is registered under the key | `NotRegistered` |
    | 6 | The template sets `AcceptsRequests` | `NotAccepted` |
-   | 7 | Duration finite and at least `MinSeconds`; magnitude above 0 and finite. Values above `MaxSeconds` and `MaxMagnitude` are cut to them | `InvalidDuration`, `InvalidMagnitude` |
+   | 7 | Duration finite and at least `MinSeconds`; magnitude above 0 and finite. Values above `MaxSeconds` and the magnitude limit (`MaxMagnitude`, or `MaxMagnitudeFor` of the requester) are cut to them | `InvalidDuration`, `InvalidMagnitude` |
    | 8 | The target character is alive | `TargetDead` |
    | 9 | The requester has a character on this client | `SenderMissing` |
    | 10 | That character is alive | `SenderDead` |
    | 11 | `RefuseSeated`: the requester is not seated | `SenderSeated` |
    | 12 | `RefuseInTube`: neither character is in a clone tube | `InCloneTube` |
    | 13 | `Stance`: `Hostile` needs the two characters on different sides, `Friendly` on the same side, `Any` accepts both | `Stance` |
-   | 14 | `MaxRange`: the distance between the two characters, when above 0 | `OutOfRange` |
+   | 14 | Range: the distance between the two characters, when the range limit (`MaxRange`, or `MaxRangeFor` of the requester) is above 0 | `OutOfRange` |
    | 15 | `RequiresLineOfSight`: nothing between the two characters' chests | `NoLineOfSight` |
-   | 16 | Rate: a token bucket per requester and key, `Burst + 1` tokens, one more every `MinInterval` seconds | `RateLimited` |
+   | 16 | Rate: a token bucket per requester and key, `Burst + 1` tokens, one more every `MinInterval` (or `MinIntervalFor` of the requester) seconds | `RateLimited` |
 
 4. An accepted request applies the status as a local `Apply` would, with the cut duration and
    magnitude and the same stacking and callbacks, with one difference: **a request never
    shortens or weakens a running status.** Its end moves only later, and a larger magnitude
    re-applies every stack at the larger value. Without that rule, a 0.25 s request would end
-   another player's 30 s status, a remote removal under another name.
+   another player's 30 s status, a remote removal under another name. After `OnApplied`,
+   `OnRequestApplied` runs with the requester's character and the magnitude this request was
+   accepted at.
 5. The target's client answers the requester with the verdict: `None` for applied, else the
    refusal. A refusal is also logged there as a warning naming the key, the requester's actor
    number and the reason; at most one line per requester, operation and key per 30 s.
@@ -145,8 +147,8 @@ saw it, so a hit that looked close to the requester but far to the target is ref
   that owns the character, its in-tube ability being active. The game keeps a respawning
   character alive while it sits in the tube.
 - **Range** is the distance between the two characters' positions (their feet). The target's
-  client checks `MaxRange` exactly. The requesting client checks the larger of `MaxRange` × 1.15
-  and `MaxRange` + 1 m. Each client sees the other's character one network update late, so a
+  client checks the range limit exactly. The requesting client checks the larger of the limit
+  × 1.15 and the limit + 1 m. Each client sees the other's character one network update late, so a
   request near the edge looks in range on one client and out of range on the other; the looser
   check on the requesting side lets such a request reach the target's client, whose view is the
   one that counts, and the answer reports its verdict.
@@ -171,7 +173,8 @@ reports it through `AttackerOf(target, key)`, with the requester's actor through
 **Requests on someone else's behalf keep `Stance = Any`.** Every check reads the requesting
 client's own character. A request sent for another party, such as the master forwarding an
 NPC's effect or a client relaying another player's hit, is judged by the forwarder's character,
-not the party it acts for. Declare such a status `Stance = Any` with no `MaxRange`, or apply it on
+not the party it acts for, and a limit function receives the forwarder's character. Declare
+such a status `Stance = Any` with no `MaxRange` or `MaxRangeFor`, or apply it on
 the target's own client with `Apply`. NPC damage abilities already run there.
 
 **Template fields for requests.** None runs for the owning client's own `Apply`.
@@ -189,18 +192,120 @@ the target's own client with `Apply`. NPC damage abilities already run there.
 | `MinSeconds` | `0.25` | A shorter requested duration is refused. |
 | `MaxSeconds` | `30` | A longer requested duration is cut to this. |
 | `MaxMagnitude` | `1` | A larger requested magnitude is cut to this. A magnitude of 0 or below is refused: it would turn a debuff into a buff, or pin the status at no effect. |
+| `MaxRangeFor` | `null` | `Func<Player, float>`: the range limit for this requester, in place of `MaxRange`. See **Limits that follow the requester**. |
+| `MinIntervalFor` | `null` | The same for `MinInterval`. |
+| `MaxMagnitudeFor` | `null` | The same for `MaxMagnitude`. |
+| `OnRequestApplied` | `null` | `Action<Player, Player, float, int>`: (target, requester's character, magnitude, stacks), on the target's client for every accepted request. |
 
 `Register` refuses a template with `Burst` below 1; a negative or non-finite `MinInterval` or
 `MaxRange`; a `MaxSeconds` that is not above 0; a `MinSeconds` outside 0 to `MaxSeconds`; or a
 `MaxMagnitude` that is not above 0. It logs one error naming the field. A template that sets
-request checks without `AcceptsRequests`, or presentation fields without `Presented`, registers
-with one warning.
+request checks, requester limits or `OnRequestApplied` without `AcceptsRequests`, or
+presentation fields without `Presented`, registers with one warning.
 
 **Refusals from the requesting client's own checks** are the reasons above plus
 `InvalidTarget` (null, no stat collection or no `PhotonView`), `NoPeer` (the target's client does
 not run this framework on this network contract), `TargetDead` for this client's own dead
 character, and `RateLimited` past the target's cap across keys (kept here too: a burst of 20,
 refilled at 20 a second, per target) or when 256 requests are already waiting for an answer.
+
+## Limits that follow the requester
+
+A fixed limit refuses a legitimately upgraded request. A punch whose reach a perk raises to
+3 m is refused `OutOfRange` against `MaxRange = 2.5`; a perk that shortens its cooldown is
+refused `RateLimited`; a perk that raises its damage is cut back to `MaxMagnitude`. Each of the
+three limits takes an optional `Func<Player, float>` that computes it from the requester's
+character: `MaxRangeFor`, `MinIntervalFor` and `MaxMagnitudeFor`. Set, it is used in place of
+the constant; unset, the constant stands.
+
+A punch, delivered as a status whose magnitude carries the damage and whose effect is the
+target's own `OnRequestApplied`. The framework's `MeleeReach`, `MeleeCooldown` and
+`MeleeDamage` factors ([mod-stats.md](mod-stats.md)) are what perks raise:
+
+```csharp
+const string Punch = "com.example.mymod/punch";
+const float Reach = 2.5f, Cooldown = 1f, Damage = 10f;
+
+CharacterStatuses.Register(new CharacterStatusDef(Punch)
+{
+    AcceptsRequests = true,
+    Stance = StatusStance.Hostile,
+    RequiresLineOfSight = true, RefuseSeated = true, RefuseInTube = true,
+    MinSeconds = 0.25f, MaxSeconds = 0.25f,
+    Burst = 1,
+    // The unupgraded values. A limit function whose result is unusable falls back to these.
+    MaxRange = Reach, MinInterval = Cooldown, MaxMagnitude = Damage,
+    // The requester's perks, read from the character the framework passes in.
+    MaxRangeFor     = p => Reach    * ModStats.Get(p.Stats, "MeleeReach"),
+    MinIntervalFor  = p => Cooldown * ModStats.Get(p.Stats, "MeleeCooldown"),
+    MaxMagnitudeFor = p => Damage   * ModStats.Get(p.Stats, "MeleeDamage"),
+    // Runs on the punched player's client, where that player's damage resolves.
+    OnRequestApplied = (me, puncher, damage, stacks) => TakeHit(me, puncher, damage),
+});
+
+// On the puncher's client:
+float damage = Damage * ModStats.Get(StatCollectionKind.Character, "MeleeDamage");
+CharacterStatuses.Request(victim, Punch, seconds: 0.25f, magnitude: damage);
+```
+
+**Where the function runs.** Each client that judges a request calls the function with the
+requester's character as that client simulates it. On the requesting client that is its own
+character. On the target's client it is the target's replica of the requester. Nothing about
+the limits travels in the request, so the requester cannot widen them by what it sends.
+
+**Why the replica is fit to judge with.** The game applies perks to every character on every
+client. A player's perk levels are a Photon player property; each client's copy of that
+player's character re-applies its perk modifiers to its own stat collection when the property
+arrives, with no ownership check. So the replica on the target's client carries the
+requester's perk stats, and `ModStats.Get(p.Stats, ...)` reads the same value there as on the
+requester's own client once the property has arrived. A modified requester can change its
+stats on its own client freely, and none of that reaches the target's replica. What it can
+reach is its perk-level property, which the game itself trusts for every other purpose too;
+the judge is as strict as the game, no stricter.
+
+**A stat that changes mid-request.** Each request is judged at the value the judging client
+holds when the request arrives; nothing judged earlier is revisited.
+
+- A perk gained just before a request may not have reached the target's client: the request is
+  judged at the old value, so a punch at the new reach is refused `OutOfRange` and its damage
+  is cut to the old cap. A perk lost just before a request still counts on the target until the
+  property update arrives. The window is the delay between the property change and its
+  arrival, about one network round trip.
+- The requesting client reads its own character, which has the change already, so it sends a
+  request the target may still refuse. The answer reports the target's verdict.
+- An applied status keeps the magnitude it was accepted at when the stat later falls.
+- The rate bucket credits the time since the requester's last request at the interval read for
+  the current request, so a shorter cooldown refills faster from the next request on. Tokens
+  already held are kept, up to `Burst + 1`.
+
+**A result the framework cannot use falls back to the constant.** A range or interval that is
+not a finite number of 0 or more, a magnitude limit that is not a finite number above 0, or a
+function that throws, logs one line per status and field and judges that request against the
+constant. So set the constant to the unupgraded value, not 0: `MaxRange = 0` with a failing
+`MaxRangeFor` checks no range at all. A result of 0 for range or interval checks no range or no
+rate, as the constant does.
+
+**`OnRequestApplied`** runs on the target's client for every accepted request from another
+client, after `OnApplied`: the target, the requester's character, the magnitude this request
+was accepted at (after the cut, not the status's running magnitude, which a request only
+raises), and the stack count after it. It also runs when the request only refreshed a status
+already at `MaxStacks`. It does not run for `Apply`, nor for `Request` on this client's own
+character, which is `Apply`.
+
+**Things that look like they should work and do not:**
+
+- **A requester buff from a character status.** A status lives on the client that owns the
+  character, so a "longer reach" status on the requester changes the requester's own stats and
+  never the target's replica of them. The requester's check passes and the target refuses. The
+  same holds for any modifier a mod applies only on its own client. Only stats every client
+  applies to every character, such as perks, reach the judge.
+- **Reading the local player in the function.** `LocalPlayer.Instance`,
+  `ModStats.Get(StatCollectionKind.Character, ...)` or any other read of "my character" inside
+  the function reads the judging client's own character: on the target's client, the target's
+  stats. Read from the `Player` the function receives.
+- **A config value in the function.** Each client reads its own config, so the target's config
+  decides. A limit the two players should agree on comes from game state both clients hold.
+- **Leaving the constant at 0 and relying on the function.** See the fallback above.
 
 ## Removal
 
@@ -294,7 +399,8 @@ Turn on `[Debug] VerboseLogging` on both clients.
 | Line | Check |
 | --- | --- |
 | `Ectype: character status '<key>' requested on <name> (actor <a>, request <id>, <s> s, magnitude <m>).` | On the requester: the request left. |
-| `Ectype: character status '<key>' applied on request from actor <a> (<s> s, magnitude <m>, <d> m).` | On the target: accepted, with the distance it measured. |
+| `Ectype: character status '<key>' applied on request from actor <a> (<s> s, magnitude <m>, <d> m).` | On the target: accepted, with the distance it measured and the magnitude after the cut. |
+| `Ectype: character status '<key>' <field>For returned <v> for <name>; it must be <rule>, so the request is judged against <field> <c> (logged once per status and field).` | On either client: a limit function's result was unusable and the constant was used. |
 | `Ectype: refused character status '<key>' request from actor <a> on <name>: <reason>.` | On the target: refused, and why. |
 | `Ectype: character status '<key>' request <id> to actor <a> answered <refusal>.` | On the requester: the verdict arrived. |
 | `Ectype: presenting character status '<key>' on <name> for <s> s.` | On a third client: a copy started. |

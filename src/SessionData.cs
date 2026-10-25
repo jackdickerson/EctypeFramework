@@ -446,6 +446,54 @@ namespace Ectype
             return hv;
         }
 
+        /// <summary>
+        /// A value only the host writes, read on every client: the host's value while in a room,
+        /// in the hub and in a mission alike, and <paramref name="defaultValue"/> before the host
+        /// has written one. Held in its own room property, so a joiner reads it on joining.
+        /// <see cref="HostRoomValue{T}.Set"/> works on the host only; values set in one frame leave
+        /// in one room update. A client takes a change only when Photon reports the master client
+        /// as its writer, and the host writes its own value back when another player writes it. A
+        /// player who becomes the master keeps the values it held. <paramref name="key"/> is
+        /// <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>; <typeparamref name="T"/> is anything
+        /// <see cref="Register{T}"/> accepts; <paramref name="maxBytes"/> caps the value's compact
+        /// JSON, clamped to <see cref="EnvelopeCapBytes"/>. Call at plugin <c>Awake</c> on every
+        /// client. Never null; a refused value keeps its default and cannot be set.
+        /// </summary>
+        public static HostRoomValue<T> HostRoomValue<T>(string key, T defaultValue, int maxBytes = DefaultKeyCapBytes)
+        {
+            int cap = Math.Max(1, Math.Min(maxBytes, EnvelopeCapBytes));
+            string problem = HostRoomValueProblem(key, defaultValue, cap);
+            if (problem != null)
+            {
+                Plugin.Log.LogError("Ectype: host room value '" + key + "' refused: " + problem +
+                                    "; it keeps its default on this client.");
+                return new HostRoomValue<T>(key, defaultValue, cap, false);
+            }
+            if (!Plugin.PatchesApplied)
+            {
+                Plugin.Log.LogWarning("Ectype: host room value '" + key + "' not registered: the framework is inert " +
+                                      "this session; it keeps its default.");
+                return new HostRoomValue<T>(key, defaultValue, cap, false);
+            }
+            HostRoomValue<T> v = new HostRoomValue<T>(key, defaultValue, cap, true);
+            HostRoomValues.Register(v);
+            return v;
+        }
+
+        /// <summary>Null when <paramref name="key"/> and <typeparamref name="T"/> can make a host
+        /// room value, else why: the key checks and type checks of <see cref="Register{T}"/>, a key
+        /// already registered, or a default over the cap.</summary>
+        internal static string HostRoomValueProblem<T>(string key, T defaultValue, int cap)
+        {
+            string problem = CheckKey(key) ?? Identifiers.IdProblem(key) ?? TypeProblem(typeof(T), false);
+            if (problem != null) return problem;
+            if (HostRoomValues.IsRegistered(key)) return "the key is already registered";
+            string json;
+            T copy;
+            problem = Ectype.HostRoomValue<T>.Encode(defaultValue, cap, out json, out copy);
+            return problem != null ? "the default value: " + problem : null;
+        }
+
         internal static string DefaultHostValueKey<T>(BepInEx.Configuration.ConfigEntry<T> entry)
         {
             string file = null;
@@ -1011,7 +1059,7 @@ namespace Ectype
 
         internal static void Poll()
         {
-            if (!_patched && HostValues.Count == 0) return;
+            if (!_patched && HostValues.Count == 0 && HostRoomValues.Count == 0) return;
 
             LoadBalancingClient client = PhotonNetwork.NetworkingClient;
             if (client != _subscribed)
@@ -1020,6 +1068,9 @@ namespace Ectype
                 if (client != null) client.EventReceived += OnPhotonEvent;
                 _subscribed = client;
             }
+
+            // Every frame, so the values set in one frame leave together at the next.
+            HostRoomValues.Poll();
 
             if (Time.unscaledTime < _nextPoll) return;
             _nextPoll = Time.unscaledTime + PollSeconds;
@@ -1045,18 +1096,20 @@ namespace Ectype
             }
         }
 
-        /// <summary>Records who wrote the host-value room property. Photon raises event 253 for a
-        /// property change with the writer as the event's sender, after it has merged the change
-        /// into the room's copy.</summary>
+        /// <summary>Records who wrote the host-value room property, and hands every room property change to
+        /// the host room values. Photon raises event 253 for a property change with the writer as the event's sender, after it
+        /// has merged the change into the room's copy.</summary>
         private static void OnPhotonEvent(EventData ev)
         {
             try
             {
-                if (ev == null || ev.Code != 253 || HostValues.Count == 0) return;
+                if (ev == null || ev.Code != 253) return;
                 if (ev.Parameters.ContainsKey(253) && ev[253] is int && (int)ev[253] != 0) return;
                 ExitGames.Client.Photon.Hashtable props = ev[251] as ExitGames.Client.Photon.Hashtable;
+                if (props == null) return;
+                HostRoomValues.OnPropertiesChanged(ev.Sender, props);
                 object raw;
-                if (props == null || !props.TryGetValue(HostValuesRoomProperty, out raw)) return;
+                if (HostValues.Count == 0 || !props.TryGetValue(HostValuesRoomProperty, out raw)) return;
                 HostValueRoom.Written(ev.Sender, raw);
             }
             catch (Exception e)

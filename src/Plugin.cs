@@ -92,6 +92,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: interaction gate classifier patches failed: " + e); }
             try { InteractionGatePatches.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: interaction gate patches failed: " + e); }
+            // Keeps the Harmony instance only: its Photon hooks wait for the game to load.
+            RpcContext.Init(harmony);
             try { SessionData.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
             try { SessionStats.Install(); }
@@ -194,9 +196,11 @@ namespace Ectype
             Step("mod stats self-test", ModStatsSelfTest.Poll);
             Step("mutators self-test", SessionStatMutatorsSelfTest.Poll);
             Step("character status self-test", CharacterStatusSelfTest.Poll);
+            Step("stat contributions self-test", StatContributionsSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
+            Step("RPC context", RpcContext.Poll);
             Step("interaction gate", InteractionGatePatches.PollLate);
             Step("session data", SessionData.Poll);
             Step("session stats", SessionStats.Poll);
@@ -209,6 +213,7 @@ namespace Ectype
             Step("enemy abilities", EnemyAbilities.Poll);
             Step("character statuses", CharacterStatuses.Poll);
             Step("timed stats", TimedStatContributions.Poll);
+            Step("stat contributions", StatContributions.Poll);
             Step("held ability starts", AbilityActiveMessage.PollHeld);
             Step("ability bar", HudAbilityBar.Tick);
             Step("loot warm-up", LootTables.PollWarmUp);

@@ -119,7 +119,7 @@ The framework runs with or without VoidManager, and so can a room:
   joiner without VoidManager, whenever the host's highest declared VoidManager type is `All`.
   It does the same while the host has turned VoidManager's progression switch off. This is
   VoidManager's own policy. The framework declares no type, so it never causes the kick, but
-  any `All` mod on the host does, role mods included.
+  any mod that declares `All` to VoidManager does. A role mod that follows the examples declares nothing to VoidManager, so it does not.
 
 A room that must take players without VoidManager therefore needs a host without VoidManager,
 or a host whose mods declare nothing above `Session` to VoidManager. The framework's own
@@ -199,13 +199,16 @@ For a mod every player needs (`All Required`, or `All` declared to VoidManager):
   room installs it.
 - Every player in the room installs your mod at the host's version. Players who use the Void
   Crew Mod Launcher get the host's versions installed for them on join; anyone installing by
-  hand matches the version and is refused at join otherwise.
+  hand matches the version. The game refuses a join over a mod only when the mod registers
+  required content, as a role or `RuntimeContent` does; for any other `All Required` mod the
+  launcher alone installs the host's version and the game compares nothing.
 - When you release an update, every player updates together, including the framework if you
   rebuilt against a new one.
 - Hosting with the mod installed marks the session as modded, and the mark lasts until the
   game restarts. Disabling the mod in its config does not undo it. The framework itself leaves
   progression and achievements alone.
-- A player who has the mod cannot join a host who lacks it. The asset check is symmetric.
+- For a mod that registers required content, a player who has the mod cannot join a host who
+  lacks it. The asset check is symmetric.
 
 A setting only the host's config should decide, so that every client acts on the same number,
 reaches every client through `SessionData.HostValue`; see

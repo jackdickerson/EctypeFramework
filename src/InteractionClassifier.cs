@@ -31,13 +31,15 @@ namespace Ectype
     /// objects that own them register them as they start, through postfixes patched here.
     /// Everything else is read from the component's type or the types above it.
     ///
-    /// A switch is judged by what it switches: a power switch when a module mediator above it
-    /// names it, else the full classification of the component that holds the value it controls
-    /// (the same component, through the same computation, as the owner side when the switch's
-    /// request arrives). A switch with no module above it and no value holder (a breaker, a line
-    /// switch) is a power switch; one met while its module is still being assembled keeps that
-    /// answer, re-read after <see cref="RetrySeconds"/>, computed <see cref="MaxRetries"/> times
-    /// in all.
+    /// A switch is judged by what it switches: the full classification of the component that
+    /// holds the value it controls (the same component, through the same computation, as the
+    /// owner side when the switch's request arrives), else a module's power switch when a module
+    /// mediator above it names it (the ship's power switch when that mediator is the central
+    /// computer's). A switch with no module above it and no value holder is a breaker when it sits on
+    /// or under one, else <see cref="InteractionKind.OtherPowerSwitch"/>; one met while its module
+    /// is still being assembled gets that answer as provisional: it is never cached, and is read
+    /// again once <see cref="RetrySeconds"/> have passed, until a module above the switch or a
+    /// value holder settles it.
     ///
     /// Every query starts from <see cref="Canonical"/>, so an item or a socket reaches a gate as
     /// the same component from every chokepoint.
@@ -45,7 +47,6 @@ namespace Ectype
     internal static class InteractionClassifier
     {
         private const float RetrySeconds = 2f;
-        private const int MaxRetries = 3;
         private const int CacheLimit = 8192;
         private const float PruneSeconds = 30f;
 
@@ -59,7 +60,6 @@ namespace Ectype
         {
             internal InteractionKind Kind;
             internal float RetryAt;
-            internal int Tries;
         }
 
         /// <summary>Controls registered by their owners as they start. Never cleared wholesale:
@@ -130,8 +130,7 @@ namespace Ectype
 
             bool settled;
             kind = Compute(c, out settled);
-            int tries = wasPending ? pending.Tries + 1 : 1;
-            if (settled || tries >= MaxRetries)
+            if (settled)
             {
                 if (Cache.Count > CacheLimit) Cache.Clear();
                 Cache[id] = kind;
@@ -140,7 +139,7 @@ namespace Ectype
             else
             {
                 if (Unsettled.Count > CacheLimit) Unsettled.Clear();
-                Unsettled[id] = new Pending { Kind = kind, RetryAt = Time.unscaledTime + RetrySeconds, Tries = tries };
+                Unsettled[id] = new Pending { Kind = kind, RetryAt = Time.unscaledTime + RetrySeconds };
             }
             return kind;
         }
@@ -173,19 +172,36 @@ namespace Ectype
         {
             TakeoverChair chair = c as TakeoverChair;
             if (chair != null) return ChairKind(chair);
-            if (c is Helm) return InteractionKind.Helm;
-            if (c is CompositeWeaponModule) return InteractionKind.Turret;
-            if (c is Periscope) return InteractionKind.Periscope;
-            if (c is CloneTube) return InteractionKind.CloneTube;
-            if (c is TerminalModule || c is TerminalScreen) return InteractionKind.Terminal;
-            if (c is Enhancement) return InteractionKind.EnhancementPanel;
-            if (c is RepairObject || c is Defect) return InteractionKind.Minigame;
             if (c is CrypticCore)
                 return c.GetComponentInParent<Enhancement>(true) != null
                     ? InteractionKind.EnhancementPanel : InteractionKind.Minigame;
-            if (c is AbstractDoor || c is DoorController) return InteractionKind.Door;
-            if (c is Airlock) return InteractionKind.AirlockControl;
-            if (c is PowerDrain || c is PowerDistributor || c is PowerBreaker) return InteractionKind.PowerSwitch;
+            return KindOfType(c.GetType());
+        }
+
+        /// <summary>The kind a component type names by itself, seats and minigame cores aside
+        /// (theirs depends on what is around them). A power component's kind is the switch that
+        /// controls it: the power system is the ship's power, a propagator is a power line, a
+        /// drain is a module's power.</summary>
+        internal static InteractionKind KindOfType(Type t)
+        {
+            if (t == null) return InteractionKind.Other;
+            if (typeof(Helm).IsAssignableFrom(t)) return InteractionKind.Helm;
+            if (typeof(CompositeWeaponModule).IsAssignableFrom(t)) return InteractionKind.Turret;
+            if (typeof(Periscope).IsAssignableFrom(t)) return InteractionKind.Periscope;
+            if (typeof(CloneTube).IsAssignableFrom(t)) return InteractionKind.CloneTube;
+            if (typeof(TerminalModule).IsAssignableFrom(t) || typeof(TerminalScreen).IsAssignableFrom(t))
+                return InteractionKind.Terminal;
+            if (typeof(Enhancement).IsAssignableFrom(t)) return InteractionKind.EnhancementPanel;
+            if (typeof(RepairObject).IsAssignableFrom(t) || typeof(Defect).IsAssignableFrom(t))
+                return InteractionKind.Minigame;
+            if (typeof(AbstractDoor).IsAssignableFrom(t) || typeof(DoorController).IsAssignableFrom(t))
+                return InteractionKind.Door;
+            if (typeof(Airlock).IsAssignableFrom(t)) return InteractionKind.AirlockPressurize;
+            if (typeof(PowerSystem).IsAssignableFrom(t)) return InteractionKind.ShipPowerSwitch;
+            if (typeof(PowerPropagator).IsAssignableFrom(t)) return InteractionKind.PowerLineSwitch;
+            if (typeof(PowerDrain).IsAssignableFrom(t)) return InteractionKind.ModulePowerSwitch;
+            if (typeof(PowerBreaker).IsAssignableFrom(t)) return InteractionKind.Breaker;
+            if (typeof(PowerDistributor).IsAssignableFrom(t)) return InteractionKind.OtherPowerSwitch;
             return InteractionKind.Other;
         }
 
@@ -201,20 +217,39 @@ namespace Ectype
             if (sw != null)
             {
                 // Checked before the parent lookups below, which would otherwise claim a station
-                // module's own power switch.
+                // module's own power switch. The central computer's power switch is the whole
+                // ship's: its mediator hands it the power system's state.
                 IShipModuleMediator[] mediators = sw.GetComponentsInParent<IShipModuleMediator>(true);
-                foreach (IShipModuleMediator m in mediators)
-                    if (ReferenceEquals(PowerSwitchOf(m), sw)) return InteractionKind.PowerSwitch;
                 // The component the owner judges when this switch's request arrives: the same
-                // computation from the same component, so both sides read the same kind.
+                // computation from the same component, so both sides read the same kind. A
+                // mediator names the kind only where the switch holds nothing the classifier
+                // can place.
                 Component holder = HolderOf(sw);
-                if (holder != null && holder != sw && !(holder is SwitchClicker)) return Compute(holder, out settled);
+                bool held = holder != null && holder != sw && !(holder is SwitchClicker);
+                foreach (IShipModuleMediator m in mediators)
+                {
+                    if (!ReferenceEquals(PowerSwitchOf(m), sw)) continue;
+                    if (held)
+                    {
+                        bool heldSettled;
+                        InteractionKind heldKind = Compute(holder, out heldSettled);
+                        if (heldKind != InteractionKind.Other)
+                        {
+                            settled = heldSettled;
+                            return heldKind;
+                        }
+                    }
+                    return IsCentralComputer(m) ? InteractionKind.ShipPowerSwitch : InteractionKind.ModulePowerSwitch;
+                }
+                if (held) return Compute(holder, out settled);
                 if (mediators.Length == 0)
                 {
-                    // Outside any module, holding no value: a breaker or a line switch. A module
-                    // still being assembled has no mediator yet either, so it is read again later.
+                    // Outside any module, holding no value the classifier can see. A switch on or
+                    // under a breaker is the breaker's. Otherwise the answer is provisional: a
+                    // module still being assembled has no mediator yet, so it is read again later.
+                    if (sw.GetComponentInParent<PowerBreaker>(true) != null) return InteractionKind.Breaker;
                     settled = false;
-                    return InteractionKind.PowerSwitch;
+                    return InteractionKind.OtherPowerSwitch;
                 }
             }
 
@@ -225,6 +260,12 @@ namespace Ectype
             if (c.GetComponentInParent<TerminalScreen>(true) != null) return InteractionKind.Terminal;
             if (c.GetComponentInParent<CrypticCore>(true) != null) return InteractionKind.Minigame;
             return InteractionKind.Other;
+        }
+
+        private static bool IsCentralComputer(IShipModuleMediator m)
+        {
+            try { return m is CentralShipComputerMediator || m.Module is CentralShipComputerModule; }
+            catch (Exception) { return false; }
         }
 
         /// <summary>The component holding the synced value a switch controls, or null.</summary>
@@ -260,6 +301,13 @@ namespace Ectype
         {
             if (control == null) return;
             Registered[control.GetInstanceID()] = new Registration { Control = control, Kind = kind };
+        }
+
+        /// <summary>Whether a component's kind is cached for good (dev self-test): false while its
+        /// answer is provisional.</summary>
+        internal static bool IsCached(Component control)
+        {
+            return control != null && Cache.ContainsKey(control.GetInstanceID());
         }
 
         /// <summary>Drops a control registration and its cached kind (dev self-test).</summary>
@@ -367,8 +415,8 @@ namespace Ectype
         {
             try
             {
-                if (_pressurizeLever != null) RegisterControl(_pressurizeLever(__instance), InteractionKind.AirlockControl);
-                if (_safetySwitch != null) RegisterControl(_safetySwitch(__instance), InteractionKind.AirlockControl);
+                if (_pressurizeLever != null) RegisterControl(_pressurizeLever(__instance), InteractionKind.AirlockPressurize);
+                if (_safetySwitch != null) RegisterControl(_safetySwitch(__instance), InteractionKind.AirlockSafety);
             }
             catch (Exception e) { LogHookFailure("AirlockButtonPanel.Initialize", e); }
         }

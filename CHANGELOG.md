@@ -6,6 +6,25 @@ build.
 
 ## 0.31.0
 
+- Character status requests judge range, rate and magnitude against the requester.
+  `CharacterStatusDef.MaxRangeFor`, `MinIntervalFor` and `MaxMagnitudeFor` (`Func<Player, float>`)
+  compute those limits from the requester's character, which on the target's client is its
+  replica there; perks apply to that replica on every client, so a perk-raised reach, cooldown
+  or damage is judged at its upgraded value. Unset, the constants stand; an unusable result or a
+  throw falls back to the constant with one log line per status and field.
+  `CharacterStatusDef.OnRequestApplied(target, requester, magnitude, stacks)` runs on the
+  target's client for every accepted request from another client, with the requester's
+  character and the magnitude the request was accepted at. Every existing member keeps its
+  signature; nothing new crosses the network.
+- `SessionData.HostRoomValue<T>(key, defaultValue, maxBytes)` returns a `HostRoomValue<T>`: a
+  value only the host writes, of any type `SessionData.Register` accepts, held in its own room
+  property `Ectype.Value:<key>` for the life of the room, in the hub and in a mission. `Value`,
+  `HasValue`, `Set` (host only; the values set in one frame leave in one room update), `CanSet`,
+  `Changed`. A client takes a change only when Photon reports the master client as its writer;
+  the host puts its own value back after another player's write; a player who becomes the master
+  keeps the values it held and puts back what the room holds differently. Each value is capped
+  by `maxBytes` (default 4096) and all of them together at 16384 bytes. The room properties are
+  new; no existing message changes. See `docs/reference/host-room-values.md`.
 - One identifier rule across every API, stated in `docs/identifiers.md`: an owner is the
   registering plugin's BepInEx GUID, and a single-string id is `"<plugin GUID>/<name>"`. The
   framework checks that the owner, or the part of an id before its first `/`, is the GUID of a
@@ -33,6 +52,47 @@ build.
   the rule log one warning per id and still work.
 - Nothing that crosses the network changed. A longer key costs one byte per character in each
   status or ability message that carries it.
+- **Breaking for interaction gates.** `InteractionKind.PowerSwitch` is split into
+  `ModulePowerSwitch` (a module's own power switch, a power drain), `ShipPowerSwitch` (the
+  central computer's switch, the power system), `PowerLineSwitch` (a power propagator), `Breaker`
+  and `OtherPowerSwitch` (a switch outside any module controlling no value the classifier sees;
+  provisional while its module is still being assembled, so it is never cached and the switch is
+  classified again two seconds after each query). A switch is judged as the component holding the
+  value it controls, a module mediator's power switch kind applying only where it holds nothing
+  placeable.
+  `InteractionKind.AirlockControl` is split into `AirlockPressurize` (the pressurise lever and
+  the cycle request) and `AirlockSafety` (the safety override and its request). The owner side
+  names a power request's kind from the component asked and an airlock request's from the RPC.
+  `InteractionKinds.IsPowerSwitch(kind)` and `IsAirlockControl(kind)`, also callable as
+  `kind.IsPowerSwitch()`, ask the coarse question. The gate has not been in a release.
+- `RpcContext` reports the sender of the Photon RPC or event being dispatched: `Sender`,
+  `SenderActor`, `Source`, `ViewId`, `EventCode`, `TryGetSender(view, out sender)` and
+  `FromAbsentPlayer(view)` (true only for an RPC whose sender left, not for a message the server
+  sent). The hooks run first among the patches on their methods and restore the outer message
+  only when their own prefix ran. A mod calls `RpcContext.Enable()` from `Awake`; the hooks go on once
+  the game has loaded, with or without an interaction gate, never at plugin load. The interaction
+  gate reads its owner-side senders from it. See `docs/reference/rpc-context.md`.
+- `StatContributions.Register(StatContribution)` puts a modifier on one stat of every player
+  ship (`StatTarget.PlayerShip`) or every player character (`StatTarget.Character`) for each
+  object's lifetime. `StatContribution` carries `Id` (`<plugin GUID>/<name>` with a loaded
+  plugin's GUID, refused otherwise), `Target`, `Stat`
+  (a vanilla, framework or `"<owner>/Name"` stat), `Kind` (`SessionStatModifierKind`: `Flat`,
+  `Percent`, `Factor`, mapped as a session-stat effect), `Amount` (`Func<OrbitObject, float?>`,
+  null for no contribution on that target; a character's is asked during its `Awake`) and
+  `Source` (the label). Register on every client in
+  `Awake`: each client applies it to every target, its own and every replica, as the target
+  spawns. A ship is caught after `GameSession.ApplyGlobalOrbitObjectSpawnProperties`, before the
+  game sets its hit points to their maximum, so a `MaxHitPoints` contribution is the hull a new
+  ship starts with on every screen (a resumed save's ship keeps its saved hit points); a
+  character in `Player.Awake`, and one frame after the character's `Start` the framework raises
+  each contributed stat's change event again, so the character's health and jetpack oxygen take
+  the new maximum and stay full. The modifier goes on the
+  target's own stat, never on its modules. Once per target and id; `Refresh(id)` asks `Amount`
+  again on every live target, null withdraws, `Unregister(id)` withdraws everywhere; a destroyed
+  target or an ended session drops it. The modifier's source holds a handle and the label only,
+  and a copy of the modifier follows the original and reads 0 once withdrawn, at its stat's
+  next recalculation for a deep-copied stat. `IsRegistered`,
+  `Current(target, id)`. See `docs/reference/stat-contributions.md`.
 - `StatusStance.MasterOnly`: only the master client may apply or remove the status. Every
   receiver refuses any other sender's message and logs one warning per sender and status;
   `TryApply` and `TryRemove` on a client that is not the master return the new
@@ -61,9 +121,13 @@ build.
   or `Factor`, `Amount`). It returns a `MutatorHandle` (`Pending`, `Registered` or `Failed` with a
   `Reason`). The GUID is the spec's `Guid`, or MD5 of `ectype:mutator:<owner>/<key>`. The asset is
   registered with the Required effect: a player without the registering mod is refused at the
-  join screen of every room hosted with it, whether or not the run uses the mutator. The
-  framework makes it selectable in the menu and re-verifies the registration every 10 s and
-  before each session start.
+  join screen of every room hosted with it, whether or not the run uses the mutator. A GUID that
+  the game's runtime-asset register, the mutator container or the unlock container already holds
+  for something else is refused before anything is written. A mutator refused after its walk
+  began is taken back out of those tables. Registering the same owner and key again returns the
+  first handle. The framework makes the mutator selectable in the menu, republishing every
+  missing shared-unlock index in one write. It re-verifies the registration every 10 s, and
+  before each session start it attempts every pending registration and re-verifies the rest.
 - While the host starts a session, the framework contributes the effects of every session-stat
   mutator the session is about to activate, selected in the menu or forced by the quest's
   `ForcedMutators`, to the session collection before `SessionStats.Opening` and before the values
@@ -73,8 +137,10 @@ build.
   activated any other way contributes to the host only, with a warning.
 - A role manifest's `mutators` block (`key`, `guid`, `name`, `description`, `icon`, `iconDonor`,
   `effects` of `stat`, `kind` `"flat"`, `"percent"` or `"factor"`, and `amount`) registers through the
-  same API, with the `roleId` as owner. A stat that is not a session stat, an unknown kind or a
-  missing amount refuses that mutator by name; the role still registers. Set
+  same API, with the `roleId` as owner, once the role has registered. A role that fails
+  registration or that another role suppresses through `suppressRoles` registers none of its
+  mutators. A stat that is not a session stat, an unknown kind or a missing amount refuses that
+  mutator by name; the role still registers. Set
   `minFrameworkVersion` to `"0.30.0"`: an older framework ignores the block.
 - `SessionStatMutatorEffect` is the game-side `MutatorEffectSession` the registered asset carries;
   a mod's own `Mutator` asset may carry one, and it is contributed the same way.

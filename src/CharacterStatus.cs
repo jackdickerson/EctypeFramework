@@ -81,6 +81,14 @@ namespace Ectype
         /// a stack. Never on a presentation copy.</summary>
         public Action<Player, int> OnApplied;
 
+        /// <summary>Runs on the target's client when a request from another client is accepted:
+        /// (target, requester's character, magnitude, stack count). The magnitude is the one the
+        /// request was accepted at, after the template's cap; the stack count is the status's
+        /// after it. Runs after <see cref="OnApplied"/>, for every accepted request, including one
+        /// that only refreshed a status at MaxStacks. Not run for this client's own Apply, nor
+        /// for a Request on this client's own character.</summary>
+        public Action<Player, Player, float, int> OnRequestApplied;
+
         /// <summary>Runs once per elapsed tick (target, slice seconds), where the status
         /// lives. The place for bespoke per-tick work that is not a registered stat.</summary>
         public Action<Player, float> OnTick;
@@ -119,6 +127,14 @@ namespace Ectype
         /// looser limit, so a request at the edge reaches the target's client to be judged.</summary>
         public float MaxRange;
 
+        /// <summary>When set, the range a request from this requester may span, in metres, in
+        /// place of <see cref="MaxRange"/>. Called with the requester's character: on the
+        /// target's client that is its replica of the requester, so the function must read only
+        /// what every client applies to that replica, such as perk stats. A result that is not a
+        /// finite number of 0 or more, or a throw, falls back to MaxRange with one log line per
+        /// status and field; 0 checks no range.</summary>
+        public Func<Player, float> MaxRangeFor;
+
         /// <summary>Refuse a request when level geometry or a space object blocks the line
         /// between the two characters' chests, cast on the target's client.</summary>
         public bool RequiresLineOfSight;
@@ -132,6 +148,13 @@ namespace Ectype
         /// <summary>Seconds per request from one requester for this key, refilled one at a
         /// time. 0 (the default) checks no rate.</summary>
         public float MinInterval;
+
+        /// <summary>When set, the seconds per request from this requester, in place of
+        /// <see cref="MinInterval"/>, called with the requester's character as
+        /// <see cref="MaxRangeFor"/> is. Read on each request, so the refill rate follows the
+        /// requester's stat. A result that is not a finite number of 0 or more, or a throw, falls
+        /// back to MinInterval with one log line per status and field; 0 checks no rate.</summary>
+        public Func<Player, float> MinIntervalFor;
 
         /// <summary>Requests from one requester the requesting client sends back to back before
         /// MinInterval applies. The target's client accepts one more, for requests the network
@@ -148,6 +171,12 @@ namespace Ectype
         /// magnitude of 0 or below is refused: it would turn a debuff into a buff, or pin the
         /// status at no effect.</summary>
         public float MaxMagnitude = 1f;
+
+        /// <summary>When set, the largest magnitude this requester may ask for, in place of
+        /// <see cref="MaxMagnitude"/>, called with the requester's character as
+        /// <see cref="MaxRangeFor"/> is. A result that is not a finite number above 0, or a
+        /// throw, falls back to MaxMagnitude with one log line per status and field.</summary>
+        public Func<Player, float> MaxMagnitudeFor;
 
         // ---- presentation copies ----
 
@@ -778,6 +807,16 @@ namespace Ectype
             }
         }
 
+
+        /// <summary>Runs OnRequestApplied for an accepted request from another client. The target
+        /// is passed in: an OnApplied that ended the status has already cleared its own.</summary>
+        internal void NotifyRequest(Player t, Player requester, float magnitude)
+        {
+            Action<Player, Player, float, int> cb = _def.OnRequestApplied;
+            if (cb == null) return;
+            int stacks = _stacks;
+            SafeCb(() => cb(t, requester, magnitude, stacks));
+        }
 
         private void SafeCb(Action a)
         {

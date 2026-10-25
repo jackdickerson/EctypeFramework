@@ -32,8 +32,15 @@ namespace Ectype
     ///   the collection being opened, so its effects are in the values the host publishes; a
     ///   mutator without the effect contributes nothing; the host handlers run the mutator
     ///   contribution before any Opening subscriber.
+    /// - Late contribution: an effect contributes late once per session, and again in the next.
+    /// - Shared unlocks: the missing indices merge into the property's in one array.
+    /// - Role gate: a failed or suppressed role adds no mutators; a registered one adds them once
+    ///   suppression has resolved; anything else waits.
     /// Once the stats files are read: a framework session stat resolves by both names, a character
-    /// stat and an undeclared stat are refused.
+    /// stat and an undeclared stat are refused. With the game's tables loaded: a GUID a vanilla
+    /// mutator holds, and one another object holds in the runtime-asset register, are refused
+    /// before any write; a withdrawn registration leaves none of the tables holding it; and
+    /// registering the same owner and key again returns the first handle, Failed once refused.
     /// </summary>
     internal static class SessionStatMutatorsSelfTest
     {
@@ -73,11 +80,18 @@ namespace Ectype
             catch (Exception e) { failures.Add("prediction threw: " + e.Message); }
             try { Opening(failures); }
             catch (Exception e) { failures.Add("opening threw: " + e.Message); }
+            try { LatePerSession(failures); }
+            catch (Exception e) { failures.Add("late contribution threw: " + e.Message); }
+            try { SharedMerge(failures); }
+            catch (Exception e) { failures.Add("shared-unlock merge threw: " + e.Message); }
+            try { RoleGate(failures); }
+            catch (Exception e) { failures.Add("role gate threw: " + e.Message); }
 
             if (failures.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: session-stat mutators passed (GUID vector; spec " +
                                    "validation; kinds; manifest form; activation prediction; contribution " +
-                                   "inside the opening, before capture).");
+                                   "inside the opening, before capture; late contribution per session; " +
+                                   "shared-unlock merge; role gate).");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: session-stat mutators FAILED: " +
                                     string.Join("; ", failures.ToArray()));
@@ -306,12 +320,165 @@ namespace Ectype
             why = SessionStatMutators.ResolveSessionStat("nobody/Unknown", out id);
             if (why == null || !why.Contains("is not declared")) failures.Add("nobody/Unknown: " + (why ?? "accepted"));
 
+            bool tables = SessionStatMutators.ReadyForTest;
+            if (tables)
+            {
+                try { Claim(failures); }
+                catch (Exception e) { failures.Add("claim threw: " + e.Message); }
+                try { WithdrawAll(failures); }
+                catch (Exception e) { failures.Add("withdraw threw: " + e.Message); }
+                try { SameHandle(failures); }
+                catch (Exception e) { failures.Add("same handle threw: " + e.Message); }
+            }
+
             if (failures.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: session-stat mutator stats passed (a session stat " +
-                                   "resolves; a character stat and an undeclared stat are refused).");
+                                   "resolves; a character stat and an undeclared stat are refused" +
+                                   (tables ? "; a taken GUID is refused before any write; a withdrawn " +
+                                             "registration leaves no table entry; a repeat registration " +
+                                             "returns the first handle"
+                                           : "; the game's tables were not loaded, so the claim, withdraw " +
+                                             "and handle checks did not run") + ").");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: session-stat mutator stats FAILED: " +
                                     string.Join("; ", failures.ToArray()));
+        }
+
+        private static void LatePerSession(List<string> failures)
+        {
+            object first = new object(), second = new object();
+            SessionStatMutatorEffect effect = new SessionStatMutatorEffect();
+            if (!SessionStatMutators.TakeLate(first, effect)) failures.Add("a first late contribution was refused");
+            if (SessionStatMutators.TakeLate(first, effect)) failures.Add("a second late contribution in one session was taken");
+            if (!SessionStatMutators.TakeLate(second, effect)) failures.Add("a late contribution in the next session was refused");
+        }
+
+        private static void SharedMerge(List<string> failures)
+        {
+            byte[] merged = SessionStatMutators.MergeIndices(new List<byte> { 1, 4 }, new List<byte> { 7, 1, 9 });
+            string got = string.Join(",", Array.ConvertAll(merged, b => b.ToString(CultureInfo.InvariantCulture)));
+            if (got != "1,4,7,9") failures.Add("merged shared unlocks read " + got + ", expected 1,4,7,9");
+        }
+
+        private static void RoleGate(List<string> failures)
+        {
+            Gate(failures, "failed role", SessionStatMutators.RoleMutatorsWanted(false, true, true, false), false);
+            Gate(failures, "suppressed role", SessionStatMutators.RoleMutatorsWanted(true, false, true, true), false);
+            Gate(failures, "suppressed pending role", SessionStatMutators.RoleMutatorsWanted(false, false, true, true), false);
+            Gate(failures, "registered role", SessionStatMutators.RoleMutatorsWanted(true, false, true, false), true);
+            Gate(failures, "suppression unresolved", SessionStatMutators.RoleMutatorsWanted(true, false, false, false), null);
+            Gate(failures, "pending role", SessionStatMutators.RoleMutatorsWanted(false, false, true, false), null);
+        }
+
+        private static void Gate(List<string> failures, string what, bool? got, bool? expect)
+        {
+            if (got == expect) return;
+            failures.Add(what + ": " + (got.HasValue ? got.Value.ToString() : "wait") + ", expected " +
+                         (expect.HasValue ? expect.Value.ToString() : "wait"));
+        }
+
+        private static void Claim(List<string> failures)
+        {
+            RuntimeAssetsRegister reg = RuntimeAssetsRegister.Instance;
+            MutatorContainer container = MutatorContainer.Instance;
+            UnlockContainer unlocks = UnlockContainer.Instance;
+
+            MutatorDef vanilla = null;
+            foreach (MutatorDef d in container.AssetDescriptions)
+                if (d != null && (object)d.Ref != null && !d.Ref.IsRuntime) { vanilla = d; break; }
+            if (vanilla == null) failures.Add("no vanilla mutator to collide with");
+            else
+            {
+                MutatorRecord rec = new MutatorRecord { Guid = vanilla.AssetGuid, Name = "selftest" };
+                string why = SessionStatMutators.ClaimProblem(rec, reg, container, unlocks);
+                if (why == null || !why.Contains("already in the mutator container"))
+                    failures.Add("a vanilla mutator's GUID: " + (why ?? "free"));
+            }
+
+            GUIDUnion g = G("claim-register");
+            if (reg.HasAsset(g))
+            {
+                failures.Add("the claim test's GUID is already registered");
+                return;
+            }
+            Mutator other = MakeMutator("SelftestOther", g, null);
+            MutatorRecord mine = new MutatorRecord { Guid = g, Name = "selftest", Mutator = MakeMutator("SelftestMine", g, null) };
+            try
+            {
+                reg.RegisterAsset(g, other, SessionModificationEffect.None);
+                string why = SessionStatMutators.ClaimProblem(mine, reg, container, unlocks);
+                if (why == null || !why.Contains("already in the runtime-asset register"))
+                    failures.Add("a GUID another object holds in the runtime-asset register: " + (why ?? "free"));
+                SessionStatMutators.Withdraw(mine);
+                if (!ReferenceEquals(reg.GetAsset(g), other)) failures.Add("withdrawing removed another holder's runtime asset");
+            }
+            finally
+            {
+                SessionStatMutators.Withdraw(new MutatorRecord { Guid = g, Name = "selftest", Mutator = other });
+                if (reg.HasAsset(g)) failures.Add("the claim test's runtime asset could not be removed");
+                UnityEngine.Object.DestroyImmediate(other);
+                UnityEngine.Object.DestroyImmediate(mine.Mutator);
+            }
+        }
+
+        private static void WithdrawAll(List<string> failures)
+        {
+            RuntimeAssetsRegister reg = RuntimeAssetsRegister.Instance;
+            MutatorContainer container = MutatorContainer.Instance;
+            UnlockContainer unlocks = UnlockContainer.Instance;
+            GUIDUnion g = G("withdraw");
+            if (reg.HasAsset(g) || container.HasItem(g) || unlocks.HasItem(g))
+            {
+                failures.Add("the withdraw test's GUID is already held");
+                return;
+            }
+            MutatorRecord rec = new MutatorRecord { Guid = g, Name = "selftest", Mutator = MakeMutator("SelftestWithdraw", g, null) };
+            rec.Def = new MutatorDef();
+            rec.Def.Ref = new ResourceAssetRef(g, "") { IsRuntime = true };
+            rec.UnlockDef = new UnlockItemDef();
+            rec.UnlockDef.Ref = new ResourceAssetRef(g, "") { IsRuntime = true };
+            try
+            {
+                reg.RegisterAsset(g, rec.Mutator, SessionModificationEffect.None);
+                container.RegisterRuntimeAsset(g, rec.Def);
+                AssetDescriptionOrder.InsertDef(container.AssetDescriptions, rec.Def, d => d.Ref);
+                SessionStatMutators.AlignRuntimeList(container, container.AssetDescriptions);
+                unlocks.RegisterRuntimeAsset(g, rec.UnlockDef);
+                AssetDescriptionOrder.InsertDef(unlocks.AssetDescriptions, rec.UnlockDef, d => d.Ref);
+                string why = SessionStatMutators.ClaimProblem(rec, reg, container, unlocks);
+                if (why != null) failures.Add("a GUID held only by this registration's own objects: " + why);
+            }
+            finally
+            {
+                SessionStatMutators.Withdraw(rec);
+                UnityEngine.Object.DestroyImmediate(rec.Mutator);
+            }
+            if (reg.HasAsset(g)) failures.Add("withdrawn: still in the runtime-asset register");
+            if (container.HasItem(g)) failures.Add("withdrawn: still in the mutator container's lookup");
+            if (((IResourceAssetContainer)container).GetAssetIndex(g) >= 0) failures.Add("withdrawn: still in the mutator authored list");
+            if (container.RuntimeDescriptions.Contains(rec.Def)) failures.Add("withdrawn: still in the mutator runtime list");
+            if (unlocks.HasItem(g)) failures.Add("withdrawn: still in the unlock container's lookup");
+            if (unlocks.AssetDescriptions.Contains(rec.UnlockDef)) failures.Add("withdrawn: still in the unlock authored list");
+            if (unlocks.RuntimeDescriptions.Contains(rec.UnlockDef)) failures.Add("withdrawn: still in the unlock runtime list");
+        }
+
+        private static void SameHandle(List<string> failures)
+        {
+            MutatorSpec spec = Good();
+            spec.Key = "selftest-expected-refusal";
+            spec.Effects[0].Stat = "selftest/NoSuchStat";
+            MutatorHandle first = SessionStatMutators.Register(spec);
+            try
+            {
+                MutatorHandle again = SessionStatMutators.Register(spec);
+                if (!ReferenceEquals(first, again)) failures.Add("registering the same owner and key again returned a new handle");
+                if (first.State != ContentState.Failed || first.Reason == null || !first.Reason.Contains("is not declared"))
+                    failures.Add("an undeclared stat left the handle " + first.State + " (" + first.Reason + ")");
+            }
+            finally
+            {
+                SessionStatMutators.ForgetForTest(first);
+            }
         }
 
         private static float Read(Dictionary<string, float> values, int id)

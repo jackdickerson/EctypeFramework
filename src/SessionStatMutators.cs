@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
@@ -172,18 +173,21 @@ namespace Ectype
         internal MutatorDef Def;
         internal UnlockItemDef UnlockDef;
         internal ContextInfo Context;
-        internal readonly List<MutatorHandle> Handles = new List<MutatorHandle>();
+        /// <summary>The one handle every registration of this owner and key returns.</summary>
+        internal MutatorHandle Handle;
         internal string Stage = "queued";
         internal int Attempts;
         internal string LastLogged;
         internal bool Verified;
         internal bool Claimed;
 
-        // Shared-unlock republish: observed, never latched.
+        // Shared-unlock republish: observed, never latched. SharedAttempts counts writes that
+        // included this record and had not shown up once the echo window passed.
         internal bool SharedSeen;
         internal int SharedAttempts;
         internal bool SharedQuiet;
         internal bool IndexWarned;
+        internal bool SharedWritten;
     }
 
     /// <summary>
@@ -211,6 +215,7 @@ namespace Ectype
 
         internal const int MaxAttempts = 200;
         internal const int SharedUnlockAttemptLimit = 10;
+        internal const float SharedEchoWindow = 5f;
         internal const string SharedMutatorKey = "P_SM";
 
         private static readonly Regex KeyPattern = new Regex("^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\\z");
@@ -225,10 +230,15 @@ namespace Ectype
         // The session the host predicted for, and what it contributed.
         private static GameSession _predictedFor;
         private static readonly HashSet<GUIDUnion> _contributed = new HashSet<GUIDUnion>();
+
+        // The effects that contributed late, keyed to the session they contributed in: a session
+        // whose start the opening never ran for (no host capture) still gets its own late pass.
+        private static object _lateSession;
         private static readonly HashSet<SessionStatMutatorEffect> _lateDone = new HashSet<SessionStatMutatorEffect>();
 
         private static float _nextPoll;
         private static float _nextVerify;
+        private static float _sharedWriteAt = float.NegativeInfinity;
 
         /// <summary>Counts for the F5 page.</summary>
         public static string Status
@@ -293,19 +303,12 @@ namespace Ectype
                 MutatorRecord rec;
                 if (_byGuid.TryGetValue(guid, out rec))
                 {
-                    if (rec.Spec.Owner == spec.Owner && rec.Spec.Key == spec.Key)
-                    {
-                        h.Rec = rec;
-                        rec.Handles.Add(h);
-                        Sync(rec);
-                        return h;
-                    }
+                    if (rec.Spec.Owner == spec.Owner && rec.Spec.Key == spec.Key) return rec.Handle;
                     return Refuse(h, refusalKey, "GUID " + guid.AsHex() + " is already registered by '" +
                                                  rec.Spec.Owner + "/" + rec.Spec.Key + "'");
                 }
 
-                rec = new MutatorRecord { Spec = Copy(spec), Guid = guid, Name = spec.DisplayName };
-                rec.Handles.Add(h);
+                rec = new MutatorRecord { Spec = Copy(spec), Guid = guid, Name = spec.DisplayName, Handle = h };
                 h.Rec = rec;
                 h.State = ContentState.Pending;
                 _byGuid[guid] = rec;
@@ -317,6 +320,25 @@ namespace Ectype
                 return Refuse(h, refusalKey, "Register threw: " + e);
             }
         }
+
+#if ECTYPE_DEV
+        /// <summary>Dev self-test: forgets a registration the test made that wrote nothing to
+        /// the game's tables, with its refusal entry.</summary>
+        internal static void ForgetForTest(MutatorHandle h)
+        {
+            if (h == null) return;
+            _refused.Remove((h.Owner ?? "") + "/" + (h.Key ?? ""));
+            MutatorRecord rec = h.Rec;
+            if (rec == null || !_byGuid.ContainsKey(rec.Guid) || !ReferenceEquals(_byGuid[rec.Guid], rec)) return;
+            _byGuid.Remove(rec.Guid);
+            _unlocked.Remove(rec.Guid);
+            if (rec.Mutator != null) UnityEngine.Object.DestroyImmediate(rec.Mutator);
+            if (rec.Context != null) UnityEngine.Object.DestroyImmediate(rec.Context);
+        }
+
+        /// <summary>Dev self-test: whether the registration pass would register now.</summary>
+        internal static bool ReadyForTest { get { return ReadyToRegister(); } }
+#endif
 
         /// <summary>True when the session in progress (not the hub) has the mutator active, on
         /// any client: the game fills its active set identically everywhere from the session
@@ -396,22 +418,31 @@ namespace Ectype
         internal static SessionStatModifier ToModifier(SessionStatEffect e, int statId)
         {
             SessionStatModifier m = new SessionStatModifier { Stat = e.Stat, StatId = statId };
-            switch (e.Kind)
+            MapKind(e.Kind, e.Amount, out m.Type, out m.Amount);
+            return m;
+        }
+
+        /// <summary>The game's modifier type and amount for a kind and an amount: flat is
+        /// PrimaryAddend, percent is AdditiveMultiplier, factor is ExponentialMultiplier with an
+        /// amount of factor - 1. Shared by every API that takes a SessionStatModifierKind.</summary>
+        internal static void MapKind(SessionStatModifierKind kind, float amount, out ModifierType type,
+                                     out float modifierAmount)
+        {
+            switch (kind)
             {
                 case SessionStatModifierKind.Flat:
-                    m.Type = ModifierType.PrimaryAddend;
-                    m.Amount = e.Amount;
+                    type = ModifierType.PrimaryAddend;
+                    modifierAmount = amount;
                     break;
                 case SessionStatModifierKind.Percent:
-                    m.Type = ModifierType.AdditiveMultiplier;
-                    m.Amount = e.Amount;
+                    type = ModifierType.AdditiveMultiplier;
+                    modifierAmount = amount;
                     break;
                 default:
-                    m.Type = ModifierType.ExponentialMultiplier;
-                    m.Amount = e.Amount - 1f;
+                    type = ModifierType.ExponentialMultiplier;
+                    modifierAmount = amount - 1f;
                     break;
             }
-            return m;
         }
 
         /// <summary>32 lower-case hex digits, or null.</summary>
@@ -471,8 +502,8 @@ namespace Ectype
 
         /// <summary>
         /// Registers what is pending. Called from the registration pass after the stats files
-        /// and the role manifests have been read. Pending records go in GUID order, so one set
-        /// of mods registers in one order on every client.
+        /// and the role manifests have been read, and at each session start. Pending records go
+        /// in GUID order; the authored list's runtime tail is sorted by GUID whatever the order.
         /// </summary>
         internal static void Pump()
         {
@@ -523,14 +554,12 @@ namespace Ectype
         {
             rec.Verified = false;
             _unlocked.Remove(rec.Guid);
-            foreach (MutatorHandle h in rec.Handles)
-            {
-                h.State = final ? ContentState.Failed : ContentState.Pending;
-                h.Reason = why;
-            }
+            rec.Handle.State = final ? ContentState.Failed : ContentState.Pending;
+            rec.Handle.Reason = why;
             if (final)
             {
                 rec.Attempts = MaxAttempts;
+                Withdraw(rec);
                 Plugin.Log.LogError("Ectype: mutators: '" + rec.Spec.Owner + "/" + rec.Spec.Key + "' refused: " + why + ".");
                 return;
             }
@@ -542,21 +571,18 @@ namespace Ectype
 
         private static void Sync(MutatorRecord rec)
         {
-            foreach (MutatorHandle h in rec.Handles)
-            {
-                if (rec.Verified)
-                {
-                    h.State = ContentState.Registered;
-                    h.Reason = null;
-                }
-            }
+            if (!rec.Verified) return;
+            rec.Handle.State = ContentState.Registered;
+            rec.Handle.Reason = null;
         }
 
         /// <summary>
-        /// The walk, every step guarded on the container already holding the GUID: the Mutator
-        /// asset with its effect, its card, its def, the runtime-asset entry (Required effect),
-        /// the container entry, the def in the container's authored list in GUID order, the
-        /// unlock entry, and the authored order mirrored into the container's runtime list.
+        /// The walk. It builds the Mutator asset with its effect, its card, its def and its
+        /// unlock def; checks that no table holds the GUID for anything else; then writes the
+        /// runtime-asset entry (Required effect), the container entry, the def in the
+        /// container's authored list in GUID order, the unlock entry, and the authored order
+        /// mirrored into the container's runtime list. Every write is skipped when the table
+        /// already holds this registration's own object.
         /// </summary>
         private static void Walk(MutatorRecord rec)
         {
@@ -604,34 +630,6 @@ namespace Ectype
                 def.ContextInfo = rec.Context;
                 rec.Def = def;
             }
-
-            rec.Stage = "runtime asset";
-            RuntimeAssetsRegister reg = RuntimeAssetsRegister.Instance;
-            if (!reg.HasAsset(rec.Guid))
-                reg.RegisterAsset(rec.Guid, rec.Mutator, ModFlagPolicy.RequiredEffect,
-                                  new RuntimeAssetInfo { Name = rec.Mutator.name, DisplayName = spec.DisplayName });
-
-            rec.Stage = "mutator container";
-            MutatorContainer container = MutatorContainer.Instance;
-            MutatorDef held;
-            if (!container.TryGetByGuid(rec.Guid, out held)) container.RegisterRuntimeAsset(rec.Guid, rec.Def);
-            else if (!ReferenceEquals(held, rec.Def))
-            {
-                // Before this registration first held the GUID, another entry is someone else's;
-                // after, it is a stale copy a container rebuild left, and is replaced.
-                if (!rec.Claimed)
-                    throw new Refusal("GUID " + rec.Guid.AsHex() + " is already in the mutator container, put " +
-                                      "there by something other than this registration");
-                container.UpdateRuntimeAsset(rec.Guid, rec.Def);
-            }
-            rec.Claimed = true;
-            List<MutatorDef> authored = Refl.GetField<List<MutatorDef>>(container, "AssetDescriptions", null);
-            if (authored == null) throw new Exception("the mutator container has no authored list");
-            ListByGuid(authored, rec.Def, d => d.Ref);
-            AlignRuntimeList(container, authored);
-
-            rec.Stage = "unlock";
-            UnlockContainer unlocks = UnlockContainer.Instance;
             if (rec.UnlockDef == null)
             {
                 UnlockItemDef u = new UnlockItemDef();
@@ -640,11 +638,124 @@ namespace Ectype
                 u.rarity = RarityType.Epic;
                 rec.UnlockDef = u;
             }
+
+            // Before the first write: a GUID that the game or another mod already holds in any of
+            // the three tables is refused with nothing written, so the other holder keeps it intact.
+            rec.Stage = "claim";
+            RuntimeAssetsRegister reg = RuntimeAssetsRegister.Instance;
+            MutatorContainer container = MutatorContainer.Instance;
+            UnlockContainer unlocks = UnlockContainer.Instance;
+            string taken = ClaimProblem(rec, reg, container, unlocks);
+            if (taken != null) throw new Refusal(taken);
+
+            rec.Stage = "runtime asset";
+            if (!reg.HasAsset(rec.Guid))
+                reg.RegisterAsset(rec.Guid, rec.Mutator, ModFlagPolicy.RequiredEffect,
+                                  new RuntimeAssetInfo { Name = rec.Mutator.name, DisplayName = spec.DisplayName });
+
+            rec.Stage = "mutator container";
+            MutatorDef held;
+            if (!container.TryGetByGuid(rec.Guid, out held)) container.RegisterRuntimeAsset(rec.Guid, rec.Def);
+            // Once this registration has held the GUID, another entry is a stale copy a container
+            // rebuild left, and is replaced.
+            else if (!ReferenceEquals(held, rec.Def)) container.UpdateRuntimeAsset(rec.Guid, rec.Def);
+            rec.Claimed = true;
+            List<MutatorDef> authored = Refl.GetField<List<MutatorDef>>(container, "AssetDescriptions", null);
+            if (authored == null) throw new Exception("the mutator container has no authored list");
+            ListByGuid(authored, rec.Def, d => d.Ref);
+            AlignRuntimeList(container, authored);
+
+            rec.Stage = "unlock";
             UnlockItemDef heldUnlock;
             if (!unlocks.TryGetByGuid(rec.Guid, out heldUnlock)) unlocks.RegisterRuntimeAsset(rec.Guid, rec.UnlockDef);
+            else if (!ReferenceEquals(heldUnlock, rec.UnlockDef)) unlocks.UpdateRuntimeAsset(rec.Guid, rec.UnlockDef);
             List<UnlockItemDef> unlockList = Refl.GetField<List<UnlockItemDef>>(unlocks, "AssetDescriptions", null);
             if (unlockList != null) ListByGuid(unlockList, rec.UnlockDef, d => d.Ref);
             rec.Stage = "verify";
+        }
+
+        /// <summary>
+        /// Null when the GUID is free for this registration: the runtime-asset register holds
+        /// nothing under it or this registration's Mutator, and, until this registration has
+        /// first held the GUID in the mutator container, the mutator and unlock containers hold
+        /// nothing under it or this registration's own defs. Otherwise the refusal reason.
+        /// </summary>
+        internal static string ClaimProblem(MutatorRecord rec, RuntimeAssetsRegister reg, MutatorContainer container,
+                                            UnlockContainer unlocks)
+        {
+            string hex = rec.Guid.AsHex();
+            UnityEngine.Object heldAsset;
+            if (reg.TryGetAsset(rec.Guid, out heldAsset) && !ReferenceEquals(heldAsset, rec.Mutator))
+                return "GUID " + hex + " is already in the runtime-asset register, put there by something other " +
+                       "than this registration";
+            if (rec.Claimed) return null;
+            MutatorDef heldDef;
+            if (container.TryGetByGuid(rec.Guid, out heldDef) && !ReferenceEquals(heldDef, rec.Def))
+                return "GUID " + hex + " is already in the mutator container, put there by something other than " +
+                       "this registration";
+            UnlockItemDef heldUnlock;
+            if (unlocks.TryGetByGuid(rec.Guid, out heldUnlock) && !ReferenceEquals(heldUnlock, rec.UnlockDef))
+                return "GUID " + hex + " is already in the unlock container, put there by something other than " +
+                       "this registration";
+            return null;
+        }
+
+        /// <summary>
+        /// After a final failure: takes this registration's own entries out of the runtime-asset
+        /// register, the mutator container and its authored list, and the unlock container and its
+        /// authored list, so the menu never lists a def that did not verify and no hosted room
+        /// requires it. An entry another holder put under the GUID is left alone. The game has no
+        /// removal call for these tables, so their private lookups are reached by name; a miss is
+        /// logged and leaves that table's entry in place.
+        /// </summary>
+        internal static void Withdraw(MutatorRecord rec)
+        {
+            List<string> missed = new List<string>();
+            try
+            {
+                RuntimeAssetsRegister reg = RuntimeAssetsRegister.Instance;
+                if (reg != null && rec.Mutator != null && ReferenceEquals(reg.GetAsset(rec.Guid), rec.Mutator))
+                {
+                    IDictionary assets = Refl.GetField(reg, "_assets") as IDictionary;
+                    if (assets == null) missed.Add("the runtime-asset register");
+                    else
+                    {
+                        assets.Remove(rec.Guid);
+                        foreach (string field in new[] { "_assetsEffects", "_assetRegistrationInfo" })
+                        {
+                            IDictionary d = Refl.GetField(reg, field) as IDictionary;
+                            if (d != null) d.Remove(rec.Guid);
+                        }
+                    }
+                }
+                MutatorContainer container = MutatorContainer.Instance;
+                if (container != null && !Unlist(container, rec.Guid, rec.Def)) missed.Add("the mutator container");
+                UnlockContainer unlocks = UnlockContainer.Instance;
+                if (unlocks != null && !Unlist(unlocks, rec.Guid, rec.UnlockDef)) missed.Add("the unlock container");
+            }
+            catch (Exception e)
+            {
+                missed.Add("the game's tables (" + e.Message + ")");
+            }
+            rec.Claimed = false;
+            if (missed.Count > 0)
+                Plugin.Log.LogWarning("Ectype: mutators: '" + rec.Name + "' could not be taken out of " +
+                                      string.Join(", ", missed.ToArray()) + " after it was refused (game update?); " +
+                                      "its entry stays there.");
+        }
+
+        /// <summary>Removes <paramref name="def"/> from a container's authored list, runtime list
+        /// and lookup, where it is the entry. False when one of the three is not reachable.</summary>
+        private static bool Unlist<T>(object container, GUIDUnion guid, T def) where T : class
+        {
+            if (def == null) return true;
+            List<T> authored = Refl.GetField<List<T>>(container, "AssetDescriptions", null);
+            List<T> runtime = Refl.GetField<List<T>>(container, "RuntimeDescriptions", null);
+            IDictionary lookup = Refl.GetField(container, "assetDefLUT") as IDictionary;
+            if (authored != null) authored.RemoveAll(d => ReferenceEquals(d, def));
+            if (runtime != null) runtime.RemoveAll(d => ReferenceEquals(d, def));
+            if (lookup != null && lookup.Contains(guid) && ReferenceEquals(lookup[guid], def)) lookup.Remove(guid);
+            return authored != null && runtime != null && lookup != null;
         }
 
         /// <summary>
@@ -736,7 +847,7 @@ namespace Ectype
         }
 
         /// <summary>Re-verifies every registered mutator and re-registers one a container rebuild
-        /// dropped. Runs on a slow cadence and as the first thing a session start does.</summary>
+        /// dropped. Runs on a slow cadence and at each session start.</summary>
         internal static void Reverify()
         {
             if (_byGuid.Count == 0 || !ReadyToRegister()) return;
@@ -784,19 +895,31 @@ namespace Ectype
         // ------------------------------------------------------------------ manifests
 
         /// <summary>Registers each role manifest's mutators once, with the role's id as the
-        /// owner.</summary>
+        /// owner, after the role has registered and suppression has resolved without suppressing
+        /// it. A role that fails registration, or that another role suppresses, adds none.</summary>
         private static void ReadManifests()
         {
             if (!RoleRegistry.Discovered) return;
             foreach (RoleRecord role in RoleRegistry.Roles)
             {
-                if (!_rolesRead.Add(role)) continue;
+                if (_rolesRead.Contains(role)) continue;
                 List<MutatorManifestSpec> list = role.Manifest.mutators;
-                if (list == null) continue;
+                if (list == null || list.Count == 0) { _rolesRead.Add(role); continue; }
+                string roleId = role.Manifest.roleId;
+                bool? wanted = RoleMutatorsWanted(role.Registered, role.PermanentlyFailed, Suppression.Resolved,
+                                                  Suppression.IsRoleSuppressed(roleId));
+                if (wanted == null) continue;
+                _rolesRead.Add(role);
+                if (wanted == false)
+                {
+                    Plugin.Log.LogWarning("Ectype: mutators: role '" + roleId + "' " +
+                                          (role.PermanentlyFailed ? "failed to register" : "is suppressed by another role") +
+                                          "; its " + list.Count + " mutator(s) are not registered.");
+                    continue;
+                }
                 for (int i = 0; i < list.Count; i++)
                 {
                     string why;
-                    string roleId = role.Manifest.roleId;
                     MutatorSpec spec = FromManifest(roleId, list[i], role.SourceAssembly, out why);
                     if (spec == null)
                     {
@@ -805,9 +928,20 @@ namespace Ectype
                         continue;
                     }
                     RegisterCore(spec, o => o == roleId);
-
                 }
             }
+        }
+
+        /// <summary>Whether a role's mutators register: false for a role that failed
+        /// registration or that suppression removed, true once the role has registered and
+        /// suppression has resolved without removing it, null while either is undecided.</summary>
+        internal static bool? RoleMutatorsWanted(bool registered, bool permanentlyFailed, bool suppressionResolved,
+                                                 bool suppressed)
+        {
+            if (permanentlyFailed) return false;
+            if (!suppressionResolved) return null;
+            if (suppressed) return false;
+            return registered ? (bool?)true : null;
         }
 
         /// <summary>A manifest entry as a spec, or null and the reason. Checks only what the
@@ -900,7 +1034,6 @@ namespace Ectype
             }
             _predictedFor = session;
             _contributed.Clear();
-            _lateDone.Clear();
 
             List<Mutator> active = PredictActive(inputs, resolve);
             List<string> names = new List<string>();
@@ -1025,7 +1158,7 @@ namespace Ectype
                 GameSession session = GameSessionManager.ActiveSession;
                 if (session != null && ReferenceEquals(session, _predictedFor) && _contributed.Contains(mutator.ContainerGuid))
                     return;
-                if (!_lateDone.Add(effect)) return;
+                if (!TakeLate(session, effect)) return;
                 Plugin.Log.LogWarning("Ectype: mutators: '" + NameOf(mutator) + "' was activated after the session " +
                                       "stats were published; its effects reach the host only, until the next session.");
                 Contribute(mutator, effect);
@@ -1034,6 +1167,18 @@ namespace Ectype
             {
                 Plugin.Log.LogError("Ectype: mutators: contributing on activation threw: " + e);
             }
+        }
+
+        /// <summary>True the first time <paramref name="effect"/> contributes late in
+        /// <paramref name="session"/>; a different session starts the set afresh.</summary>
+        internal static bool TakeLate(object session, SessionStatMutatorEffect effect)
+        {
+            if (!ReferenceEquals(session, _lateSession))
+            {
+                _lateDone.Clear();
+                _lateSession = session;
+            }
+            return _lateDone.Add(effect);
         }
 
         /// <summary>Host, after the game activated the starting list: logs a mutator whose
@@ -1109,11 +1254,15 @@ namespace Ectype
         }
 
         /// <summary>The common ancestor of hosting and joining: the host snapshots the required
-        /// assets here and a joiner compares them right after, so a dropped registration is
-        /// repaired before either.</summary>
+        /// assets here and a joiner compares them right after, so a pending registration is
+        /// attempted and a dropped one repaired before either.</summary>
         private static void PrepareNextSessionPrefix()
         {
-            try { Reverify(); }
+            try
+            {
+                Pump();
+                Reverify();
+            }
             catch (Exception e) { Plugin.Log.LogWarning("Ectype: mutators: re-verifying at session start threw: " + e.Message); }
         }
 
@@ -1135,20 +1284,26 @@ namespace Ectype
             }
             if (now < _nextPoll) return;
             _nextPoll = now + 2f;
-            foreach (MutatorRecord rec in _byGuid.Values)
-                if (rec.Verified) PublishSharedUnlock(rec);
+            PublishSharedUnlocks(now);
         }
 
         /// <summary>
         /// The Mutators menu decides whether a row is selectable from the union, across the room,
         /// of each player's shared mutator unlocks: a player property holding container indices,
         /// written in full from the unlock check when the profile initialises. That snapshot can
-        /// precede this registration and is retaken on every profile rebuild, so this reads the
-        /// property back and adds the index whenever it is missing. The game's own write is
-        /// additive and touches no persistent unlock.
+        /// precede a registration and is retaken on every profile rebuild, so this reads the
+        /// property back and adds every missing index in one write. The write touches no
+        /// persistent unlock.
+        ///
+        /// In a room the local copy of the property changes only when the server echoes a write
+        /// back, so a second write sent before that echo starts from the stale copy and drops the
+        /// first one's indices. After a write, nothing is written again until every index it added
+        /// reads back or the echo window has passed, and only an index still missing then counts
+        /// as a failed attempt.
         /// </summary>
-        private static void PublishSharedUnlock(MutatorRecord rec)
+        private static void PublishSharedUnlocks(float now)
         {
+            List<MutatorRecord> missing = new List<MutatorRecord>();
             try
             {
                 Player local = PhotonNetwork.LocalPlayer;
@@ -1157,42 +1312,76 @@ namespace Ectype
                 // publishes nothing before then.
                 if (!local.CustomProperties.ContainsKey(SharedMutatorKey)) return;
 
-                int index = ((IResourceAssetContainer)MutatorContainer.Instance).GetAssetIndex(rec.Guid);
-                if (index < 0) return;
-                if (index > byte.MaxValue)
+                IResourceAssetContainer container = MutatorContainer.Instance;
+                List<byte> have = PhotonPlayerUnlockSync.GetSharedUnlockIndices(local, SharedMutatorKey);
+                bool echoDue = now >= _sharedWriteAt + SharedEchoWindow;
+                bool awaitingEcho = false;
+                List<byte> add = new List<byte>();
+                foreach (MutatorRecord rec in _byGuid.Values)
                 {
-                    if (!rec.IndexWarned)
+                    if (!rec.Verified) continue;
+                    int index = container.GetAssetIndex(rec.Guid);
+                    if (index < 0) continue;
+                    if (index > byte.MaxValue)
                     {
-                        rec.IndexWarned = true;
-                        Plugin.Log.LogWarning("Ectype: mutators: '" + rec.Name + "' sits at index " + index + " of the " +
-                                              "mutator list, past the 255 the game's shared unlocks can name; it shows " +
-                                              "locked in the Mutators menu.");
+                        if (!rec.IndexWarned)
+                        {
+                            rec.IndexWarned = true;
+                            Plugin.Log.LogWarning("Ectype: mutators: '" + rec.Name + "' sits at index " + index + " of the " +
+                                                  "mutator list, past the 255 the game's shared unlocks can name; it shows " +
+                                                  "locked in the Mutators menu.");
+                        }
+                        continue;
                     }
-                    return;
+                    if (have.Contains((byte)index))
+                    {
+                        rec.SharedSeen = true;
+                        rec.SharedAttempts = 0;
+                        rec.SharedQuiet = false;
+                        rec.SharedWritten = false;
+                        continue;
+                    }
+                    rec.SharedSeen = false;
+                    if (rec.SharedWritten)
+                    {
+                        if (!echoDue)
+                        {
+                            awaitingEcho = true;
+                            continue;
+                        }
+                        rec.SharedWritten = false;
+                        SharedTrouble(rec, null);
+                    }
+                    if (rec.SharedAttempts >= SharedUnlockAttemptLimit) continue;
+                    missing.Add(rec);
+                    if (!add.Contains((byte)index)) add.Add((byte)index);
                 }
-                List<byte> indices = PhotonPlayerUnlockSync.GetSharedUnlockIndices(local, SharedMutatorKey);
-                if (indices.Contains((byte)index))
+                if (awaitingEcho || add.Count == 0) return;
+
+                byte[] merged = MergeIndices(have, add);
+                if (!local.SetCustomProperties(new ExitGames.Client.Photon.Hashtable { { SharedMutatorKey, merged } }))
                 {
-                    rec.SharedSeen = true;
-                    rec.SharedAttempts = 0;
-                    rec.SharedQuiet = false;
+                    foreach (MutatorRecord rec in missing) SharedTrouble(rec, "the property write was not sent");
                     return;
                 }
-                rec.SharedSeen = false;
-                if (rec.SharedAttempts >= SharedUnlockAttemptLimit) return;
-                PhotonPlayerUnlockSync sync = FindUnlockSync();
-                if (sync == null)
-                {
-                    SharedTrouble(rec, "the profile's shared-unlock link is not reachable");
-                    return;
-                }
-                sync.SetSharedUnlock(MutatorContainer.Instance, SharedMutatorKey, rec.Guid);
-                SharedTrouble(rec, null);
+                foreach (MutatorRecord rec in missing) rec.SharedWritten = true;
+                _sharedWriteAt = now;
             }
             catch (Exception e)
             {
-                SharedTrouble(rec, "the write threw: " + e.Message);
+                foreach (MutatorRecord rec in _byGuid.Values)
+                    if (rec.Verified && !rec.SharedSeen) SharedTrouble(rec, "the write threw: " + e.Message);
             }
+        }
+
+        /// <summary>The property's indices followed by each index of <paramref name="add"/> it
+        /// lacks, in order and without duplicates.</summary>
+        internal static byte[] MergeIndices(List<byte> have, List<byte> add)
+        {
+            List<byte> merged = new List<byte>(have);
+            foreach (byte b in add)
+                if (!merged.Contains(b)) merged.Add(b);
+            return merged.ToArray();
         }
 
         private static void SharedTrouble(MutatorRecord rec, string why)
@@ -1203,21 +1392,6 @@ namespace Ectype
             Plugin.Log.LogWarning("Ectype: mutators: '" + rec.Name + "' is still missing from this client's shared " +
                                   "mutator unlocks after " + rec.SharedAttempts + " attempts" +
                                   (why != null ? " (" + why + ")" : "") + "; it may show locked in the Mutators menu.");
-        }
-
-        /// <summary>The link of the profile's unlock chain that owns the shared-unlock property.
-        /// Bounded walk.</summary>
-        private static PhotonPlayerUnlockSync FindUnlockSync()
-        {
-            object node = PlayerProfile.Instance != null ? PlayerProfile.Instance.UnlockedItems : null;
-            for (int depth = 0; depth < 8 && node != null; depth++)
-            {
-                PhotonPlayerUnlockSync sync = node as PhotonPlayerUnlockSync;
-                if (sync != null) return sync;
-                if (!(node is ChainOfResponsibility<ICategorisedCollection>)) return null;
-                node = Refl.GetProperty(node, "source");
-            }
-            return null;
         }
     }
 

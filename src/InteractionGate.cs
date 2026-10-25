@@ -24,11 +24,29 @@ namespace Ectype
         /// <summary>A door's own control, an airlock door's button, or (owner side) a door or
         /// airlock door open request.</summary>
         Door,
-        /// <summary>An airlock's pressurise lever or safety override.</summary>
-        AirlockControl,
-        /// <summary>A power switch or breaker: a module's switch, the central computer's, a power
-        /// line's, a breaker, or a request to change one.</summary>
-        PowerSwitch,
+        /// <summary>An airlock's pressurise lever, the airlock itself, or (owner side) a request
+        /// to cycle the airlock. <see cref="InteractionKinds.IsAirlockControl"/> covers this and
+        /// <see cref="AirlockSafety"/>.</summary>
+        AirlockPressurize,
+        /// <summary>An airlock's safety override switch, or (owner side) a request to change
+        /// it.</summary>
+        AirlockSafety,
+        /// <summary>A module's own power switch (not the central computer's), a switch that
+        /// controls a power drain, or (owner side) a request to switch a power drain. Every
+        /// power kind is covered by <see cref="InteractionKinds.IsPowerSwitch"/>.</summary>
+        ModulePowerSwitch,
+        /// <summary>The central computer's power switch (the whole ship's power), a switch that
+        /// controls a power system, or (owner side) a request to switch a power system.</summary>
+        ShipPowerSwitch,
+        /// <summary>A power line's switch (a power propagator), or (owner side) a request to
+        /// switch one.</summary>
+        PowerLineSwitch,
+        /// <summary>A power breaker, a switch on or under one, or (owner side) a request to change
+        /// a breaker's synced state.</summary>
+        Breaker,
+        /// <summary>A switch outside any module that controls no value the classifier can
+        /// see.</summary>
+        OtherPowerSwitch,
         /// <summary>A System Enhancement panel: its switch, its minigame, or a request to change
         /// its state.</summary>
         EnhancementPanel,
@@ -48,6 +66,38 @@ namespace Ectype
         Minigame,
         /// <summary>The periscope.</summary>
         Periscope,
+    }
+
+    /// <summary>The coarse questions over <see cref="InteractionKind"/>: which kinds belong to
+    /// one family of controls. Callable as <c>InteractionKinds.IsPowerSwitch(q.Kind)</c> or
+    /// <c>q.Kind.IsPowerSwitch()</c>.</summary>
+    public static class InteractionKinds
+    {
+        /// <summary>Any power control: <see cref="InteractionKind.ModulePowerSwitch"/>,
+        /// <see cref="InteractionKind.ShipPowerSwitch"/>, <see cref="InteractionKind.PowerLineSwitch"/>,
+        /// <see cref="InteractionKind.Breaker"/> or <see cref="InteractionKind.OtherPowerSwitch"/>.</summary>
+        public static bool IsPowerSwitch(this InteractionKind kind)
+        {
+            switch (kind)
+            {
+                case InteractionKind.ModulePowerSwitch:
+                case InteractionKind.ShipPowerSwitch:
+                case InteractionKind.PowerLineSwitch:
+                case InteractionKind.Breaker:
+                case InteractionKind.OtherPowerSwitch:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>An airlock's own control: <see cref="InteractionKind.AirlockPressurize"/> or
+        /// <see cref="InteractionKind.AirlockSafety"/>. An airlock's door button is
+        /// <see cref="InteractionKind.Door"/>.</summary>
+        public static bool IsAirlockControl(this InteractionKind kind)
+        {
+            return kind == InteractionKind.AirlockPressurize || kind == InteractionKind.AirlockSafety;
+        }
     }
 
     /// <summary>Which check a query belongs to.</summary>

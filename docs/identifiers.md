@@ -30,6 +30,7 @@ be a reserved owner.
 | `SessionStatMutators.Register` | `MutatorSpec.Owner` | Refused: `Failed`, with the reason. |
 | `SessionData.Register`, `SessionData.HostValue` | key | Refused: `false`, or a host value that follows the local config only. |
 | `InteractionGate.Register` | id | Refused: `false`. |
+| `StatContributions.Register` | `StatContribution.Id` | Refused: `false`. |
 | `RuntimeContent.Publish` | `ModContentEntry.Owner` | Refused: `Failed`, with the reason. |
 | `CharacterStatuses.Register` | `CharacterStatusDef.Key` | One warning per id; it still works. |
 | `EnemyStatuses.Register` | `EnemyStatusDef.Key` | One warning per id; it still works. |
@@ -53,6 +54,7 @@ be a reserved owner.
 | --- | --- |
 | `Ectype: <API> '<id>' does not follow the identifier rule: <problem>. It still works.` | An API that warns met a non-conforming identifier. Logged once per id. |
 | `Ectype: interaction gate '<id>' refused: <problem>.` | An interaction gate id failed the check. |
+| `Ectype: stat contribution '<id>' refused: <problem>.` | A lasting stat contribution id failed the check. |
 
 The other refusing APIs carry the same `<problem>` text in their own refusal line. `<problem>` is
 one of:

@@ -243,6 +243,16 @@ Limits:
 The host publishes only in the hub. A change to its config during a mission takes effect at
 the next session it starts.
 
+## Host room values
+
+`SessionData.HostRoomValue(key, defaultValue, maxBytes)` returns a `HostRoomValue<T>`: a value
+of any type `Register` accepts that only the host writes, at any time, in the hub and in a
+mission, held for the life of the room. Each value is its own room property,
+`Ectype.Value:<key>`; the values the host sets in one frame leave in one room update; clients
+take a change only when Photon reports the master as its writer, and a new master keeps the
+values it held. [host-room-values.md](host-room-values.md) has the mechanism, the limits and its
+log lines.
+
 ## Log lines
 
 `<id>` is the first 8 characters of a session id.
