@@ -845,6 +845,13 @@ namespace Ectype
             internal List<GUIDUnion> Whitelist = new List<GUIDUnion>();
         }
 
+#if ECTYPE_DEV
+        /// <summary>Dev self-test: the inputs <see cref="ContributeAtOpening"/> reads in place of
+        /// the active session's, and the resolver it uses in place of the container.</summary>
+        internal static ActivationInputs InputsForTest = null;
+        internal static Func<GUIDUnion, Mutator> ResolveForTest = null;
+#endif
+
         /// <summary>
         /// Host, inside the session collection's opening and before the session's own
         /// <see cref="SessionStats.Opening"/> subscribers: contributes the effects of every
@@ -855,6 +862,13 @@ namespace Ectype
             GameSession session = null;
             ActivationInputs inputs = null;
             Func<GUIDUnion, Mutator> resolve = Resolve;
+#if ECTYPE_DEV
+            if (InputsForTest != null)
+            {
+                inputs = InputsForTest;
+                if (ResolveForTest != null) resolve = ResolveForTest;
+            }
+#endif
             if (inputs == null)
             {
                 session = GameSessionManager.ActiveSession;
