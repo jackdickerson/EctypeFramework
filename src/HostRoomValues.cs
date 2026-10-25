@@ -7,95 +7,284 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Photon.Pun;
 using Photon.Realtime;
+using UnityEngine;
 
 namespace Ectype
 {
+    /// <summary>Where the value a client holds for a key came from.</summary>
+    internal enum HostRoomSource
+    {
+        /// <summary>Read with no writer named (the join response, or the room's copy at a
+        /// registration), or kept after a room value this client could not read. Nothing vouches
+        /// that the master wrote it.</summary>
+        Unverified,
+        /// <summary>Taken from a property change whose writer was the master client.</summary>
+        Master,
+        /// <summary>The host's own value: one it set, or one it kept when it became the
+        /// host.</summary>
+        Own,
+    }
+
+    /// <summary>Why the latest room write of a key, after the last one taken, was not
+    /// taken.</summary>
+    internal enum HostRoomRefusal
+    {
+        None,
+        /// <summary>Its writer was not the master client.</summary>
+        Writer,
+        /// <summary>It was over the value's cap, not JSON text, or did not read as the value's
+        /// type.</summary>
+        Read,
+    }
+
+    /// <summary>What a client that has just become the host does with each key.</summary>
+    internal sealed class HostRoomAdoption
+    {
+        /// <summary>Kept, and written back because the room holds them differently.</summary>
+        internal readonly List<string> Back = new List<string>();
+        /// <summary>Held unverified and differing from the room's value, which the host now holds
+        /// as its own without writing it.</summary>
+        internal readonly List<string> FromRoom = new List<string>();
+        /// <summary>The room holds a value this client could not read: left as the room holds
+        /// it.</summary>
+        internal readonly List<string> Standing = new List<string>();
+        /// <summary>Keys the host now holds a value of its own for.</summary>
+        internal int Held;
+    }
+
+    /// <summary>What a client that has just stopped being the host does with each key.</summary>
+    internal sealed class HostRoomRelease
+    {
+        /// <summary>Gone back to the last value the room took from the master, now held.</summary>
+        internal readonly List<string> Reverted = new List<string>();
+        /// <summary>No value the room took from the master is known: to be read from the room,
+        /// unverified.</summary>
+        internal readonly List<string> FromRoom = new List<string>();
+    }
+
     /// <summary>
-    /// The host's own copy of every host room value, with nothing of Photon or Unity in it. Each
-    /// key holds the compact JSON text this client goes by, or null for none. A client fills it
-    /// from writes the master made; the host writes it itself and goes by it, never by the room's
-    /// copy, which changes a round trip after each write. Keys the host has to write to the room
-    /// wait in an ordered pending list until the next flush, so changes made in one frame leave
-    /// in one room update.
+    /// Every host room value as this client holds it, with nothing of Photon or Unity in it. Per
+    /// key: the compact JSON text this client goes by (null for none), where it came from, the
+    /// last value this client saw the room take from the master, and why the latest room write
+    /// was refused. The host writes its own values and goes by them, never by the room's copy,
+    /// which changes a round trip after each write. Keys the host has to write wait in an ordered
+    /// pending list until the next flush; a put-back after another player's write waits until
+    /// <see cref="PutBackSeconds"/> after that key's previous put-back.
     /// </summary>
     internal sealed class HostRoomCopy
     {
-        private readonly Dictionary<string, string> _held = new Dictionary<string, string>(StringComparer.Ordinal);
+        /// <summary>The shortest time between two put-backs of one key.</summary>
+        internal const float PutBackSeconds = 0.5f;
+
+        private sealed class Entry
+        {
+            internal string Held;
+            internal HostRoomSource Source = HostRoomSource.Unverified;
+            internal HostRoomRefusal Refused;
+            internal bool HasMaster;
+            internal string MasterText;
+            internal bool Pending;
+            internal bool PutBack;
+            internal float Due;
+            internal float LastPutBack = float.NegativeInfinity;
+        }
+
+        private readonly Dictionary<string, Entry> _keys = new Dictionary<string, Entry>(StringComparer.Ordinal);
         private readonly List<string> _pending = new List<string>();
 
         /// <summary>The JSON text held for <paramref name="key"/>, or null for none.</summary>
         internal string Held(string key)
         {
-            string json;
-            return key != null && _held.TryGetValue(key, out json) ? json : null;
+            Entry e = Find(key);
+            return e != null ? e.Held : null;
+        }
+
+        internal HostRoomSource Source(string key)
+        {
+            Entry e = Find(key);
+            return e != null ? e.Source : HostRoomSource.Unverified;
+        }
+
+        internal HostRoomRefusal Refusal(string key)
+        {
+            Entry e = Find(key);
+            return e != null ? e.Refused : HostRoomRefusal.None;
         }
 
         internal int PendingCount { get { return _pending.Count; } }
 
-        /// <summary>A client takes a value the master wrote (null: none). True when it changed.</summary>
-        internal bool Accept(string key, string json)
+        /// <summary>A client takes a value it read from the room (null: none):
+        /// <paramref name="master"/> when the change named the master as its writer, otherwise
+        /// unverified. True when the held text changed.</summary>
+        internal bool Took(string key, string json, bool master)
         {
-            if (string.Equals(Held(key), json, StringComparison.Ordinal)) return false;
-            if (json == null) _held.Remove(key);
-            else _held[key] = json;
+            Entry e = Get(key);
+            bool changed = !string.Equals(e.Held, json, StringComparison.Ordinal);
+            e.Held = json;
+            e.Source = master ? HostRoomSource.Master : HostRoomSource.Unverified;
+            e.Refused = HostRoomRefusal.None;
+            e.HasMaster = master;
+            e.MasterText = master ? json : null;
+            return changed;
+        }
+
+        /// <summary>A client did not take a room write of <paramref name="key"/>. After a read
+        /// refusal the held value is unverified: the room now holds something else, which may be
+        /// the master's.</summary>
+        internal void Refused(string key, HostRoomRefusal why)
+        {
+            Entry e = Get(key);
+            e.Refused = why;
+            if (why != HostRoomRefusal.Read) return;
+            e.Source = HostRoomSource.Unverified;
+            e.HasMaster = false;
+            e.MasterText = null;
+        }
+
+        /// <summary>The host writes a value: held at once as its own, and pending for the next
+        /// flush. True when anything is to be written: the text changed, or the key was not yet
+        /// the host's own.</summary>
+        internal bool Write(string key, string json)
+        {
+            Entry e = Get(key);
+            if (e.Source == HostRoomSource.Own && string.Equals(e.Held, json, StringComparison.Ordinal)) return false;
+            e.Held = json;
+            e.Source = HostRoomSource.Own;
+            e.Refused = HostRoomRefusal.None;
+            MarkPending(key, e, false, 0f);
             return true;
         }
 
-        /// <summary>The host writes a value: held at once, and pending for the next flush. True
-        /// when it changed; a value equal to the held one writes nothing.</summary>
-        internal bool Write(string key, string json)
+        /// <summary>The host saw the room take its own write of <paramref name="key"/>: the
+        /// room's value, <paramref name="raw"/>, is now one the master wrote.</summary>
+        internal void Echo(string key, object raw)
         {
-            if (!Accept(key, json)) return false;
-            MarkPending(key);
+            if (raw != null && !(raw is string)) return;
+            Entry e = Get(key);
+            e.HasMaster = true;
+            e.MasterText = (string)raw;
+        }
+
+        /// <summary>The host saw another player's write of <paramref name="key"/>, now
+        /// <paramref name="raw"/> in the room. True when it differs from the host's own value,
+        /// which is then pending as a put-back, due <see cref="PutBackSeconds"/> after the key's
+        /// previous put-back. A key the host has not claimed is not guarded.</summary>
+        internal bool Foreign(string key, object raw, float now)
+        {
+            Entry e = Find(key);
+            if (e == null || e.Source != HostRoomSource.Own) return false;
+            if (SameAsRoom(e.Held, raw)) return false;
+            MarkPending(key, e, true, now);
             return true;
         }
 
         /// <summary>
-        /// This client has just become the host: it keeps every value it held as its own, and each
-        /// key whose room copy differs from it is pending, to be written back. The held values are
-        /// the room's own except where this client refused a write by a player who was not the
-        /// master, so a forged value the departed host never put back is put back now. Returns the
-        /// pending keys.
+        /// This client has just become the host and carries the room's choices on. A value it holds
+        /// is kept as its own and written back where the room holds it differently, which is a
+        /// write refused because its writer was not the master. An unverified value (read from the
+        /// join response, with no writer named) that the room still holds differently, with no
+        /// refused write explaining the difference, is taken from the room without a write. A key
+        /// whose latest room value this client could not read is left as the room holds it,
+        /// unguarded until the host sets it.
         /// </summary>
-        internal List<string> Adopt(IEnumerable<string> keys, Func<string, object> roomRaw)
+        internal HostRoomAdoption Adopt(IEnumerable<string> keys, Func<string, object> roomRaw)
         {
-            List<string> back = new List<string>();
+            HostRoomAdoption result = new HostRoomAdoption();
             foreach (string key in keys)
             {
-                if (SameAsRoom(Held(key), roomRaw(key))) continue;
-                MarkPending(key);
-                back.Add(key);
+                Entry e = Get(key);
+                object raw = roomRaw(key);
+                if (e.Source == HostRoomSource.Unverified && e.Refused == HostRoomRefusal.Read)
+                {
+                    if (raw != null) result.Standing.Add(key);
+                    continue;
+                }
+                if (e.Source == HostRoomSource.Unverified && e.Refused == HostRoomRefusal.None &&
+                    !SameAsRoom(e.Held, raw) && (raw == null || raw is string))
+                {
+                    e.Held = (string)raw;
+                    e.Source = HostRoomSource.Own;
+                    if (e.Held != null) result.Held++;
+                    result.FromRoom.Add(key);
+                    continue;
+                }
+                e.Source = HostRoomSource.Own;
+                e.Refused = HostRoomRefusal.None;
+                if (e.Held != null) result.Held++;
+                if (SameAsRoom(e.Held, raw)) continue;
+                MarkPending(key, e, false, 0f);
+                result.Back.Add(key);
             }
-            return back;
+            return result;
         }
 
-        /// <summary>The host saw another player's write of <paramref name="key"/>, now
-        /// <paramref name="raw"/> in the room. True (and pending) when it differs from the held
-        /// value.</summary>
-        internal bool Foreign(string key, object raw)
+        /// <summary>
+        /// This client has just stopped being the host. Its unsent writes are dropped, and every
+        /// value of its own it has not seen the room take from it goes back to the last value the
+        /// room took from the master, or, with none known, is to be read from the room as a joiner
+        /// reads it. A write sent but sequenced after the master changed is refused by every
+        /// client, so the former host goes back with them.
+        /// </summary>
+        internal HostRoomRelease Release(IEnumerable<string> keys)
         {
-            if (SameAsRoom(Held(key), raw)) return false;
-            MarkPending(key);
-            return true;
-        }
-
-        /// <summary>The pending keys with their held values, in the order first marked; the
-        /// pending list is emptied.</summary>
-        internal List<KeyValuePair<string, string>> TakeBatch()
-        {
-            List<KeyValuePair<string, string>> batch = new List<KeyValuePair<string, string>>(_pending.Count);
-            foreach (string key in _pending) batch.Add(new KeyValuePair<string, string>(key, Held(key)));
+            foreach (string key in _pending) Find(key).Pending = false;
             _pending.Clear();
+            HostRoomRelease result = new HostRoomRelease();
+            foreach (string key in keys)
+            {
+                Entry e = Find(key);
+                if (e == null || e.Source != HostRoomSource.Own) continue;
+                if (!e.HasMaster)
+                {
+                    e.Source = HostRoomSource.Unverified;
+                    result.FromRoom.Add(key);
+                    continue;
+                }
+                e.Source = HostRoomSource.Master;
+                if (string.Equals(e.Held, e.MasterText, StringComparison.Ordinal)) continue;
+                e.Held = e.MasterText;
+                result.Reverted.Add(key);
+            }
+            return result;
+        }
+
+        /// <summary>The pending keys due at <paramref name="now"/> with their held values, in the
+        /// order first marked. They leave the pending list; the others stay.</summary>
+        internal List<KeyValuePair<string, string>> TakeBatch(float now)
+        {
+            List<KeyValuePair<string, string>> batch = new List<KeyValuePair<string, string>>();
+            for (int i = 0; i < _pending.Count;)
+            {
+                string key = _pending[i];
+                Entry e = Find(key);
+                if (e.Due > now)
+                {
+                    i++;
+                    continue;
+                }
+                _pending.RemoveAt(i);
+                e.Pending = false;
+                if (e.PutBack) e.LastPutBack = now;
+                e.PutBack = false;
+                batch.Add(new KeyValuePair<string, string>(key, e.Held));
+            }
             return batch;
         }
 
-        /// <summary>This client stopped being the host before a flush: the pending keys, which
-        /// never reached the room. The list is emptied.</summary>
-        internal List<string> DropPending()
+        /// <summary>A batch that did not reach the room: its keys are pending again, due at once,
+        /// ahead of any marked since, in their order.</summary>
+        internal void Requeue(List<KeyValuePair<string, string>> batch)
         {
-            List<string> dropped = new List<string>(_pending);
-            _pending.Clear();
-            return dropped;
+            int at = 0;
+            foreach (KeyValuePair<string, string> kv in batch)
+            {
+                Entry e = Get(kv.Key);
+                e.PutBack = false;
+                e.Due = float.NegativeInfinity;
+                if (e.Pending) _pending.Remove(kv.Key);
+                e.Pending = true;
+                _pending.Insert(at++, kv.Key);
+            }
         }
 
         /// <summary>UTF-8 bytes of every held value, with <paramref name="key"/>'s replaced by
@@ -103,20 +292,47 @@ namespace Ectype
         internal int TotalBytesWith(string key, string json)
         {
             int total = SessionData.Bytes(json);
-            foreach (KeyValuePair<string, string> kv in _held)
-                if (!string.Equals(kv.Key, key, StringComparison.Ordinal)) total += SessionData.Bytes(kv.Value);
+            foreach (KeyValuePair<string, Entry> kv in _keys)
+                if (!string.Equals(kv.Key, key, StringComparison.Ordinal)) total += SessionData.Bytes(kv.Value.Held);
             return total;
         }
 
         internal void Clear()
         {
-            _held.Clear();
+            _keys.Clear();
             _pending.Clear();
         }
 
-        private void MarkPending(string key)
+        private Entry Find(string key)
         {
-            if (!_pending.Contains(key)) _pending.Add(key);
+            Entry e;
+            return key != null && _keys.TryGetValue(key, out e) ? e : null;
+        }
+
+        private Entry Get(string key)
+        {
+            Entry e = Find(key);
+            if (e == null) _keys[key] = e = new Entry();
+            return e;
+        }
+
+        /// <summary>Pending: an own write is due at once, and takes over a waiting put-back; a
+        /// put-back is due <see cref="PutBackSeconds"/> after the key's previous one.</summary>
+        private void MarkPending(string key, Entry e, bool putBack, float now)
+        {
+            if (!putBack)
+            {
+                e.PutBack = false;
+                e.Due = float.NegativeInfinity;
+            }
+            if (e.Pending) return;
+            if (putBack)
+            {
+                e.PutBack = true;
+                e.Due = Math.Max(now, e.LastPutBack + PutBackSeconds);
+            }
+            e.Pending = true;
+            _pending.Add(key);
         }
 
         /// <summary>True when the room's property value is the held text: the same string, or
@@ -129,11 +345,11 @@ namespace Ectype
         }
 
         /// <summary>A client takes a property change written by <paramref name="sender"/> when it
-        /// is the master as the change arrives. Photon reports no writer (0 or less) for a change
-        /// the server made, which is taken too.</summary>
+        /// is the master as the change arrives. A change the server made names actor 0 and is
+        /// taken too; an event that names no writer at all (-1) is not.</summary>
         internal static bool WriterAccepted(int sender, int master)
         {
-            return sender <= 0 || sender == master;
+            return sender == 0 || sender == master;
         }
     }
 
@@ -151,10 +367,10 @@ namespace Ectype
     /// <summary>
     /// The channel of every <see cref="HostRoomValue{T}"/>: one room property per value, named
     /// <see cref="PropertyPrefix"/> plus its key, holding the value's compact JSON. The host goes
-    /// by its own copy and writes the values changed in a frame in one room update. A client takes
-    /// a change only when Photon reports the master as its writer; the host writes its own value
-    /// back when anyone else writes one. A player who becomes the master keeps the values it held
-    /// and puts back any the room holds differently.
+    /// by its own copy and writes the values changed in a frame in one room update, at the end of
+    /// the frame. A client takes a change only when Photon reports the master as its writer; the
+    /// host writes its own value back when anyone else writes one. A player who becomes the master
+    /// carries on with the values it holds and puts back what the room holds differently.
     /// </summary>
     internal static class HostRoomValues
     {
@@ -169,7 +385,9 @@ namespace Ectype
 
         private static Room _room;
         private static bool _host;
+        private static int _master;
         private static bool _callbacks;
+        private static int _lastEndOfFrame = -1;
 
         internal static int Count { get { return _values.Count; } }
 
@@ -180,7 +398,8 @@ namespace Ectype
             _values.Add(v);
             _byKey[v.Key] = v;
             if (_room == null) return;
-            Accept(v, Raw(_room, v.Key));
+            Read(v, Raw(_room, v.Key), false);
+            if (_host) Claim(new[] { v.Key }, _room, false);
             v.RaiseIfChanged();
         }
 
@@ -193,10 +412,11 @@ namespace Ectype
             }
         }
 
-        internal enum WriteResult { Written, Unchanged, NotHost, OverTotal }
+        internal enum WriteResult { Written, Claimed, Unchanged, NotHost, OverTotal }
 
         /// <summary>Host: holds <paramref name="json"/> as <paramref name="v"/>'s value, pending for
-        /// the next flush.</summary>
+        /// the next flush. <see cref="WriteResult.Claimed"/>: the text was already held, but not as
+        /// the host's own, and is written.</summary>
         internal static WriteResult Write(IHostRoomValue v, string json, out int total)
         {
             total = 0;
@@ -204,15 +424,18 @@ namespace Ectype
             if (!_host) return WriteResult.NotHost;
             total = _copy.TotalBytesWith(v.Key, json);
             if (total > TotalCapBytes) return WriteResult.OverTotal;
-            return _copy.Write(v.Key, json) ? WriteResult.Written : WriteResult.Unchanged;
+            bool same = string.Equals(_copy.Held(v.Key), json, StringComparison.Ordinal);
+            if (!_copy.Write(v.Key, json)) return WriteResult.Unchanged;
+            return same ? WriteResult.Claimed : WriteResult.Written;
         }
 
         internal static bool Once(string what) { return _once.Add(what); }
 
         // ------------------------------------------------------------------ driver
 
-        /// <summary>Every frame: follows the room and the master role, and sends the host's
-        /// pending values in one room update.</summary>
+        /// <summary>Every frame, from the driver's <c>Update</c>: follows the room and the master
+        /// role. Sends the pending values itself only when the end-of-frame step did not run last
+        /// frame.</summary>
         internal static void Poll()
         {
             if (_values.Count == 0) return;
@@ -229,6 +452,25 @@ namespace Ectype
             try
             {
                 SyncRole();
+                if (Time.frameCount - _lastEndOfFrame > 1) Flush();
+            }
+            catch (Exception e)
+            {
+                if (_once.Add("poll"))
+                    Plugin.Log.LogError("Ectype: host room values: update failed (reported once): " + e);
+            }
+        }
+
+        /// <summary>At the end of every frame, after every <c>Update</c>, <c>LateUpdate</c>,
+        /// coroutine and <c>OnGUI</c> of the frame: sends the host's pending values in one room
+        /// update.</summary>
+        internal static void EndOfFrame()
+        {
+            _lastEndOfFrame = Time.frameCount;
+            if (_values.Count == 0) return;
+            try
+            {
+                SyncRole();
                 Flush();
             }
             catch (Exception e)
@@ -241,7 +483,8 @@ namespace Ectype
         private static void Flush()
         {
             if (!_host || _room == null || _copy.PendingCount == 0) return;
-            List<KeyValuePair<string, string>> batch = _copy.TakeBatch();
+            List<KeyValuePair<string, string>> batch = _copy.TakeBatch(Time.unscaledTime);
+            if (batch.Count == 0) return;
             ExitGames.Client.Photon.Hashtable changes = new ExitGames.Client.Photon.Hashtable();
             StringBuilder keys = new StringBuilder();
             foreach (KeyValuePair<string, string> kv in batch)
@@ -250,7 +493,23 @@ namespace Ectype
                 if (keys.Length > 0) keys.Append(", ");
                 keys.Append(kv.Key);
             }
-            _room.SetCustomProperties(changes);
+            string problem = null;
+            try
+            {
+                if (!_room.SetCustomProperties(changes)) problem = "Photon did not send it";
+            }
+            catch (Exception e)
+            {
+                problem = e.Message;
+            }
+            if (problem != null)
+            {
+                _copy.Requeue(batch);
+                if (_once.Add("unsent"))
+                    Plugin.Log.LogWarning("Ectype: host room values: the room update of " + keys + " was not sent (" +
+                                          problem + "); the host sends it again at the next frame.");
+                return;
+            }
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: host room values: wrote " + batch.Count + " value(s) in one room update (" +
                                    keys + ").");
@@ -268,19 +527,39 @@ namespace Ectype
                 return;
             }
             if (!ReferenceEquals(room, _room)) Joined(room);
+            NoteMaster(room);
             bool master = PhotonNetwork.IsMasterClient;
             if (master && !_host) BecameHost(room);
             else if (!master && _host) LostHost(room);
         }
 
+        /// <summary>Photon moves the master role on its own only when the master leaves; it has
+        /// already removed the departed master (or marked it inactive) when the switch is reported.
+        /// A switch while the previous master is still active in the room was asked for by a
+        /// player, and the writer rule follows it.</summary>
+        private static void NoteMaster(Room room)
+        {
+            int now = room.MasterClientId;
+            if (now == _master) return;
+            int before = _master;
+            _master = now;
+            if (before <= 0) return;
+            Photon.Realtime.Player previous = room.GetPlayer(before);
+            if (previous == null || previous.IsInactive) return;
+            Plugin.Log.LogWarning("Ectype: host room values: the master client moved from actor " + before +
+                                  " to actor " + now + " while " + before + " is still in the room; clients now " +
+                                  "take host room values written by " + now + ".");
+        }
+
         /// <summary>A joiner reads every value from the room as it joins. The join response names
-        /// no writer, so what the room holds is taken.</summary>
+        /// no writer, so what the room holds is taken unverified.</summary>
         private static void Joined(Room room)
         {
             if (_room != null) Left();
             _room = room;
             _host = false;
-            foreach (IHostRoomValue v in _values) Accept(v, Raw(room, v.Key));
+            _master = room.MasterClientId;
+            foreach (IHostRoomValue v in _values) Read(v, Raw(room, v.Key), false);
             RaiseAll();
         }
 
@@ -295,6 +574,7 @@ namespace Ectype
             _copy.Clear();
             _room = null;
             _host = false;
+            _master = 0;
             _once.Clear();
             RaiseAll();
         }
@@ -302,30 +582,55 @@ namespace Ectype
         private static void BecameHost(Room room)
         {
             _host = true;
-            List<string> keys = new List<string>(_byKey.Keys);
-            List<string> back = _copy.Adopt(keys, k => Raw(room, k));
-            int held = 0;
-            foreach (string k in keys) if (_copy.Held(k) != null) held++;
-            if (back.Count == 0)
-            {
-                if (Plugin.Verbose)
-                    Plugin.Log.LogInfo("Ectype: host room values: this player hosts the room now and keeps the " + held +
-                                       " value(s) it held.");
-            }
-            else
-                Plugin.Log.LogWarning("Ectype: host room values: this player hosts the room now and keeps the " + held +
-                                      " value(s) it held; " + back.Count + " differed in the room and are put back (" +
-                                      string.Join(", ", back.ToArray()) + ").");
+            Claim(new List<string>(_byKey.Keys), room, true);
+            RaiseAll();
         }
 
-        /// <summary>Values the host held but never sent go back to what the room holds.</summary>
+        /// <summary>The host takes <paramref name="keys"/> as its own, by the adoption rule of
+        /// <see cref="HostRoomCopy.Adopt"/>.</summary>
+        private static void Claim(IEnumerable<string> keys, Room room, bool log)
+        {
+            HostRoomAdoption a = _copy.Adopt(keys, k => Raw(room, k));
+            foreach (string key in a.FromRoom)
+            {
+                IHostRoomValue v;
+                string ignored;
+                if (_byKey.TryGetValue(key, out v)) v.Take(_copy.Held(key), out ignored);
+            }
+            if (a.Standing.Count > 0)
+                Plugin.Log.LogWarning("Ectype: host room values: this player hosts the room now and leaves " +
+                                      a.Standing.Count + " value(s) it could not read as the room holds them (" +
+                                      string.Join(", ", a.Standing.ToArray()) + ").");
+            if (!log) return;
+            if (a.Back.Count > 0)
+                Plugin.Log.LogWarning("Ectype: host room values: this player hosts the room now and keeps the " + a.Held +
+                                      " value(s) it held; " + a.Back.Count + " differed in the room and are put back (" +
+                                      string.Join(", ", a.Back.ToArray()) + ").");
+            else if (Plugin.Verbose)
+                Plugin.Log.LogInfo("Ectype: host room values: this player hosts the room now and keeps the " + a.Held +
+                                   " value(s) it held.");
+        }
+
+        /// <summary>Values of its own the former host never saw the room take go back to the last
+        /// value the room took from the master.</summary>
         private static void LostHost(Room room)
         {
             _host = false;
-            foreach (string key in _copy.DropPending())
+            HostRoomRelease r = _copy.Release(new List<string>(_byKey.Keys));
+            foreach (string key in r.Reverted)
             {
                 IHostRoomValue v;
-                if (_byKey.TryGetValue(key, out v)) Accept(v, Raw(room, key));
+                if (!_byKey.TryGetValue(key, out v)) continue;
+                string problem;
+                if (!v.Take(_copy.Held(key), out problem) && _once.Add("revert:" + key))
+                    Plugin.Log.LogWarning("Ectype: host room value '" + key + "': the room's value does not read as " +
+                                          v.TypeName + " within " + v.Cap + " bytes (" + problem + "); this client " +
+                                          "keeps the value it had.");
+            }
+            foreach (string key in r.FromRoom)
+            {
+                IHostRoomValue v;
+                if (_byKey.TryGetValue(key, out v)) Read(v, Raw(room, key), false);
             }
             RaiseAll();
         }
@@ -358,10 +663,15 @@ namespace Ectype
                 if (_host)
                 {
                     Photon.Realtime.Player me = PhotonNetwork.LocalPlayer;
-                    if (me != null && sender == me.ActorNumber) return; // the host's own write
+                    if (me != null && sender == me.ActorNumber)
+                    {
+                        foreach (IHostRoomValue v in touched) _copy.Echo(v.Key, props[PropertyPrefix + v.Key]);
+                        return;
+                    }
                     List<string> back = new List<string>();
+                    float now = Time.unscaledTime;
                     foreach (IHostRoomValue v in touched)
-                        if (_copy.Foreign(v.Key, props[PropertyPrefix + v.Key])) back.Add(v.Key);
+                        if (_copy.Foreign(v.Key, props[PropertyPrefix + v.Key], now)) back.Add(v.Key);
                     if (back.Count > 0 && _once.Add("back:" + sender))
                         Plugin.Log.LogWarning("Ectype: host room values: actor " + sender + " wrote " +
                                               string.Join(", ", back.ToArray()) + "; the host puts its own back.");
@@ -371,16 +681,18 @@ namespace Ectype
                 int master = room.MasterClientId;
                 if (!HostRoomCopy.WriterAccepted(sender, master))
                 {
-                    if (_once.Add("foreign:" + sender))
+                    List<string> keys = new List<string>();
+                    foreach (IHostRoomValue v in touched)
                     {
-                        List<string> keys = new List<string>();
-                        foreach (IHostRoomValue v in touched) keys.Add(v.Key);
+                        _copy.Refused(v.Key, HostRoomRefusal.Writer);
+                        keys.Add(v.Key);
+                    }
+                    if (_once.Add("foreign:" + sender))
                         Plugin.Log.LogWarning("Ectype: host room values: ignored a write of " + string.Join(", ", keys.ToArray()) +
                                               " from actor " + sender + ", who is not the master client (" + master + ").");
-                    }
                     return;
                 }
-                foreach (IHostRoomValue v in touched) Accept(v, props[PropertyPrefix + v.Key]);
+                foreach (IHostRoomValue v in touched) Read(v, props[PropertyPrefix + v.Key], true);
                 foreach (IHostRoomValue v in touched) v.RaiseIfChanged();
             }
             catch (Exception e)
@@ -390,9 +702,11 @@ namespace Ectype
             }
         }
 
-        /// <summary>Takes a room property value as <paramref name="v"/>'s, when it is absent, null,
-        /// or a string within the value's cap that reads as its type.</summary>
-        private static void Accept(IHostRoomValue v, object raw)
+        /// <summary>Takes a room property value as <paramref name="v"/>'s when it is absent, null,
+        /// or a string within the value's cap that reads as its type: from the master's write when
+        /// <paramref name="master"/>, otherwise unverified. Anything else is refused, and the
+        /// value this client had is kept, unverified.</summary>
+        private static void Read(IHostRoomValue v, object raw, bool master)
         {
             string json = null;
             string problem = null;
@@ -404,22 +718,24 @@ namespace Ectype
             }
             if (problem == null)
             {
-                if (string.Equals(_copy.Held(v.Key), json, StringComparison.Ordinal)) return;
-                if (v.Take(json, out problem))
+                if (string.Equals(_copy.Held(v.Key), json, StringComparison.Ordinal) || v.Take(json, out problem))
                 {
-                    _copy.Accept(v.Key, json);
+                    _copy.Took(v.Key, json, master);
                     return;
                 }
             }
+            _copy.Refused(v.Key, HostRoomRefusal.Read);
             if (_once.Add("read:" + v.Key))
                 Plugin.Log.LogWarning("Ectype: host room value '" + v.Key + "': the room's value does not read as " +
                                       v.TypeName + " within " + v.Cap + " bytes (" + problem + "); this client keeps " +
                                       "the value it had.");
         }
 
+        /// <summary>Raises every changed value. A subscriber may register another value meanwhile,
+        /// so the list is copied first.</summary>
         private static void RaiseAll()
         {
-            foreach (IHostRoomValue v in _values) v.RaiseIfChanged();
+            foreach (IHostRoomValue v in _values.ToArray()) v.RaiseIfChanged();
         }
 
         private static object Raw(Room room, string key)
@@ -515,11 +831,12 @@ namespace Ectype
 
         /// <summary>
         /// Host only: makes <paramref name="value"/> this value on every client. The host's
-        /// <see cref="Value"/> changes at once; every value set in the same frame leaves in one
-        /// room update. False, writing nothing, on a client, outside a room, for a value that was
-        /// refused at registration, over <see cref="MaxBytes"/>, over the 16384-byte total of every
-        /// host room value, or one that does not read back as <typeparamref name="T"/>. The value
-        /// is copied: changing the object afterwards changes nothing.
+        /// <see cref="Value"/> changes at once; every value set during a frame leaves in one room
+        /// update at the end of that frame. False, writing nothing, on a client, outside a room,
+        /// for a value that was refused at registration, over <see cref="MaxBytes"/>, over the
+        /// 16384-byte total of every host room value, or one that does not read back as
+        /// <typeparamref name="T"/>. The value is copied: changing the object afterwards changes
+        /// nothing.
         /// </summary>
         public bool Set(T value)
         {
@@ -545,6 +862,7 @@ namespace Ectype
                                             "-byte cap.");
                     return false;
                 case HostRoomValues.WriteResult.Unchanged:
+                case HostRoomValues.WriteResult.Claimed:
                     return true;
             }
             Hold(copy, true);

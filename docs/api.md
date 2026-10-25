@@ -129,7 +129,7 @@ identifier that does not follow it.
 | `HostValue<T>` | A config entry (bool, number, enum or string) read as the host's value: `Value`, `IsFromHost`, `Source`, `Key`, `Entry`, `Changed`. Live in the hub through a room property the host publishes; frozen for a mission from its start on every client, the host included. |
 | `HostValueSource` | `LocalConfig`, `Room`, `Session`: where a `HostValue<T>`'s value came from. |
 | `SessionData.HostRoomValue<T>(key, defaultValue, maxBytes)` | A value only the host writes, of any type `Register` accepts, held in its own room property (`Ectype.Value:<key>`) for the life of the room, in the hub and in a mission. Returns a `HostRoomValue<T>`, never null. See [reference/host-room-values.md](reference/host-room-values.md). |
-| `HostRoomValue<T>` | `Value` (the host's value on every client; the default before one arrives and outside a room), `HasValue`, `Set(value)` (host only; false on a client; the values set in one frame leave in one room update), `CanSet`, `Changed`, `Key`, `MaxBytes`. A client takes only changes the master wrote; the host puts its own value back after another player's write; a new master keeps the values it held. |
+| `HostRoomValue<T>` | `Value` (the host's value on every client; the default before one arrives and outside a room), `HasValue`, `Set(value)` (host only; false on a client; the values set during a frame leave in one room update at the end of that frame), `CanSet`, `Changed`, `Key`, `MaxBytes`. A client takes only changes the master wrote; the host puts its own value back after another player's write, each key at most twice a second; a new master carries on with the values it holds and puts back only refused writes. |
 
 ## HUD
 

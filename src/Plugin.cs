@@ -179,6 +179,24 @@ namespace Ectype
         private float _nextRegister;
         private readonly HashSet<string> _failedSteps = new HashSet<string>();
 
+        private void Start()
+        {
+            StartCoroutine(EndOfFrame());
+        }
+
+        /// <summary>Steps that must see everything a frame did. <c>WaitForEndOfFrame</c> resumes
+        /// after every <c>Update</c>, <c>LateUpdate</c>, coroutine and <c>OnGUI</c> of the frame,
+        /// whatever the scripts' execution order.</summary>
+        private System.Collections.IEnumerator EndOfFrame()
+        {
+            WaitForEndOfFrame wait = new WaitForEndOfFrame();
+            while (true)
+            {
+                yield return wait;
+                Step("host room values", HostRoomValues.EndOfFrame);
+            }
+        }
+
         // Each step is guarded on its own, so one throwing step does not starve the rest.
         private void Update()
         {
