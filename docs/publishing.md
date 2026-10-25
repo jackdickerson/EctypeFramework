@@ -20,7 +20,8 @@ Thunderstore listing shows it (for example `0.19.7`). Use the
 version you built against: a mod compiled against one version needs that version or newer,
 and the room check requires every player to run the same build (see `versioning.md`).
 
-Every package also depends on the two packages the framework itself needs:
+Every package also depends on BepInEx, the one package the framework itself needs. A mod
+that declares a `VoidPlugin` or uses any other VoidManager API depends on VoidManager as well:
 
 ```
 BepInEx-BepInExPack-5.4.2305
@@ -109,7 +110,10 @@ plain words.
    to add.
 
 The Void Crew community's categories include `All Required` and `Disables Progression`,
-which describe a role mod's requirements. The list changes over time: read the live list
+which describe a role mod's requirements. The framework's own package carries `All Required`.
+It declares no `VoidPlugin`, so a mod launcher that looks for one in the DLL finds none and
+falls back to the package's categories; the DLL also carries
+`AssemblyMetadata("MPType", "All")` for a reader that inspects assembly metadata. The list changes over time: read the live list
 (`https://thunderstore.io/api/experimental/community/void-crew/category/`) before you set
 categories.
 

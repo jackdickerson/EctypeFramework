@@ -18,6 +18,7 @@ per-open event appear only with `[Debug] VerboseLogging = true` in
 | | `no role manifests found` | No installed mod carries a manifest. See "No role appears". |
 | | `<n>/<m> roles registered` | `n` of `m` discovered roles finished registering. `(<k> failed)` is appended when `k` gave up. |
 | `Stats:` | `<n> vanilla aliases, framework-owned <status>` | The stat names a manifest can use. `not registered` means the stat table has not loaded; `<n> registered` is the normal state. |
+| `Network :` | `event 181, contract <n>, marker <guid>` | The framework's Photon event code, the network contract this build speaks, and the contract marker asset once registered (`marker not registered yet` before the asset tables load). |
 | `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, `<n> tree(s) suppressed: <names>`, or `<k> suppressed role(s)` | Which stock gene trees role mods have removed through `suppress`, and how many framework roles other role mods have removed through `suppressRoles`; both parts appear joined by `+` when both apply. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
 | One line per role | `registered (stage limit 9); tree def published as EPerkTree <n>` | The role is registered and its tree is published. |
 | | `waiting for asset containers` | Same as the pipeline line, for this role. |
@@ -31,6 +32,17 @@ The role line also shows the tree number and the assembly that supplied the mani
 
 The framework started and applied every patch. `n` is the manifest contract version this build
 accepts. No role is registered yet; look for `Ectype: discovered` next.
+
+### `Ectype: settings menu unavailable: VoidManager not loaded.`
+
+VoidManager is not installed, or BepInEx did not load it. The framework runs in full; only the
+F5 page is missing, since F5 is VoidManager's menu. Install VoidManager to get the page back.
+
+With VoidManager installed, three lines say a hook into it missed after a VoidManager update:
+`VoidManager's mod-override table not found` (VoidManager lists the framework as `Unmanaged`
+and its join check skips the framework), `VoidManager.PluginHandler.DiscoverPlugins not found`
+and `adding the F5 page to VoidManager failed` (the F5 page is missing). The game's asset
+check still compares the network contract in every case.
 
 ### `Ectype: disabled via config ([General] Enabled = false).`
 
@@ -516,6 +528,7 @@ Which screen says what the problem is:
 | `Host is missing the required mod` | VoidManager | The joiner has an `All` mod the host lacks. |
 | `Client is missing the required mod` | VoidManager | The host has an `All` mod the joiner lacks. |
 | A screen that lists individual assets | The game's asset check | One side registered required content (a role's tree or perks, for example) that the other did not. |
+| The same screen naming `Ectype Framework <version> (network contract <n>)` | The game's asset check | The two frameworks speak different network contracts. The name is the host's framework. |
 | Removed from the room after arriving, with no message from the framework | VoidManager, on the host | Same version, different DLL bytes. Only the host compares hashes. |
 
 Fix every case the same way: install the host's exact versions. The Void Crew Mod Launcher
@@ -565,8 +578,32 @@ mod does not throw when the host activates it.
 | `Ectype: dropped ability-sync start '<key>' for view <id>: the character had no look source after 5 s.` | A start arrived for a character on this client that never became able to run an ability, so it was not started here. The owner's next start replicates normally. |
 | `Ectype: ability-sync send failed: <exception>`, `Ectype: handling ability-sync message failed: <exception>`, `Ectype: late-join ability-sync failed: <exception>`, `Ectype: resolving ability-sync recipients failed: <exception>` | A step of the keyed channel threw. A registered ability never falls back to the index RPC, so a failed send is a dropped state update. |
 
-A registered ability reaches only peers whose mod list carries the framework. A peer without it
-sees no message it cannot act on and ignores keys it has no ability for.
+A registered ability reaches only peers whose player property `Ectype` carries this build's
+network contract. A peer without it sees no message it cannot act on and ignores keys it has
+no ability for.
+
+### The framework's network channel
+
+Ability replication and enemy-status replication ride one Photon event, code 181. Every
+message starts with a subtype byte: 1 is an ability start or stop, 2 an enemy status apply or
+remove.
+
+| Line | Cause |
+| --- | --- |
+| `Ectype: listening on Photon event 181 (<n> message type(s), network contract <c>).` | The receive path is subscribed. Logged once, on the first frame. Without it no framework message is received on this client. |
+| `Ectype: net send <name> (subtype <s>) to actor(s) <list>.` | VerboseLogging only. One per message sent, naming its recipients. |
+| `Ectype: net recv <name> (subtype <s>) from actor <a>.` | VerboseLogging only. One per message received, naming the sender's actor number. |
+| `Ectype: published player property 'Ectype' = <c> for the next join.` or `... to the room.` | VerboseLogging only. The local player now carries the property other clients filter recipients by. |
+| `Ectype: ignored net subtype <s> from actor <a>: this build has no handler for it (a different network contract?).` | Logged once per subtype. The sender runs a framework on another network contract. The contract marker normally refuses such a peer at join. |
+| `Ectype: ignored a malformed net event from actor <a> (no subtype byte).` | Logged once. Something else raised event 181 with another payload: another mod using the same code. |
+| `Ectype: network contract <c> marker registered (<guid>, effect <effect>).` | The contract marker asset is in the game's registry. |
+
+To check replication between two clients, turn on VerboseLogging on both, activate a
+registered ability on one and apply an enemy status on it. The sender logs one `net send` line
+per message and the other client one `net recv` line naming the same subtype and the sender's
+actor number. A `net send` with no matching `net recv` means the receiver is not subscribed;
+no `net send` at all means the receiver is not in the recipient list, because its `Ectype`
+property is missing or carries another contract.
 
 ## Utility APIs
 

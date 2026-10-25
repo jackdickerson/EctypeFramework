@@ -29,6 +29,9 @@ Paths are relative to the framework project folder.
 | How-to hints | `src/HowToHints.cs` |
 | Hand attractor stats | `src/HandAttractorStats.cs` |
 | Runtime ability replication | `src/AbilitySync.cs` |
+| Network channel (Photon event, subtypes, peer property) | `src/EctypeNet.cs`, `PeerPresence` in `src/AbilitySync.cs` |
+| Network contract marker asset | `src/ContractMarker.cs` |
+| VoidManager integration (optional: mod type, F5 page) | `src/VoidManagerBridge.cs` |
 | Role ability cancel policy and usability | `src/EctypeRoleAbility.cs`, `src/AbilityCancel.cs` |
 | Geometry watcher | `src/PresentationDiagnostics.cs` |
 | Gene-tree layout values | `src/LayoutSpec.cs` |
@@ -69,8 +72,13 @@ column.
 | `UnlockContainer.GetItemsLockedBy(PlayerPerk)` (read) | the same enumeration the fabricator re-reads on every perk change, so an adopted unlock is by construction one the fabricator will see |
 | `ClassAbilityDisplay.OnLocalPlayerEnabledClassAbility` postfix | the HUD slot for framework abilities (vanilla resolves by hard type-check on the four stock ability classes), plus status-subscription normalization |
 | `ClassAbilityDisplay` `container` / `classAbilityVE` (read), `KeyBindVE._boundInput` + `UpdateKeybind` (written, called) | the HUD ability bar's anchor and parent, and the key drawn on each button's chip |
-| `CustomPunCharacter.OnAbilityActive` prefix | diverts a registered runtime ability off the vanilla index RPC and onto the framework's keyed `ModMessage`; prefab abilities fall through untouched |
-| `CustomPunCharacter.OnPlayerEnteredRoom` postfix | late-join sync for running registered abilities, sent to the joiner alone and only if VoidManager reports them running the framework |
+| `CustomPunCharacter.OnAbilityActive` prefix | diverts a registered runtime ability off the vanilla index RPC and onto the framework's keyed message on its own Photon event; prefab abilities fall through untouched |
+| `CustomPunCharacter.OnPlayerEnteredRoom` postfix | late-join sync for running registered abilities, sent to the joiner alone and only if the joiner's `Ectype` player property carries this build's network contract |
+| `PhotonNetwork.RaiseEvent` with `TargetActors`, `PhotonNetwork.NetworkingClient.EventReceived` (subscribed) | the framework's message channel, event code 181. PUN creates `NetworkingClient` once, in `PhotonNetwork`'s static constructor; the driver still re-subscribes if the instance changes. The event code must stay clear of the game (0-10), VoidManager (95-99), Opsive's PUN add-on (155-160), Void Crew Fleet (173) and Photon (200 and above) |
+| `PhotonNetwork.LocalPlayer.SetCustomProperties` (called), `Player.CustomProperties` (read) | peer presence: the `Ectype` property. Set outside a room it stays local, and `LoadBalancingClient` merges the local player's custom properties into every game-server join request, so the property arrives with the join |
+| `RuntimeAssetsRegister.RegisterAsset` with `RuntimeAssetInfo.Name` (called); `GameSessionManager.ValidateMods` and the missing-asset reply, events 7 and 8 (relied on) | the network contract marker. The joiner's rejection screen prints the `Name` the host sends back for an asset the joiner lacks |
+| `VoidManager.Configs.LoadModListOverride` postfix, `Configs.ModOverrideDictionary` (written), patched by name when VoidManager is loaded | lists the framework, which has no `VoidPlugin`, as `MultiplayerType.All` in the generated entry VoidManager makes for a plugin without one. A miss lists the framework as `Unmanaged`: no VoidManager version or hash check for it, and no VoidManager session flag from it |
+| `VoidManager.PluginHandler.DiscoverPlugins` postfix, `CustomGUI.GUIMain.Instance` / `settings` (inserted into), `ModSettingsMenu.MyVoidPlugin` (written), `PluginHandler.ActiveVoidPlugins` / `GeneratedVoidPlugins` (read) | the F5 page: a `ModSettingsMenu` subclass emitted at runtime, inserted where VoidManager's own name sort would put it. A miss costs the F5 page alone |
 | `ChannelGrapplingHook.Awake` postfix | registers the framework's grapple stats onto that hook's own stat collection, and a hook-scoped alias onto the cooldown the base class already registered |
 | `PlayerControlledShip.RegisterStats` postfix | registers the framework's ship-scoped stats (`IncomingProjectileSpeed`, and `ShipDrag` over the `MovingSpacePlatform` on the same GameObject, since `Platform` is assigned after `RegisterStats` runs) onto the player ship's own collection |
 | `SyncedProjectilesSynchronizer.RegisterNpcProjectile` postfix | applies the incoming-projectile-speed factor to each hostile NPC shot as it registers |
@@ -121,8 +129,12 @@ What it adds:
   `src/LayoutSpec.cs`; settle values in the file, then copy them into those defaults.
 - `[Dev] CharacterShipTestPerk`: names one framework perk as `roleId/perkKey`, which then
   registers as `characterShip` with JumpChargeSpeed +50% at every level.
-- F5 developer section (VoidManager debug mode on): gene-tree grid dump, HUD ability bar
-  dump, the test-perk field, and the layout workbench buttons.
+- F5 developer section (VoidManager installed and its debug mode on): gene-tree grid dump,
+  HUD ability bar dump, the test-perk field, and the layout workbench buttons.
+- A self-test at load: each framework message layout is packed, serialized and deserialized
+  through Photon's Protocol18 and unpacked as the receive path does, and must come back with
+  the same types and values. It logs `dev self-test: net payload round trip passed` or
+  `FAILED` with the first difference. Add a layout to it with each new message subtype.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
   ability disabled while still selected, a channel stopped with time left (with a short
@@ -206,7 +218,15 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 - `src/shared/ModFlagPolicy.cs` is a compile-time switch for whether a build flags the session.
   Its `MPType` is `Session` or `Client` and never `All`, so a role mod declares
   `MPType => MultiplayerType.All` itself and returns `SetMod_Session = true` from
-  `OnSessionChange`. The framework returns `ModFlagPolicy.FlagsSession` there.
+  `OnSessionChange`. The framework compiles with `VOIDMANAGER_OPTIONAL`, which leaves
+  `MPType` out, and has no `VoidPlugin` and no `OnSessionChange`.
+- No compiled type in the framework may derive from, or name in a field or signature, a
+  VoidManager type. Such a type fails to load without VoidManager, and
+  `Assembly.GetTypes()` then throws for the whole assembly, which HarmonyX's
+  `AccessTools.TypeByName` and `PatchAll` log as a warning on every call from any mod. A
+  VoidManager member may appear only inside a method body that runs solely from VoidManager's
+  own code (`MenuKit.DevZone`, reached from the F5 page). The check: the release DLL's
+  referenced assemblies do not include `VoidManager`.
 - Role mods may copy their boilerplate from `examples/data-only-role/`.
 
 ## Posture
@@ -215,8 +235,11 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 modded player's perks on the peer's client; only a process with this DLL carries that guard.
 The mutator-safety prefix needs the same posture for the same reason. Every player in a room
 runs the same Thunderstore version of the framework, which the mod launcher installs for a
-joiner and VoidManager's join check enforces, and `PLUGIN_VERSION` is bumped on every build.
+joiner and VoidManager's join check enforces when VoidManager is installed, and
+`PLUGIN_VERSION` is bumped on every build. The contract marker makes the game's own asset check
+refuse a peer on another network contract with or without VoidManager.
 Registered role content sits in the Required mask, so hosting with any role mod installed
-flags the session (one-way). The framework alone also flags at load, from its declared
-`MPType`. The flag is a process-wide static that is never reset, so a room hosted later in the
+flags the session (one-way). The framework alone also flags at load: through its
+contract marker, a `Required` asset, and with VoidManager through the `All` type the bridge
+declares for it. The flag is a process-wide static that is never reset, so a room hosted later in the
 same process carries it too. The public statement is [multiplayer.md](multiplayer.md).

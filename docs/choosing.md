@@ -91,9 +91,10 @@ A utility-only mod's multiplayer type follows from what it changes:
 - **The framework declares `All`.** A player who runs any dependent mod runs the framework,
   and the framework refuses a join when the versions or builds differ. A `Client` mod does not
   remove that requirement, so a room still needs the framework on every machine.
-- **The framework raises the modded-session flag.** VoidManager sets a process-wide flag when
-  a plugin declaring `Session` or `All` loads. A room hosted by a process that loaded the
-  framework is marked modded, and the mark cannot be withdrawn until the game restarts. A
+- **The framework raises the modded-session flag.** The framework registers an asset in the
+  game's required set, and the host tags every room it hosts while the registry holds one;
+  with VoidManager installed, its process-wide flag for an `All` mod applies as well. A room
+  hosted by a process that loaded the framework is marked modded, and the mark cannot be withdrawn until the game restarts. A
   modded session does not count toward progression. A mod that must leave the session
   unflagged cannot depend on the framework.
 - **Role content is mandatory for the whole room.** A role's tree and perks register in the

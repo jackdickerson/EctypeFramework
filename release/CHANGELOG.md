@@ -1,3 +1,7 @@
+## 0.21.0
+
+VoidManager is now optional: the framework and any mod built on it run without it, and with it installed everything works as before, F5 page included. Multiplayer messages use the framework's own network channel, and a player whose framework cannot talk to the host's is refused at join with the host's framework version on the rejection screen.
+
 ## 0.20.1
 
 Mod matching now belongs to the Void Crew Mod Launcher: the framework no longer checks other players' builds, re-sends mod lists on a host change, or offers a host-only per-role switch. Suppression declared in a role's manifest is unchanged.

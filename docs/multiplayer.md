@@ -12,8 +12,8 @@ its players. The VoidManager behaviour described here is that of VoidManager 1.2
 - The Void Crew Mod Launcher matches a joiner's mods to the host's before the game starts.
   VoidManager's join check refuses anyone whose set still differs, and the game's asset check
   refuses anyone whose registered role content differs.
-- Both join checks run at join. A member already in the room is never re-checked, and the
-  framework adds no check of its own.
+- Both join checks run at join. A member already in the room is never re-checked. The
+  framework's own contribution is one asset the game's check compares, below.
 - Hosting a room with the framework installed marks the session as modded. The mark cannot be
   withdrawn from that room, and a modded session does not count toward progression.
 
@@ -87,6 +87,13 @@ cannot join a host that lacks it, and the reverse.
 
 The rejection screen names individual assets. VoidManager's screens name mods. That is how
 the two checks are told apart in a bug report.
+
+The framework registers one such asset itself: a marker whose GUID ends in its network
+contract number ([versioning.md](versioning.md)). Two frameworks that cannot exchange messages
+therefore cannot share a room, with or without VoidManager, and the screen names the host's
+framework as `Ectype Framework <version> (network contract <n>)`. Being in the `Required`
+mask, the marker also tags every room the process hosts as modded (route 1 below), which is
+what tags a room when VoidManager is not installed.
 
 ## Why role content is mandatory for the room
 

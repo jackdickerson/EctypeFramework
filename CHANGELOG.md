@@ -4,6 +4,31 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.21.0
+
+- VoidManager is optional. The framework declares it as a soft BepInEx dependency, and its
+  Thunderstore package no longer depends on it, so a mod that depends on the framework pulls
+  in BepInEx and nothing else. Without VoidManager the framework runs in full and logs
+  `settings menu unavailable: VoidManager not loaded`; only the F5 page is missing. With
+  VoidManager, the framework is still listed as `MultiplayerType.All`, its version and DLL
+  hash are still checked at join, and the F5 page is unchanged.
+- Removed `EctypeVoidPlugin`, `EctypeSettingsMenu`, `AbilityActiveMessage` and
+  `EnemyStatusMessage` from the public types. None was supported API. VoidManager now lists the
+  framework through its mod-override table, which still carries the plugin's version and DLL
+  hash; the entry's Author and Description fields are VoidManager's defaults.
+- Ability replication and enemy-status replication no longer use VoidManager's `ModMessage`.
+  They ride the framework's own Photon event, code 181, with the same message contents.
+  Recipients are the players whose Photon player property `Ectype` carries the framework's
+  network contract, which every framework sets on its local player before joining a room,
+  instead of the players VoidManager reports as running the framework. A dependent that
+  raises its own Photon events should not use 181.
+- Network contract 1. The framework registers one runtime asset in the game's Required mask
+  whose GUID ends in the contract number and whose name is
+  `Ectype Framework <version> (network contract <n>)`. The game's own asset check refuses a
+  joiner on another contract and names the host's framework, with or without VoidManager.
+  The asset also tags every room the process hosts as modded, which is what tags a room when
+  VoidManager is not installed.
+
 ## 0.20.1
 
 - Removed `SelectionGate`, `GateResult`, `GateVerdict`, `MemberModResult` and
