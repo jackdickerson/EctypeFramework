@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -68,8 +69,7 @@ namespace ExampleModStats
             try
             {
                 StatCollection character = LocalPlayer.Instance != null ? LocalPlayer.Instance.Stats : null;
-                StatCollection ship = ClientGame.Current != null && ClientGame.Current.PlayerShip != null
-                    ? ClientGame.Current.PlayerShip.Stats : null;
+                StatCollection ship = OwnShipStats();
                 StatCollection session = SessionCollection();
 
                 float hack = Read(character, HackSecondsId, HackSeconds) * Read(ship, HackResistanceId, 1f);
@@ -90,6 +90,35 @@ namespace ExampleModStats
             {
                 Log.LogError("Reading stats failed: " + e);
             }
+        }
+
+        private static MethodInfo _crewShipOf;
+        private static bool _probed;
+
+        /// <summary>
+        /// The local player's own crew ship. In a room with several player ships the game's
+        /// PlayerShip is whichever ship this client views, so the framework's Topology.CrewShipOf
+        /// is asked first, bound by reflection so the mod still loads without the framework; the
+        /// game's getter is the fallback, which is right in a one-ship room.
+        /// </summary>
+        private static StatCollection OwnShipStats()
+        {
+            LocalPlayer me = LocalPlayer.Instance;
+            if (!_probed)
+            {
+                _probed = true;
+                Type topology = Type.GetType("Ectype.Topology, EctypeFramework");
+                if (topology != null)
+                    _crewShipOf = topology.GetMethod("CrewShipOf", BindingFlags.Public | BindingFlags.Static,
+                                                     null, new[] { typeof(Player) }, null);
+            }
+            if (me != null && _crewShipOf != null)
+            {
+                IStatCollectionHolder own = _crewShipOf.Invoke(null, new object[] { me }) as IStatCollectionHolder;
+                if (own != null) return own.Stats;
+            }
+            return ClientGame.Current != null && ClientGame.Current.PlayerShip != null
+                ? ClientGame.Current.PlayerShip.Stats : null;
         }
 
         /// <summary>The framework's session collection, found by name and the game's holder
