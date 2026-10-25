@@ -1,6 +1,6 @@
 ## 0.21.0
 
-VoidManager is now optional: the framework runs without it, and with it installed the F5 page is unchanged. Players with and without VoidManager can share a room, unless the host runs VoidManager together with a mod that requires it of everyone. Without VoidManager the framework itself keeps modded sessions out of progression and achievements. Multiplayer messages use the framework's own network channel, and a player whose framework cannot talk to the host's is refused at join with the host's framework version on the rejection screen.
+VoidManager is now optional: the framework runs without it, and with it installed the F5 page is unchanged. Players with and without VoidManager can share a room, unless the host runs VoidManager together with a mod that requires it of everyone. The framework now keeps modded sessions out of progression and achievements, with or without VoidManager. Multiplayer messages use the framework's own network channel, and a player whose framework cannot talk to the host's is refused at join with the host's framework version on the rejection screen.
 
 ## 0.20.1
 

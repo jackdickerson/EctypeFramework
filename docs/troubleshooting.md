@@ -55,7 +55,7 @@ needs the host's mod list and would fail without one; the framework passes it fo
 
 ### `Ectype: progression guard engaged: this room is tagged modded, so cloud profile writes, Steam stats and achievements are blocked until the game restarts.`
 
-Only without VoidManager. The client is in a room the game tagged modded, which every room
+With or without VoidManager. The client is in a room the game tagged modded, which every room
 hosted with the framework is. From here until the game restarts, nothing this process earns
 is saved to the profile or reported to Steam. `progression guard is missing <methods>` lists
 write methods a game update renamed; those writes are not blocked.

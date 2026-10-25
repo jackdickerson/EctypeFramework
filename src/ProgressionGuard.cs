@@ -10,10 +10,11 @@ using Photon.Pun;
 namespace Ectype
 {
     /// <summary>
-    /// Keeps a modded session out of the player's progression when VoidManager is not
-    /// installed. The game tags a modded room (room property <c>R_Mod</c>) but never reads the
-    /// tag to stop anything; progression and achievements keep being written unless a mod
-    /// stops them.
+    /// Keeps a modded session out of the player's progression, with or without VoidManager.
+    /// The game tags a modded room (room property <c>R_Mod</c>) but never reads the tag to stop
+    /// anything, and VoidManager's own progression switch reacts only to a mod calling its
+    /// <c>DisableProgression</c>, never to the tag; progression and achievements keep being
+    /// written unless a mod stops them.
     ///
     /// The writes that carry progression:
     ///  * <c>CloudSyncController.Write</c>, which queues every cloud profile entry;
@@ -28,8 +29,8 @@ namespace Ectype
     /// stays engaged until the game restarts: the profile held in memory already carries what
     /// that session earned, so a later write, in a vanilla room or on exit, would save it.
     ///
-    /// Installed only when VoidManager is not loaded, so the same methods are never patched by
-    /// both mods. With VoidManager installed its own progression switch governs these writes.
+    /// VoidManager prefixes some of the same methods for its switch. Each prefix only skips the
+    /// call, so the two coexist: the write runs only when neither blocks it.
     /// </summary>
     internal static class ProgressionGuard
     {
@@ -45,14 +46,14 @@ namespace Ectype
         {
             get
             {
-                return !_installed ? "not installed (VoidManager present, or a hook failed)"
+                return !_installed ? "not installed (every hook failed)"
                      : _engaged ? "progression and achievements blocked until restart"
                      : "armed (engages in a modded room)";
             }
         }
 
-        /// <summary>Patches the write methods. Called once from the plugin's Awake when
-        /// VoidManager is not loaded. A missing method is logged and the rest still patch.</summary>
+        /// <summary>Patches the write methods. Called once from the plugin's Awake. A missing
+        /// method is logged and the rest still patch.</summary>
         internal static void Install(Harmony harmony)
         {
             HarmonyMethod skip = new HarmonyMethod(typeof(ProgressionGuard), nameof(SkipWhileEngaged));

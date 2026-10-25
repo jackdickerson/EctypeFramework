@@ -96,9 +96,8 @@ A utility-only mod's multiplayer type follows from what it changes:
   game's required set, and the host tags every room it hosts while the registry holds one;
   with VoidManager installed, its process-wide flag for an `All` mod applies as well. A room
   hosted by a process that loaded the framework is marked modded, and the mark cannot be withdrawn until the game restarts.
-  Without VoidManager, the framework keeps such a session out of progression and
-  achievements; with VoidManager, VoidManager's own progression switch decides, and it turns
-  off only when a mod asks it to. A mod that must leave the session
+  The framework keeps such a session out of progression and achievements, with or without
+  VoidManager, until the game restarts. A mod that must leave the session
   unflagged cannot depend on the framework.
 - **Role content is mandatory for the whole room.** A role's tree and perks register in the
   game's required-asset set, and the game refuses a join when the host's required assets and

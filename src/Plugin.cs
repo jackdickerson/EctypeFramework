@@ -77,12 +77,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
-            // VoidManager has its own progression switch on the same methods.
-            if (!VoidManagerBridge.Loaded)
-            {
-                try { ProgressionGuard.Install(harmony); }
-                catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
-            }
+            try { ProgressionGuard.Install(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }

@@ -111,10 +111,9 @@ plain words.
    package version is the same bytes on every machine. State the version the listing was
    written for and tell players to update the framework and your mod together.
 3. **Sessions are flagged as modded.** The game tags a room as modded and shows the tag in
-   the server browser, which is how it separates modded rooms in matchmaking. Without
-   VoidManager, the framework blocks cloud profile writes and Steam stats and achievements
-   from the first tagged room until the game restarts. With VoidManager, VoidManager's own
-   progression switch decides, and it turns off only when a mod asks it to. The tag is set
+   the server browser, which is how it separates modded rooms in matchmaking. The
+   framework blocks cloud profile writes and Steam stats and achievements from the first
+   tagged room until the game restarts, with or without VoidManager. The tag is set
    when the mod loads and cannot be switched off from the mod's settings.
 4. **What the framework dependency means.** One line: the role needs the Ectype Framework
    package, which the mod manager installs automatically and which a hand installer has
@@ -134,9 +133,8 @@ A listing skeleton for the multiplayer section:
 ### Multiplayer
 
 - Everyone in the room needs this mod and the Ectype Framework, at the same version.
-- Hosting or joining a room with this mod marks the session as modded. Without VoidManager,
-  progression and achievements are off from then until the game restarts; with VoidManager,
-  VoidManager decides.
+- Hosting or joining a room with this mod marks the session as modded: progression and
+  achievements are off for everyone in it until the game restarts.
 - Players without VoidManager can join only a host that either has no VoidManager or runs no
   mod declared `All` to it.
 - Updating: update this mod and the Ectype Framework together.

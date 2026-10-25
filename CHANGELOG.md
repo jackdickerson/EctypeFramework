@@ -21,10 +21,11 @@ build.
   framework passes VoidManager's join check for a host without VoidManager, where VoidManager's
   own check failed. A VoidManager host that runs any mod declared `All` to VoidManager, role mods
   included, still kicks joiners without VoidManager: that is VoidManager's policy.
-- Without VoidManager, the framework keeps modded sessions out of progression: from the first
-  room tagged modded until the game restarts, it blocks cloud profile writes, the profile save
-  on exit, and Steam stats and achievements. With VoidManager, VoidManager's own progression
-  switch governs those writes as before.
+- The framework keeps modded sessions out of progression, with or without VoidManager: from
+  the first room tagged modded until the game restarts, it blocks cloud profile writes, the
+  profile save on exit, and Steam stats and achievements. Before this release nothing did so
+  by default: VoidManager's progression switch reacts only to a mod calling its
+  `DisableProgression`, never to the room's modded tag.
 - Removed `EctypeVoidPlugin`, `EctypeSettingsMenu`, `AbilityActiveMessage` and
   `EnemyStatusMessage` from the public types. None was supported API.
 - Ability replication and enemy-status replication no longer use VoidManager's `ModMessage`.

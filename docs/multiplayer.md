@@ -158,17 +158,12 @@ each saved loadout and are read as absent, and its spent points count as unspent
 The game tags a room as modded with the room property `R_Mod`. The tag shows in the server
 browser. The game itself reads it for nothing else.
 
-Who stops a modded session from counting toward progression depends on whether the player
-has VoidManager:
-
-- **Without VoidManager**, the framework does. The first time the client is in a room that
-  carries the tag, it blocks cloud profile writes, the profile save on exit, and Steam stats
-  and achievements, until the game restarts. The profile in memory already holds what that
-  session earned, so it is never written again in that process.
-- **With VoidManager**, VoidManager's own progression switch governs the same writes and the
-  framework leaves them alone. VoidManager turns that switch off when a mod calls its
-  `ProgressionHandler.DisableProgression`, or when the host has done so, and not because the
-  room carries the tag.
+The framework keeps a modded session out of progression, with or without VoidManager. The
+first time the client is in a room that carries the tag, it blocks cloud profile writes, the
+profile save on exit, and Steam stats and achievements, until the game restarts. The profile in
+memory already holds what that session earned, so it is never written again in that process.
+VoidManager's own progression switch does not react to the tag: it turns off only when a mod
+calls its `ProgressionHandler.DisableProgression`, or the host has done so.
 
 A mod sets the tag by any of three routes:
 
@@ -205,7 +200,6 @@ For a mod that declares `All`:
 - When you release an update, every player updates together, including the framework if you
   rebuilt against a new one.
 - Hosting with the mod installed marks the session as modded, and the mark lasts until the
-  game restarts. Disabling the mod in its config does not undo it. Without VoidManager the
-  framework then blocks progression and achievements; with VoidManager that is VoidManager's
-  decision (see above).
+  game restarts. Disabling the mod in its config does not undo it. The framework then blocks
+  progression and achievements on every client in the room until the game restarts.
 - A player who has the mod cannot join a host who lacks it. The asset check is symmetric.
