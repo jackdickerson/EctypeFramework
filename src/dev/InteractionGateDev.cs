@@ -145,6 +145,7 @@ namespace Ectype
                 Probe(failures, skipped, root, "repair", InteractionKind.Minigame, go => go.AddComponent<CG.Ship.Repair.RepairObject>());
                 Probe(failures, skipped, root, "defect", InteractionKind.Minigame, go => go.AddComponent<Gameplay.Defects.Defect>());
                 SwitchConverges(failures, skipped, root);
+                PowerKinds(failures, skipped, root);
                 SameFromEveryEntry(failures, skipped, root);
             }
             catch (Exception e) { failures.Add("classifier threw: " + e.Message); }
@@ -179,10 +180,79 @@ namespace Ectype
             }
             InteractionKind first = InteractionClassifier.Classify(sw, false);
             InteractionKind again = InteractionClassifier.Classify(sw, false);
-            if (first != InteractionKind.PowerSwitch || again != first)
+            if (first != InteractionKind.OtherPowerSwitch || again != first)
                 failures.Add("a switch outside any module classified " + first + " then " + again +
-                             ", expected PowerSwitch both times");
+                             ", expected OtherPowerSwitch both times");
             InteractionClassifier.ForgetControl(sw);
+        }
+
+        /// <summary>
+        /// The power and airlock kinds: each power component names its own kind, a switch is
+        /// classified as the power component holding its value or as the module mediator that
+        /// names it (the central computer's being the ship's power), and the coarse helpers cover
+        /// exactly the split kinds.
+        /// </summary>
+        private static void PowerKinds(List<string> failures, List<string> skipped, GameObject root)
+        {
+            ExpectType(failures, typeof(Gameplay.Power.PowerSystem), InteractionKind.ShipPowerSwitch);
+            ExpectType(failures, typeof(Gameplay.Power.ProtectedPowerSystem), InteractionKind.ShipPowerSwitch);
+            ExpectType(failures, typeof(Gameplay.Power.PowerPropagator), InteractionKind.PowerLineSwitch);
+            ExpectType(failures, typeof(Gameplay.Power.PowerDrain), InteractionKind.ModulePowerSwitch);
+            ExpectType(failures, typeof(Gameplay.Power.PowerBreaker), InteractionKind.Breaker);
+            ExpectType(failures, typeof(CG.Client.Ship.Airlock), InteractionKind.AirlockPressurize);
+
+            HeldSwitch<Gameplay.Power.PowerDrain>(failures, skipped, root, InteractionKind.ModulePowerSwitch);
+            HeldSwitch<Gameplay.Power.PowerSystem>(failures, skipped, root, InteractionKind.ShipPowerSwitch);
+            HeldSwitch<Gameplay.Power.PowerPropagator>(failures, skipped, root, InteractionKind.PowerLineSwitch);
+            HeldSwitch<Gameplay.Power.PowerBreaker>(failures, skipped, root, InteractionKind.Breaker);
+
+            Probe(failures, skipped, root, "switch under a breaker", InteractionKind.Breaker, go =>
+            {
+                go.AddComponent<Gameplay.Power.PowerBreaker>();
+                return Child(go, "lever").AddComponent<CG.Client.Ship.Interactions.SwitchClicker>();
+            });
+            Probe(failures, skipped, root, "a module's power switch", InteractionKind.ModulePowerSwitch, go =>
+                MediatorSwitch(go, go.AddComponent<CG.Client.Ship.Modules.Mediators.LifeSupportModuleMediator>()));
+            Probe(failures, skipped, root, "the central computer's power switch", InteractionKind.ShipPowerSwitch, go =>
+                MediatorSwitch(go, go.AddComponent<CG.Client.Ship.Modules.Mediators.CentralShipComputerMediator>()));
+
+            int power = 0, airlock = 0;
+            foreach (InteractionKind k in Enum.GetValues(typeof(InteractionKind)))
+            {
+                if (k.IsPowerSwitch()) power++;
+                if (InteractionKinds.IsAirlockControl(k)) airlock++;
+            }
+            Expect(failures, "IsPowerSwitch covers the five power kinds", power == 5, true);
+            Expect(failures, "IsAirlockControl covers the two airlock kinds", airlock == 2, true);
+            Expect(failures, "a breaker is a power switch", InteractionKind.Breaker.IsPowerSwitch(), true);
+            Expect(failures, "a door is not an airlock control", InteractionKind.Door.IsAirlockControl(), false);
+        }
+
+        private static void ExpectType(List<string> failures, Type type, InteractionKind expected)
+        {
+            InteractionKind got = InteractionClassifier.KindOfType(type);
+            if (got != expected) failures.Add(type.Name + " names " + got + ", expected " + expected);
+        }
+
+        /// <summary>A switch whose controlled value is held by a component of type T.</summary>
+        private static void HeldSwitch<T>(List<string> failures, List<string> skipped, GameObject root,
+                                          InteractionKind expected) where T : MonoBehaviour
+        {
+            Probe(failures, skipped, root, "switch holding a " + typeof(T).Name + " value", expected, go =>
+            {
+                T holder = go.AddComponent<T>();
+                var sw = Child(go, "switch").AddComponent<CG.Client.Ship.Interactions.SwitchClicker>();
+                sw.ControlledValue = new MemberReference<ChangeResponsiveBool> { Component = holder, Member = "IsOn" };
+                return sw;
+            });
+        }
+
+        /// <summary>A switch below a module mediator that names it as its power switch.</summary>
+        private static Component MediatorSwitch(GameObject go, MonoBehaviour mediator)
+        {
+            var sw = Child(go, "power switch").AddComponent<CG.Client.Ship.Interactions.SwitchClicker>();
+            HarmonyLib.Traverse.Create(mediator).Field("powerSwitch").SetValue(sw);
+            return sw;
         }
 
         /// <summary>

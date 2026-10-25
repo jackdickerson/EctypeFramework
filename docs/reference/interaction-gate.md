@@ -66,27 +66,53 @@ component, for a mod that wants to reason about the same categories.
 | `Minigame` | A minigame that is not a System Enhancement panel's: a repair's or a defect's. |
 | `EnhancementPanel` | A System Enhancement panel: its switch, its minigame, a request to change its state. |
 | `Door` | A door's control, an airlock door's button, a request to open or close either. |
-| `AirlockControl` | An airlock's pressurise lever or safety override, and the requests they send. |
-| `PowerSwitch` | A module's power switch, the central computer's, a power line's, a breaker, any switch outside a module, and the requests they send. |
+| `AirlockPressurize` | An airlock's pressurise lever, and the request to cycle the airlock. |
+| `AirlockSafety` | An airlock's safety override switch, and the request to change it. |
+| `ModulePowerSwitch` | A module's own power switch (not the central computer's), any switch whose value is a power drain's, and the request to switch a power drain. |
+| `ShipPowerSwitch` | The central computer's power switch, which is the whole ship's power, any switch whose value is the power system's, and the request to switch the power system. |
+| `PowerLineSwitch` | A power line's switch (a power propagator), and the request to switch one. |
+| `Breaker` | A power breaker: a switch whose value is a breaker's or that sits on or under one, and the request to change a breaker's synced state. |
+| `OtherPowerSwitch` | A switch outside any module that controls no value the classifier can see. |
 | `CarryablePickup` | Picking up a loose item, or taking one from a carrier that is not a socket. |
 | `SocketInsert` | Putting the carried item into a socket. |
 | `SocketRelease` | Taking an item out of a socket, or ejecting it. |
 | `ModuleUpgrade` | The module upgrade tool working on a module. |
 | `Other` | Anything else: a synced setting the classifier does not name, an unknown interactable. |
 
+The coarse questions are helpers on the kind, callable as `q.Kind.IsPowerSwitch()` or
+`InteractionKinds.IsPowerSwitch(q.Kind)`:
+
+| Helper | True for |
+| --- | --- |
+| `IsPowerSwitch` | `ModulePowerSwitch`, `ShipPowerSwitch`, `PowerLineSwitch`, `Breaker`, `OtherPowerSwitch` |
+| `IsAirlockControl` | `AirlockPressurize`, `AirlockSafety` (an airlock's door button is `Door`) |
+
+A gate that means "any power control" tests `IsPowerSwitch`, so a kind the classifier learns to
+tell apart later stays covered.
+
 Most kinds come from one classifier, the same on the client side and the owner side, that reads
 the component's type, then the station objects above it (a periscope, a clone tube, a terminal
 screen, an enhancement panel, a minigame). A control that sits outside the object it controls
-is registered by that object as it starts: a door's clickers, an airlock panel's lever and
-safety switch, a panel's switch and minigame, a seat's clicker, a module terminal's clicker, a
-repair's and a defect's clicker. A switch is judged by what it switches: a power switch when a
-module above it names it as its power switch, else exactly as the component holding the value
-it controls is judged (the component the owner side judges when the switch's request arrives).
-A switch with no module above it and no value holder is a power switch; one met while its
-module is still being assembled keeps that answer and is computed again two seconds later,
-three computations in all. Where the
-chokepoint itself says what is happening, the chokepoint names the kind: a socket request, a
-door or airlock request, a power request, the upgrade tool.
+is registered by that object as it starts: a door's clickers, an airlock panel's pressurise
+lever (`AirlockPressurize`) and safety switch (`AirlockSafety`), a panel's switch and minigame,
+a seat's clicker, a module terminal's clicker, a repair's and a defect's clicker.
+
+A switch is judged by what it switches:
+
+1. A module above it names it as the module's power switch: `ModulePowerSwitch`, or
+   `ShipPowerSwitch` when that module is the central computer, whose switch the game wires to
+   the ship's power system.
+2. Otherwise exactly as the component holding the value it controls is judged, the component the
+   owner side judges when the switch's request arrives. Each power component names its kind: the
+   power system `ShipPowerSwitch`, a propagator `PowerLineSwitch`, a drain `ModulePowerSwitch`, a
+   breaker `Breaker`.
+3. A switch with no module above it and no value holder is `Breaker` when it sits on or under a
+   breaker, else `OtherPowerSwitch`. One met while its module is still being assembled keeps that
+   answer and is computed again two seconds later, three computations in all.
+
+Where the chokepoint itself says what is happening, the chokepoint names the kind: a socket
+request, a door or airlock request, a power request (from the component asked: power system,
+propagator or drain), the upgrade tool.
 
 ## Where the gate is asked
 
@@ -131,10 +157,10 @@ request and shows nothing to anyone.
 | An ownership request for an item a carrier holds | the carrier's owner | Photon's callback | the item is not handed over |
 | A socket insert, release or eject request | the socket's owner | the Photon event being dispatched | a rejected promise, which the game answers with its own failure reply |
 | A synced switch or setting request | the part's owner | the RPC sender | dropped |
-| A power request (system, power line, whole ship) | the part's owner | the RPC sender | dropped |
+| A power request: a drain (`ModulePowerSwitch`), a power line (`PowerLineSwitch`), the power system (`ShipPowerSwitch`) | the part's owner | the RPC sender | dropped |
 | A panel state request | the panel's owner | the RPC sender | dropped |
 | A door request | the host | the RPC's message info | the host answers with the door's real state, which undoes the asker's early swing |
-| An airlock door, cycle or safety request | the host | the RPC's message info | dropped |
+| An airlock door (`Door`), cycle (`AirlockPressurize`) or safety (`AirlockSafety`) request | the host | the RPC's message info | dropped |
 | An ownership change (PUN events 209, 210 and 212) of a ship's part, an item in a socket or a loose item | the object's owner, or the host when no owner is present | the event (209) or the new owner it names (210, 212) | ignored there, and the owner hands the object back to itself (below) |
 
 Where the asker's game has already moved, the hook sends the game's own reply that undoes it:
@@ -191,21 +217,15 @@ the game's host sends it.
 
 ### The RPC sender
 
-Most of the game's request RPCs take no message info, so the method cannot tell who asked. PUN
-runs every RPC, from the network or from a player to themselves, inside one internal method
-(`PhotonNetwork.ExecuteRpc`) that is handed the sender the Photon server stamped on the event,
-and calls the RPC method before it returns. A prefix and finalizer on that method record the
-sender and the target network object for the length of the call, restoring the outer pair
-after an RPC run inside another. An owner-side check asks for the sender of the RPC now running
-on its own network object.
+Most of the game's request RPCs take no message info, so the method cannot tell who asked. The
+owner side reads the sender of the RPC now running on the part's own network object from
+[`RpcContext`](rpc-context.md), and the socket request being dispatched from the event it
+records. Registering a gate asks for `RpcContext`'s hooks.
 
-The socket requests are Photon events that each carrier answers while Photon is dispatching
-them, so a prefix and finalizer around the dispatch hold the event being handled.
-
-These Photon hooks are installed once a gate is registered and the game's state machine has
+The ownership event hook goes on once a gate is registered and the game's state machine has
 left its first state and the loading screen, never at plugin load: patching `PhotonNetwork` at
 start-up sets Photon up before the game does, and the game's connection then never gets past
-the name server. With no gate registered they are never installed. Until they are, the
+the name server. With no gate registered it is never installed. Until these hooks are in, the
 owner-side checks that rely on them (power, panel, synced-switch and socket requests, ownership
 changes) let everything through.
 
@@ -285,7 +305,8 @@ consistency rule, which is why the vocabulary would be closed rather than free c
 | --- | --- | --- |
 | A role forbids everyone else the helm | refuse `Helm` unless the actor holds the role and its ability is running | Ability state replicates, so both sides agree. A player already seated is not ejected. |
 | A mutator disables turrets for a period | refuse `Turret` while the server clock is before an end stamp held in a room property | Automatic turrets are not interactions. Keep them off with a validator on their power drain's `IsOn` value (`ChangeValidators`, a list of `Func<old, new, bool>` every change must pass). |
-| Sabotage as a status | refuse `PowerSwitch` and `EnhancementPanel` on a ship while a replicated status runs on it, with the remaining time in the text | |
+| Sabotage as a status | refuse `IsPowerSwitch` kinds and `EnhancementPanel` on a ship while a replicated status runs on it, with the remaining time in the text | |
+| Boarders may cut a system but not the ship | for actors of the other side, refuse every kind on the ship except `ModulePowerSwitch` and `EnhancementPanel`, and except `AirlockPressurize` and `Door` while their side holds access; `ShipPowerSwitch`, `PowerLineSwitch`, `Breaker`, `OtherPowerSwitch` and `AirlockSafety` stay refused | Sides come from replicated state, so both sides agree. |
 | Host moderation of a griefer | refuse every kind for actors on a host-written list in a room property | The room property reaches every client, so the owner side agrees. |
 | Lockdown | refuse `Door` to players outside the holder's side while an ability runs | |
 | A tutorial | refuse `Terminal` until an objective completes | |
@@ -311,6 +332,11 @@ consistency rule, which is why the vocabulary would be closed rather than free c
   power, panel, synced-switch and socket requests and ownership changes through.
 - **A refusal on the owner side shows the acting player nothing** unless their own game ran the
   gate first.
+- **A gate that tests one power kind lets the others through.** `q.Kind == ModulePowerSwitch`
+  does not catch the central computer's switch, a power line, a breaker or a switch the
+  classifier cannot place. Test `IsPowerSwitch` for any power control.
+- **The airlock's door button is not an airlock control.** It is `Door`, with every other door
+  button, so `IsAirlockControl` does not catch it.
 
 ## Log lines
 

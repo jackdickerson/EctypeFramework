@@ -33,6 +33,20 @@ build.
   the rule log one warning per id and still work.
 - Nothing that crosses the network changed. A longer key costs one byte per character in each
   status or ability message that carries it.
+- **Breaking for interaction gates.** `InteractionKind.PowerSwitch` is split into
+  `ModulePowerSwitch` (a module's own power switch, a power drain), `ShipPowerSwitch` (the
+  central computer's switch, the power system), `PowerLineSwitch` (a power propagator), `Breaker`
+  and `OtherPowerSwitch` (a switch outside any module controlling no value the classifier sees).
+  `InteractionKind.AirlockControl` is split into `AirlockPressurize` (the pressurise lever and
+  the cycle request) and `AirlockSafety` (the safety override and its request). The owner side
+  names a power request's kind from the component asked and an airlock request's from the RPC.
+  `InteractionKinds.IsPowerSwitch(kind)` and `IsAirlockControl(kind)`, also callable as
+  `kind.IsPowerSwitch()`, ask the coarse question. The gate has not been in a release.
+- `RpcContext` reports the sender of the Photon RPC or event being dispatched: `Sender`,
+  `SenderActor`, `Source`, `ViewId`, `EventCode`, `TryGetSender(view, out sender)` and
+  `FromAbsentPlayer(view)`. A mod calls `RpcContext.Enable()` from `Awake`; the hooks go on once
+  the game has loaded, with or without an interaction gate, never at plugin load. The interaction
+  gate reads its owner-side senders from it. See `docs/reference/rpc-context.md`.
 
 ## 0.30.0
 

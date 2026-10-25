@@ -92,6 +92,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: interaction gate classifier patches failed: " + e); }
             try { InteractionGatePatches.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: interaction gate patches failed: " + e); }
+            // Keeps the Harmony instance only: its Photon hooks wait for the game to load.
+            RpcContext.Init(harmony);
             try { SessionData.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
             try { SessionStats.Install(); }
@@ -197,6 +199,7 @@ namespace Ectype
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
+            Step("RPC context", RpcContext.Poll);
             Step("interaction gate", InteractionGatePatches.PollLate);
             Step("session data", SessionData.Poll);
             Step("session stats", SessionStats.Poll);
