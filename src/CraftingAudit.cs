@@ -49,7 +49,8 @@ namespace Ectype
                                           "registered with no crafting data; it breaks the end-of-run " +
                                           "alloy tally, which reads the crafting rules of every " +
                                           "carryable on the player ship and throws on this one. " +
-                                          "Register a crafting definition under the same GUID.");
+                                          "Register a crafting definition under the same GUID." +
+                                          ComponentNote(id));
                 }
             }
             catch (Exception e)
@@ -57,6 +58,22 @@ namespace Ectype
                 _failed = true;
                 Plugin.Log.LogWarning("Ectype: crafting-data audit failed and is off for this session: " + e);
             }
+        }
+
+        /// <summary>
+        /// A component is an inner part, kept out of loose-item lists, and is audited like any
+        /// other carryable: it still sits on the ship inside its parent, where the tally reads
+        /// it. The only way one reaches this check is a publication that failed part-way, since
+        /// a completed one always registers crafting data.
+        /// </summary>
+        private static string ComponentNote(GUIDUnion id)
+        {
+            ContentHandle h = RuntimeContent.Find(id);
+            if (h == null) return "";
+            return " It was published by " + h.Owner + (h.Entry != null && h.Entry.IsComponent
+                       ? " as a component; a component is kept out of item lists, not out of the tally"
+                       : "") +
+                   (h.State == ContentState.Failed ? ", and the publication failed: " + h.Reason : "") + ".";
         }
     }
 }
