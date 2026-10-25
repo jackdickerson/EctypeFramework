@@ -4,6 +4,35 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.28.0
+
+- `CharacterStatuses.Request(player, key, seconds, magnitude, attacker)` puts a status on another
+  player's character and returns a `CharacterStatusRefusal`. On this client's own character it
+  is `Apply`. Otherwise it sends a request to the target's client alone, which judges it against
+  its own view of both characters and applies it there, as a local `Apply`, or refuses it with a
+  throttled warning. The checks, in order: template registered and `Replicated`; duration and
+  magnitude valid (cut to `MaxSeconds` and `MaxMagnitude`, default 30 s and 1; a negative
+  magnitude is refused); target alive; requester has a character and it is alive; `Stance`;
+  `MaxRange` (metres, 0 = none); `RequiresLineOfSight`; rate per requester and key
+  (`MinInterval`, `Burst`). The requesting client runs the same checks first and sends nothing
+  they refuse.
+- `CharacterStatusDef.Replicated` now means "accepts requests"; it defaults to off, so every
+  existing template behaves as before and refuses requests. The warning it used to log is gone.
+- `CharacterStatusDef.Presented`: the owning client announces each application to the peers
+  `Visibility` allows, and each runs a presentation copy with `CreateVfx` and
+  `CharacterStatuses.IsPresented` / `PresentedRemainingSeconds`, but no stats and no callbacks.
+  A copy ends on the announced server time; an earlier end is announced.
+- Only the client that owns a character can remove a status on it. `CharacterStatuses.TryRemove`
+  returns `Authority` for another player's character, and `Remove` logs it once per key.
+- `CharacterStatuses.RequesterOf` and `AttackerOf` report the request that last applied a status.
+- `Register` refuses a character status template with `Burst` below 1 or a negative or
+  non-finite range, interval or cap, and warns about request or presentation fields set without
+  `Replicated` or `Presented`.
+- `CharacterStatuses.Apply` on a character this client does not own still lands only on this
+  client's copy; its once-per-key warning now points at `Request`.
+- Network contract 3: two new message subtypes carry character status requests and
+  presentation announcements. A framework on contract 2 is refused at join.
+
 ## 0.23.0
 
 - `EnemyStatusDef.Stance`: `Any` (default), `Hostile` or `Friendly`. Every client that receives
