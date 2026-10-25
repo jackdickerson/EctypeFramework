@@ -17,7 +17,7 @@ using System.Runtime.InteropServices;
 #if NO_SESSION_FLAG
 [assembly: AssemblyMetadata("ModCategories", "Mods")]
 #else
-[assembly: AssemblyMetadata("ModCategories", "Mods, Mod_Session Required, Disables Progression")]
+[assembly: AssemblyMetadata("ModCategories", "Mods, Mod_Session Required")]
 #endif
 [assembly: AssemblyMetadata("MPType", "All")]
 [assembly: AssemblyMetadata("ProgressionFlag", ModFlagPolicy.BuildTag)]

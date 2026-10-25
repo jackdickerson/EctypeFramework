@@ -92,11 +92,6 @@ build.
   for every member caches its reflection. A build process whose requester has no live
   character no longer logs an error every frame, and picks the requester up once the character
   exists.
-- The progression guard skips only cloud profile entries that carry progression. While it is
-  engaged, the block list, the cosmetic loadout, ship loadout presets, gene-tree loadouts and
-  the "new item" badges are saved again; level, experience, unlocks, achievements, the saved run
-  and Steam stats stay unsaved. Every room a process with the framework hosts is tagged modded,
-  so the guard engages in the player's own hub room.
 - A role ability factory that returns something other than an `EctypeRoleAbility` is refused
   with one error naming the role, and the role stays data-only for the session.
 
@@ -117,11 +112,13 @@ build.
   framework passes VoidManager's join check for a host without VoidManager, where VoidManager's
   own check failed. A VoidManager host that runs any mod declared `All` to VoidManager, role mods
   included, still kicks joiners without VoidManager: that is VoidManager's policy.
-- The framework keeps modded sessions out of progression, with or without VoidManager: from
-  the first room tagged modded until the game restarts, it blocks cloud profile writes, the
-  profile save on exit, and Steam stats and achievements. Before this release nothing did so
-  by default: VoidManager's progression switch reacts only to a mod calling its
-  `DisableProgression`, never to the room's modded tag.
+- The framework no longer blocks progression in any configuration; earlier builds never did so
+  with VoidManager either. It still tags the rooms it hosts as modded, through its network
+  contract marker and the role assets in the game's required set, which drives the game's
+  join check and the modded tag in the server browser and the mod launcher's lobby list. With
+  VoidManager installed, VoidManager's own progression switch applies: it reacts only to a mod
+  calling its `DisableProgression`, never to the room's modded tag. The DLL's `ModCategories`
+  metadata no longer lists `Disables Progression`.
 - Removed `EctypeVoidPlugin`, `EctypeSettingsMenu`, `AbilityActiveMessage` and
   `EnemyStatusMessage` from the public types. None was supported API.
 - Ability replication and enemy-status replication no longer use VoidManager's `ModMessage`.
