@@ -188,6 +188,7 @@ namespace Ectype
         internal static void PollLate()
         {
             InteractionClassifier.PollPrune();
+            PollHandBacks();
 #if ECTYPE_DEV
             PollPickupCheck();
 #endif
@@ -200,6 +201,12 @@ namespace Ectype
                         "DispatchPrefix", "DispatchFinalizer", "socket requests are not refused by the owner");
             PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "OnEvent", typeof(InteractionGatePatches),
                         "OwnershipEventPrefix", null, "ownership takeovers are not refused");
+            try { PhotonNetwork.AddCallbackTarget(OwnershipFailures.Instance); }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning("Ectype: interaction gate: the ownership failure listener could not be " +
+                                      "added; a grab that loses a race stays locked as in the game: " + e.Message);
+            }
             Plugin.Log.LogInfo("Ectype: interaction gate: " + ok + " of " + total + " Photon hooks patched " +
                                "after the game loaded.");
         }
@@ -268,21 +275,16 @@ namespace Ectype
         /// </summary>
         private static bool RefuseInteractable(Component interactable, bool warn)
         {
-            Component resolved = InteractionClassifier.Resolve(interactable);
-            InteractionKind kind = InteractionClassifier.Classify(resolved, LocalCarrying());
-            if (InteractionGate.RefuseOnClient(ClientQuery(resolved, kind), warn)) return true;
+            Component part = InteractionClassifier.Canonical(interactable);
+            InteractionKind kind = InteractionClassifier.Classify(part, LocalCarrying());
+            if (InteractionGate.RefuseOnClient(ClientQuery(part, kind), warn)) return true;
             if (kind != InteractionKind.SocketInsert) return false;
-            CarryableObject held = SocketPayload(resolved);
+            CarryablesSocket socket = part as CarryablesSocket;
+            CarryableObject held = socket != null ? socket.Payload : null;
             if (held == null) return false;
-            return InteractionGate.RefuseOnClient(ClientQuery(resolved, InteractionKind.SocketRelease), warn) ||
+            // The old item is loose by the time the game picks it up, so it is presented as itself.
+            return InteractionGate.RefuseOnClient(ClientQuery(part, InteractionKind.SocketRelease), warn) ||
                    InteractionGate.RefuseOnClient(ClientQuery(held, InteractionKind.CarryablePickup), warn);
-        }
-
-        private static CarryableObject SocketPayload(Component c)
-        {
-            SocketInteractable si = c as SocketInteractable;
-            CarryablesSocket socket = si != null && si.SocketActor != null ? si.SocketActor.Socket : c as CarryablesSocket;
-            return socket != null ? socket.Payload : null;
         }
 
         /// <summary>True when an owner-side check applies to this sender: a known remote player
@@ -749,7 +751,10 @@ namespace Ectype
         /// - it ignores a refused change and hands the object back to itself, which every other
         ///   client applies after the refused change, so the room converges on the owner;
         /// - the taker's own game also judges its own 209 and, on a refusal, answers the game's
-        ///   pending pick-up as a failure, so its carry interaction is not left locked.
+        ///   pending pick-up as a failure, so its carry interaction is not left locked, and hands
+        ///   the object back to the owner it still sees, so every client converges on the previous
+        ///   owner even where the deciding side allowed the change. Either judge refusing returns
+        ///   the object to its previous owner.
         /// Every other client applies the event as PUN does. Not judged: the host as taker or new
         /// owner, a hand-off by the host or the current owner (the game's own logic), an object
         /// following its holder (a socket's item to the socket's owner, a seat's connected object
@@ -767,7 +772,11 @@ namespace Ectype
             {
                 int[] data = photonEvent.CustomData as int[];
                 if (data == null || data.Length < 2) return true;
-                if (code == OwnershipUpdateEvent) return OwnershipUpdate(photonEvent.Sender, data);
+                if (code == OwnershipUpdateEvent)
+                {
+                    OwnershipUpdate(photonEvent.Sender, data);
+                    return true;
+                }
                 PhotonView view = PhotonView.Find(data[0]);
                 if (view == null) return true;
                 return code == OwnershipRequestEvent
@@ -796,7 +805,11 @@ namespace Ectype
             if (own)
             {
                 if (!InteractionGate.RefuseOnClient(new GateQuery(taker, part, kind, GateSide.Client), true)) return true;
-                SettleOwnRequest(view);
+                SettleLocalPickup(view);
+                RememberRefusedOwn(view);
+                // Every client that applied this 209 sees the taker as owner, so the hand-back
+                // from the taker passes there as the owner's own hand-off.
+                if (view.OwnershipTransfer == OwnershipOption.Takeover) view.TransferOwnership(view.OwnerActorNr);
                 return false;
             }
             if (!InteractionGate.RefuseOnOwner(new GateQuery(taker, part, kind, GateSide.Owner))) return true;
@@ -807,9 +820,20 @@ namespace Ectype
         /// <summary>210: an object is handed to a player.</summary>
         private static bool OwnershipTransfer(int senderActor, int newOwner, PhotonView view)
         {
+            // An object this player refused itself, handed to it anyway by an owner that allowed
+            // the request: it is applied, then handed back on the next frame, once this player
+            // controls it.
+            Photon.Realtime.Player local = PhotonNetwork.LocalPlayer;
+            if (local != null && newOwner == local.ActorNumber && RefusedOwnRecently(view))
+            {
+                HandBacks.Add(new KeyValuePair<PhotonView, int>(view, senderActor));
+                return true;
+            }
             // PUN applies a request-only object's transfer only from its owner or controller.
             if (view.OwnershipTransfer != OwnershipOption.Takeover) return true;
             if (senderActor == view.OwnerActorNr || senderActor == view.ControllerActorNr) return true;
+            // A hand-back to the owner this client already records changes nothing here.
+            if (newOwner == view.OwnerActorNr) return true;
             Photon.Realtime.Player sender = PlayerOf(senderActor);
             if (sender != null && sender.IsMasterClient) return true;
             bool refused;
@@ -817,22 +841,21 @@ namespace Ectype
         }
 
         /// <summary>212 from anyone but the host, which alone sends it in the game: each pair this
-        /// client decides is judged as a hand-off; a refusal drops the whole update here and
-        /// hands each refused object back.</summary>
-        private static bool OwnershipUpdate(int senderActor, int[] pairs)
+        /// client decides is judged as a hand-off. A refused pair is rewritten in place to the
+        /// object's current owner, so PUN applies the rest of the update unchanged, and the refused
+        /// object is handed back.</summary>
+        private static void OwnershipUpdate(int senderActor, int[] pairs)
         {
             Photon.Realtime.Player sender = PlayerOf(senderActor);
-            if (sender != null && sender.IsMasterClient) return true;
-            bool refused = false;
+            if (sender != null && sender.IsMasterClient) return;
             for (int i = 0; i + 1 < pairs.Length; i += 2)
             {
                 PhotonView view = PhotonView.Find(pairs[i]);
                 if (view == null || pairs[i + 1] == view.OwnerActorNr) continue;
-                bool one;
-                RefuseHandOff(view, pairs[i + 1], out one);
-                refused |= one;
+                bool refused;
+                RefuseHandOff(view, pairs[i + 1], out refused);
+                if (refused) pairs[i + 1] = view.OwnerActorNr;
             }
-            return !refused;
         }
 
         /// <summary>Judges handing an object to a player on the client that decides it; a refused
@@ -893,16 +916,72 @@ namespace Ectype
         }
 
         /// <summary>
-        /// The taker's own game refused its own pick-up after the request went out. The game's
-        /// carrier is waiting for the item's owner change; answering it with the unchanged owner
-        /// makes the game reject the pick-up itself, which clears the carry lock.
+        /// The local player's pick-up will not happen: its own game refused it, or PUN refused the
+        /// takeover because the item changed hands first. The game's carrier is waiting for the
+        /// item's owner change, with nothing else to end the wait; answering it with the unchanged
+        /// owner makes the game reject the pick-up itself, which clears the carry lock. With no
+        /// pick-up pending the item has no listener and nothing happens.
         /// </summary>
-        private static void SettleOwnRequest(PhotonView view)
+        private static void SettleLocalPickup(PhotonView view)
         {
-            CarryableObject item = view.GetComponentInParent<CarryableObject>();
+            CarryableObject item = view != null ? view.GetComponentInParent<CarryableObject>() : null;
             if (item == null || item.OwnerChange == null) return;
             item.OwnerChange(view.Owner);
             NoteRefusedPickup();
+        }
+
+        private const float RefusedOwnSeconds = 5f;
+        private static readonly Dictionary<int, float> RefusedOwn = new Dictionary<int, float>();
+        private static readonly List<KeyValuePair<PhotonView, int>> HandBacks = new List<KeyValuePair<PhotonView, int>>();
+
+        private static void RememberRefusedOwn(PhotonView view)
+        {
+            if (RefusedOwn.Count > 256) RefusedOwn.Clear();
+            RefusedOwn[view.ViewID] = Time.unscaledTime + RefusedOwnSeconds;
+        }
+
+        private static bool RefusedOwnRecently(PhotonView view)
+        {
+            float until;
+            return RefusedOwn.TryGetValue(view.ViewID, out until) && Time.unscaledTime < until;
+        }
+
+        /// <summary>Driver: hands back the objects an owner gave this player after this player
+        /// refused them, now that this player controls them.</summary>
+        private static void PollHandBacks()
+        {
+            if (HandBacks.Count == 0) return;
+            KeyValuePair<PhotonView, int>[] due = HandBacks.ToArray();
+            HandBacks.Clear();
+            foreach (KeyValuePair<PhotonView, int> h in due)
+            {
+                try
+                {
+                    if (h.Key != null && h.Key.AmOwner) h.Key.TransferOwnership(h.Value);
+                }
+                catch (Exception e) { InteractionClassifier.LogHookFailure("ownership hand-back", e); }
+            }
+        }
+
+        /// <summary>PUN's ownership callbacks: a takeover the local player asked for failed
+        /// because the item changed hands first (two players grabbing one item, or a grab during
+        /// a refused change's hand-back). The pick-up is settled as a failure.</summary>
+        private sealed class OwnershipFailures : IPunOwnershipCallbacks
+        {
+            internal static readonly OwnershipFailures Instance = new OwnershipFailures();
+
+            public void OnOwnershipRequest(PhotonView targetView, Photon.Realtime.Player requestingPlayer) { }
+
+            public void OnOwnershipTransfered(PhotonView targetView, Photon.Realtime.Player previousOwner) { }
+
+            public void OnOwnershipTransferFailed(PhotonView targetView, Photon.Realtime.Player senderOfFailedRequest)
+            {
+                try
+                {
+                    if (senderOfFailedRequest != null && senderOfFailedRequest.IsLocal) SettleLocalPickup(targetView);
+                }
+                catch (Exception e) { InteractionClassifier.LogHookFailure("ownership transfer failed", e); }
+            }
         }
 
 #if ECTYPE_DEV
