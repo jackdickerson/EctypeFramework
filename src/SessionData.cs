@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -66,6 +67,73 @@ namespace Ectype
         public const string HostValuesRoomProperty = RoomPropertyPrefix + "HostValues";
 
         internal const int FormatVersion = 1;
+
+        /// <summary>
+        /// The serializer every value goes through. It writes a <c>decimal</c> as a string, so its
+        /// digits survive a reader that parses numbers as doubles, and reads one from a string or a
+        /// number. Otherwise it is Newtonsoft's default, the game's own.
+        /// </summary>
+        internal static readonly JsonSerializer Json = JsonSerializer.Create(new JsonSerializerSettings
+        {
+            DateParseHandling = DateParseHandling.None,
+            Converters = new List<JsonConverter> { new DecimalAsString() },
+        });
+
+        private sealed class DecimalAsString : JsonConverter
+        {
+            public override bool CanConvert(Type objectType)
+            {
+                return objectType == typeof(decimal) || objectType == typeof(decimal?);
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                if (value == null) writer.WriteNull();
+                else writer.WriteValue(((decimal)value).ToString(CultureInfo.InvariantCulture));
+            }
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue,
+                                            JsonSerializer serializer)
+            {
+                switch (reader.TokenType)
+                {
+                    case JsonToken.Null:
+                        if (objectType == typeof(decimal?)) return null;
+                        throw new JsonSerializationException("null is not a decimal");
+                    case JsonToken.String:
+                        return decimal.Parse((string)reader.Value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                    case JsonToken.Integer:
+                    case JsonToken.Float:
+                        return Convert.ToDecimal(reader.Value, CultureInfo.InvariantCulture);
+                    default:
+                        throw new JsonSerializationException("a " + reader.TokenType + " is not a decimal");
+                }
+            }
+        }
+
+        /// <summary>Parses JSON text without Newtonsoft's default date detection, which turns a
+        /// date-shaped string into a date token that reads back as another string.</summary>
+        internal static JToken ParseJson(string text)
+        {
+            using (JsonTextReader reader = new JsonTextReader(new StringReader(text)))
+            {
+                reader.DateParseHandling = DateParseHandling.None;
+                reader.FloatParseHandling = FloatParseHandling.Double;
+                JToken token = JToken.ReadFrom(reader);
+                while (reader.Read())
+                    if (reader.TokenType != JsonToken.Comment)
+                        throw new JsonReaderException("additional text after the JSON value");
+                return token;
+            }
+        }
+
+        /// <summary>The <see cref="EnvelopeKey"/> member of a session JSON string, parsed as
+        /// <see cref="ParseJson"/> does, or null when absent.</summary>
+        internal static JToken ExtractEnvelope(string sessionJson)
+        {
+            JObject o = ParseJson(sessionJson) as JObject;
+            return o != null ? o[EnvelopeKey] : null;
+        }
         internal const int SidecarMaxAgeDays = 180;
         internal const int SidecarMaxCount = 16;
         private const int MaxKeyLength = 128;
@@ -94,7 +162,7 @@ namespace Ectype
             {
                 T v = HostProduce();
                 if (v == null) return null;
-                return JToken.FromObject(v);
+                return JToken.FromObject(v, Json);
             }
 
             internal override bool TryRead(JToken token, out object value, out string error)
@@ -103,7 +171,7 @@ namespace Ectype
                 error = null;
                 try
                 {
-                    value = token.ToObject<T>();
+                    value = token.ToObject<T>(Json);
                     return true;
                 }
                 catch (Exception e)
@@ -158,6 +226,7 @@ namespace Ectype
         private static bool _saveHook;
         private static bool _inEvent9;
         private static int _event9Sender;
+        private static string _event9Json;
 
         private static bool _patched;
         private static bool _warnedInert;
@@ -199,7 +268,8 @@ namespace Ectype
         /// start sequence, and never for a session without the key. A client that registers after
         /// a session became active gets <paramref name="apply"/> at once if it carries the key.
         /// <typeparamref name="T"/> must be plain JSON data: numbers, bools, strings, enums, and
-        /// arrays, lists or classes of them; Unity types and objects are refused.
+        /// arrays, lists or classes of them; Unity types, delegates and abstract types are refused,
+        /// also as array elements, generic arguments or the public members of a class.
         /// Returns false and logs the reason when the key or type is refused, the key is already
         /// registered, or the framework is inert.
         /// </summary>
@@ -286,7 +356,7 @@ namespace Ectype
             if (s.Keys == null || !s.Keys.TryGetValue(key, out token)) return false;
             try
             {
-                value = token.ToObject<T>();
+                value = token.ToObject<T>(Json);
                 return true;
             }
             catch
@@ -364,22 +434,72 @@ namespace Ectype
 
         /// <summary>Null when values of <paramref name="t"/> survive the game's JSON serializer.
         /// <paramref name="scalarOnly"/> accepts bools, numbers, enums and strings alone. Otherwise
-        /// Unity types, delegates and abstract types are refused, and a default value is
-        /// round-tripped when one can be built.</summary>
+        /// Unity types, delegates and abstract types are refused wherever they appear: as the type,
+        /// an array element, a generic argument, or the type of a serialised field or property of
+        /// a plain class (three levels deep); and a default value is round-tripped when one can be
+        /// built.</summary>
         internal static string TypeProblem(Type t, bool scalarOnly)
+        {
+            if (scalarOnly)
+            {
+                Type under = Nullable.GetUnderlyingType(t);
+                if (under != null) t = under;
+                return IsScalar(t) ? null : t.Name + " is not a bool, number, enum or string";
+            }
+            string problem = ShapeProblem(t, new HashSet<Type>(), 0);
+            if (problem != null) return problem;
+            return RoundTripProblem(t);
+        }
+
+        private static bool IsScalar(Type t)
+        {
+            return t == typeof(string) || t == typeof(decimal) || t.IsEnum ||
+                   (t.IsPrimitive && t != typeof(IntPtr) && t != typeof(UIntPtr));
+        }
+
+        private static string ShapeProblem(Type t, HashSet<Type> seen, int depth)
         {
             Type under = Nullable.GetUnderlyingType(t);
             if (under != null) t = under;
-            if (t == typeof(string) || t == typeof(decimal) || t.IsEnum ||
-                (t.IsPrimitive && t != typeof(IntPtr) && t != typeof(UIntPtr)))
-                return null;
-            if (scalarOnly) return t.Name + " is not a bool, number, enum or string";
+            if (IsScalar(t) || t == typeof(object) || !seen.Add(t)) return null;
             if (typeof(UnityEngine.Object).IsAssignableFrom(t)) return t.Name + " is a Unity object";
             if (typeof(Delegate).IsAssignableFrom(t)) return t.Name + " is a delegate";
+            if (t.IsPointer || t == typeof(IntPtr) || t == typeof(UIntPtr)) return t.Name + " is a pointer";
+            if (t.IsArray) return ShapeProblem(t.GetElementType(), seen, depth);
             if (t.Namespace != null && t.Namespace.StartsWith("UnityEngine", StringComparison.Ordinal))
                 return t.Name + " is a Unity type, which the game's JSON serializer has no converter for";
-            if (t.IsInterface || t.IsAbstract || t.IsPointer) return t.Name + " cannot be read back from JSON";
+            if (t.IsGenericType)
+                foreach (Type arg in t.GetGenericArguments())
+                {
+                    string inner = ShapeProblem(arg, seen, depth);
+                    if (inner != null) return inner;
+                }
+            if (t.Namespace != null && t.Namespace.StartsWith("System", StringComparison.Ordinal)) return null;
+            if (t.IsInterface || t.IsAbstract) return t.Name + " cannot be read back from JSON";
+            if (depth >= 3) return null;
+            const BindingFlags Pub = BindingFlags.Instance | BindingFlags.Public;
+            foreach (FieldInfo f in t.GetFields(Pub))
+            {
+                if (f.IsDefined(typeof(JsonIgnoreAttribute), true)) continue;
+                string inner = ShapeProblem(f.FieldType, seen, depth + 1);
+                if (inner != null) return t.Name + "." + f.Name + ": " + inner;
+            }
+            foreach (PropertyInfo pi in t.GetProperties(Pub))
+            {
+                if (!pi.CanRead || pi.GetIndexParameters().Length > 0 ||
+                    pi.IsDefined(typeof(JsonIgnoreAttribute), true)) continue;
+                string inner = ShapeProblem(pi.PropertyType, seen, depth + 1);
+                if (inner != null) return t.Name + "." + pi.Name + ": " + inner;
+            }
+            return null;
+        }
 
+        private static string RoundTripProblem(Type t)
+        {
+            Type under = Nullable.GetUnderlyingType(t);
+            if (under != null) t = under;
+            if (IsScalar(t)) return null;
+            if (t.IsInterface || t.IsAbstract) return t.Name + " cannot be read back from JSON";
             object sample = null;
             try
             {
@@ -391,7 +511,7 @@ namespace Ectype
             if (sample == null) return null;
             try
             {
-                JToken.FromObject(sample).ToObject(t);
+                JToken.FromObject(sample, Json).ToObject(t, Json);
                 return null;
             }
             catch (Exception e)
@@ -552,6 +672,17 @@ namespace Ectype
             }
             catch { }
             if (__result == null) return;
+            // The game parsed the session with Newtonsoft's defaults, which turn date-shaped strings
+            // into dates. Read the envelope again from the string the host sent.
+            if (token != null && _inEvent9 && _event9Json != null)
+            {
+                try { token = ExtractEnvelope(_event9Json); }
+                catch (Exception e)
+                {
+                    token = null;
+                    Plugin.Log.LogError("Ectype: session data: reading the envelope from the session JSON failed: " + e);
+                }
+            }
 
             JObject keys = null;
             int stamp = -1;
@@ -617,6 +748,7 @@ namespace Ectype
                 if (__0 == null || __0.Code != 9) return;
                 _inEvent9 = true;
                 _event9Sender = __0.Sender;
+                _event9Json = __0.CustomData as string;
             }
             catch { }
         }
@@ -624,6 +756,7 @@ namespace Ectype
         private static Exception OnEventFinalizer(Exception __exception)
         {
             _inEvent9 = false;
+            _event9Json = null;
             return __exception;
         }
 
@@ -705,11 +838,18 @@ namespace Ectype
             foreach (Entry e in _entries)
             {
                 JToken token = null;
-                JToken old;
+                JToken old = null;
                 object probe;
                 string readError;
-                if (saved != null && e.Options.KeepOnResume && saved.TryGetValue(e.Key, out old) &&
-                    e.TryRead(old, out probe, out readError))
+                bool readable = false;
+                if (saved != null && e.Options.KeepOnResume && saved.TryGetValue(e.Key, out old))
+                {
+                    readable = e.TryRead(old, out probe, out readError);
+                    if (!readable)
+                        Plugin.Log.LogWarning("Ectype: session data: the saved run's value for key '" + e.Key +
+                                              "' does not read as " + e.TypeName + "; a fresh value is sent.");
+                }
+                if (readable)
                 {
                     token = old;
                     restored++;
@@ -1028,10 +1168,15 @@ namespace Ectype
                 return null;
             }
             JObject o;
-            try { o = JObject.Parse(s); }
+            try { o = ParseJson(s) as JObject; }
             catch (Exception e)
             {
                 problem = "not a JSON object (" + e.Message + ")";
+                return null;
+            }
+            if (o == null)
+            {
+                problem = "not a JSON object";
                 return null;
             }
             long a;
@@ -1070,7 +1215,9 @@ namespace Ectype
             if (t == typeof(bool)) return k == JTokenType.Boolean;
             if (t.IsEnum) return k == JTokenType.Integer || k == JTokenType.String;
             if (t == typeof(char)) return k == JTokenType.String;
-            if (t == typeof(float) || t == typeof(double) || t == typeof(decimal))
+            if (t == typeof(decimal))
+                return k == JTokenType.String || k == JTokenType.Float || k == JTokenType.Integer;
+            if (t == typeof(float) || t == typeof(double))
                 return k == JTokenType.Float || k == JTokenType.Integer;
             if (t.IsPrimitive) return k == JTokenType.Integer;
             return false;
@@ -1160,7 +1307,12 @@ namespace Ectype
                     error = "the file is larger than any envelope";
                     return null;
                 }
-                JObject doc = JObject.Parse(File.ReadAllText(path, Encoding.UTF8));
+                JObject doc = ParseJson(File.ReadAllText(path, Encoding.UTF8)) as JObject;
+                if (doc == null)
+                {
+                    error = "not a JSON object";
+                    return null;
+                }
                 long v;
                 if (!TryLong(doc["v"], out v) || v != FormatVersion ||
                     (string)doc["session"] != id || !(doc["keys"] is JObject))
@@ -1334,7 +1486,7 @@ namespace Ectype
             if (Equals(raw, _seenRaw) && master == _seenMaster) return;
             _seenMaster = master;
 
-            if (raw != null && _foreignWriter > 0 && _foreignWriter != master && Equals(raw, _foreignRaw))
+            if (_foreignWriter > 0 && _foreignWriter != master && Equals(raw, _foreignRaw))
             {
                 if (_once.Add("foreign:" + _foreignWriter))
                     Plugin.Log.LogWarning("Ectype: host values: ignored a room-property write from actor " +
@@ -1356,8 +1508,13 @@ namespace Ectype
 
         internal static void Written(int sender, object raw)
         {
-            _foreignWriter = sender;
-            _foreignRaw = raw;
+            // Only a writer who is not the master when the change arrives is foreign. The master's
+            // own write is decided by its stamp, so after a host change the departed host's last
+            // write fails the stamp check instead of passing for a forgery.
+            Room room = PhotonNetwork.CurrentRoom;
+            bool foreign = sender > 0 && room != null && sender != room.MasterClientId;
+            _foreignWriter = foreign ? sender : 0;
+            _foreignRaw = foreign ? raw : Unseen;
             _seenRaw = Unseen; // decide again at the next tick
             Photon.Realtime.Player me = PhotonNetwork.LocalPlayer;
             if (PhotonNetwork.IsMasterClient && me != null && sender > 0 && sender != me.ActorNumber)
@@ -1483,7 +1640,7 @@ namespace Ectype
         JToken IHostValue.HostToken()
         {
             T v = Entry.Value;
-            return v != null ? JToken.FromObject(v) : JValue.CreateNull();
+            return v != null ? JToken.FromObject(v, SessionData.Json) : JValue.CreateNull();
         }
 
         /// <summary>Applies the precedence in force: in a mission, the session's frozen value; in
@@ -1547,7 +1704,7 @@ namespace Ectype
                     try
                     {
                         if (!SessionData.TokenFits(token, typeof(T))) throw new FormatException("a JSON " + token.Type);
-                        _roomValue = token.ToObject<T>();
+                        _roomValue = token.ToObject<T>(SessionData.Json);
                         _roomHas = true;
                     }
                     catch (Exception e)

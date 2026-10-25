@@ -63,8 +63,10 @@ session's assets and then makes the new session object the active one
   clients therefore hold the same values while each generates the quest and enters the first
   sector. It runs once per session that carries the key, never for a session that does not. A
   late joiner runs the same sequence on joining. `apply` must not touch scene objects: none of
-  the new session's exist yet. A mod that registers after a session became active gets `apply`
-  at once if the session carries the key.
+  the new session's exist yet. The game checks a joining client's registered content after this
+  point, so `apply` can run for a session the client is then refused from; the values are cleared
+  when it leaves the room. A mod that registers after a session became active gets `apply` at
+  once if the session carries the key.
 - **`SessionData.Changed`** is raised with a key whenever its current value appears, changes
   or disappears: at each session start and when the client leaves the room.
 
@@ -98,9 +100,16 @@ A client whose session lacks a key keeps no value for it. Fall back to the local
 
 `T` must be plain JSON data: bools, numbers, enums, strings, and arrays, lists, dictionaries or
 classes of those. `Register` refuses, with one error, a Unity object, any type from Unity's
-namespaces (vectors, colours: the game's serializer has no converter for them), a delegate, an
-interface or abstract type, and a type whose default value does not survive a JSON round trip.
-A `HostValue` takes bools, numbers, enums and strings only.
+namespaces (vectors, colours: the game's serializer has no converter for them), a delegate, a
+pointer, an interface or abstract type, wherever it appears: as `T` itself, as an array element
+or generic argument, or as the type of a serialised public field or property of a class, three
+levels deep (members marked `[JsonIgnore]` are skipped). It also refuses a type whose default
+value does not survive a JSON round trip. A `HostValue` takes bools, numbers, enums and strings
+only.
+
+Every reader of these values parses JSON with Newtonsoft's date detection off, so a string that
+looks like a date arrives as the same string. A `decimal` travels as a string, so it keeps every
+digit; `float` and `double` round-trip exactly as numbers. Enums travel as their numbers.
 
 Every joiner downloads the envelope with the session, so keep values small. A few hundred bytes
 per key is a good ceiling.
@@ -123,15 +132,17 @@ the master leaves the room. The framework checks what it can:
   and the framework records it around the game's handler. The envelope must come from the actor
   its `a` names, and that actor must be the master or have left the room.
 - **From the room cache.** Photon delivers the room's global cache as actor 0, so a late joiner
-  cannot tell who raised the cached session. The envelope is accepted only when its `a` names
-  the current master or an actor who has left.
+  cannot tell who raised the cached session. The envelope is accepted when its `a` names the
+  current master or any actor number not in the room now, one that never joined included. The
+  only check a joiner can make is that `a` does not name a present player other than the master.
 
 Limits:
 
-- `a` is not a signature. A player who raises event 9 with caching and names the master, or
-  names themselves and then leaves, is indistinguishable from the host to every player who joins
-  afterwards, until the host starts its next session and clears the cache. The players present
-  when such an event is raised refuse it, because its live sender is not the master.
+- `a` is not a signature. A player who raises event 9 with caching and names the master, or any
+  actor number not in the room (their own after leaving, or one that never existed), is
+  indistinguishable from the host to every player who joins afterwards, until the host starts
+  its next session and clears the cache. The players present when such an event is raised refuse
+  it, because its live sender is not the actor it names or is not the master.
 - The game itself trusts the same event: every client present loads a session another player
   raises, and a joiner loads the cached one. The framework only decides whether to keep the
   envelope's values.
@@ -209,9 +220,9 @@ Any player can write a room property. A client accepts the property only while:
   null for a string, a number or name for an enum).
 
 Photon reports the writer of each property change to the clients in the room as the sender of
-its property-changed event, whatever the value written. A client ignores a change written by
-anyone else and keeps the values it had. The host sees the same event and writes its own values
-back.
+its property-changed event, whatever the value written, a null or a deletion included. A client
+ignores a change written by a player who is not the master when the change arrives, and keeps
+the values it had. The host sees the same event and writes its own values back.
 
 Limits:
 
@@ -220,9 +231,10 @@ Limits:
   decides there. A forged value stamped with the master's number and written after the host's
   last write is read by a joiner who arrives before the host has written its values back, one
   round trip later.
-- When the host leaves, the room still holds the old host's stamp, which no client accepts.
-  Clients use the hub session's value, then their own config, until the new host's own values
-  arrive. The new host publishes its own config, not the old host's values. A player who writes
+- When the host leaves, the room still holds the old host's stamp, which no client accepts once
+  the master has changed: its last write was the master's when it arrived, so it is not treated
+  as a forgery, and the stamp check refuses it. Clients use the hub session's value, then their
+  own config, until the new host's own values arrive. The new host publishes its own config, not the old host's values. A player who writes
   values stamped with the new host's number in that window is caught by the writer check on the
   clients present, and is read by anyone joining before the new host's write.
 
@@ -256,6 +268,7 @@ the next session it starts.
 | `Ectype: session data: adding the envelope to the session JSON failed: <exception>` | Host: writing the envelope threw. Clients get no values for this session. |
 | `Ectype: session data: activating the session's values failed: <exception>` | Capturing or applying at the session start threw. |
 | `Ectype: session data: this run is saved under session <id>, not <id> (the host changed); its sidecar follows the saved id.` | Logged once per saved id, on a host who took over mid-run. |
+| `Ectype: session data: the saved run's value for key '<key>' does not read as <Type>; a fresh value is sent.` | Host, on resume: the sidecar holds a value of another shape, usually from another version of the mod. |
 | `Ectype: session data: saved-run sidecar for session <id> unreadable; values are produced fresh: <message>` | The sidecar exists and could not be read. |
 | `Ectype: session data: saved-run sidecar write failed (<path>): <message>` | The config folder is not writable. A resumed run then gets fresh values. |
 | `Ectype: session data: refreshing the saved-run sidecar failed: <exception>` | Writing the sidecar at a save threw. |

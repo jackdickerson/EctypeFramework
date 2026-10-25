@@ -36,6 +36,20 @@ namespace Ectype
     internal static class SessionDataSelfTest
     {
         private const int TestActor = 7;
+        private const string DateShaped = "2026-10-25T12:00:00";
+        private const decimal LongDecimal = 1.2345678901234567890123456789m;
+
+        private sealed class WithVector
+        {
+            public UnityEngine.Vector3 Where = default(UnityEngine.Vector3);
+        }
+
+        private sealed class PlainData
+        {
+            public int Count = 0;
+            public List<string> Names = null;
+            [JsonIgnore] public UnityEngine.Vector3 Ignored = default(UnityEngine.Vector3);
+        }
         private static bool _done;
 
         public static void Poll()
@@ -52,10 +66,11 @@ namespace Ectype
             Run("sidecar", Sidecar, failures);
             Run("host-value room format", Stamp, failures);
             Run("type checks", Types, failures);
+            Run("exact text", Exact, failures);
 
             if (failures.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: session data passed (" + roundTrip + "; size caps; " +
-                                   "writer rule; sidecar write/read/prune; host-value stamp; type checks).");
+                                   "writer rule; sidecar write/read/prune; host-value stamp; type checks; exact text).");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: session data FAILED: " +
                                     string.Join("; ", failures.ToArray()));
@@ -76,6 +91,8 @@ namespace Ectype
                 Item("ectype.selftest/text", JToken.FromObject("héllo \"quoted\"")),
                 Item("ectype.selftest/list", JToken.FromObject(new List<int> { 1, 2, 3 })),
                 Item("ectype.selftest/object", new JObject { ["spacing"] = 450.5, ["mode"] = "pvp" }),
+                Item("ectype.selftest/date", JToken.FromObject(DateShaped, SessionData.Json)),
+                Item("ectype.selftest/decimal", JToken.FromObject(LongDecimal, SessionData.Json)),
             };
             List<string> refusals = new List<string>();
             JObject envelope = SessionData.Pack(items, refusals, TestActor);
@@ -103,7 +120,9 @@ namespace Ectype
             GameSession rebuilt = GameSession.FromJObject(JObject.Parse(wire));
             SessionData.SelfTestSink = null;
 
-            if (!sinkRan) failures.Add("round trip: the FromJObject postfix did not run");
+            if (!sinkRan || received == null) failures.Add("round trip: the FromJObject postfix did not run or saw no envelope");
+            // The client re-reads the envelope from the string the host sent, as the event-9 path does.
+            received = SessionData.ExtractEnvelope(wire);
             if (rebuilt == null || rebuilt.GameSessionID != sent.GameSessionID)
                 failures.Add("round trip: the session id did not survive");
 
@@ -120,8 +139,12 @@ namespace Ectype
                 if (!JToken.DeepEquals(item.Token, keys[item.Key]))
                     failures.Add("round trip: " + item.Key + " came back as " +
                                  (keys[item.Key] != null ? keys[item.Key].ToString(Formatting.None) : "nothing"));
-            if (keys["ectype.selftest/float"] != null && keys["ectype.selftest/float"].ToObject<float>() != 0.75f)
+            if (keys["ectype.selftest/float"] != null && keys["ectype.selftest/float"].ToObject<float>(SessionData.Json) != 0.75f)
                 failures.Add("round trip: the float did not read back as 0.75");
+            if (keys["ectype.selftest/date"] == null || keys["ectype.selftest/date"].ToObject<string>(SessionData.Json) != DateShaped)
+                failures.Add("round trip: the date-shaped string changed");
+            if (keys["ectype.selftest/decimal"] == null || keys["ectype.selftest/decimal"].ToObject<decimal>(SessionData.Json) != LongDecimal)
+                failures.Add("round trip: the long decimal changed");
             return "round trip through GameSession.AsJObject/FromJObject, " + items.Count + " keys, " +
                    SessionData.Bytes(envelope) + " bytes";
         }
@@ -185,6 +208,8 @@ namespace Ectype
             Expect(failures, "cached, stamped by a departed host", SessionData.WriterProblem(0, 9, 1, inRoom), true);
             Expect(failures, "cached, stamped by a present non-master", SessionData.WriterProblem(0, 3, 1, inRoom), false);
             Expect(failures, "cached, no stamp", SessionData.WriterProblem(-1, -1, 1, inRoom), false);
+            // The documented limit: any number not in the room passes from the cache.
+            Expect(failures, "cached, stamped by an actor that never joined", SessionData.WriterProblem(0, 9999, 1, inRoom), true);
         }
 
         private static void Expect(List<string> failures, string name, string problem, bool accepted)
@@ -298,6 +323,66 @@ namespace Ectype
                 SessionData.TypeProblem(typeof(UnityEngine.ScriptableObject), false) == null ||
                 SessionData.TypeProblem(typeof(List<int>), true) == null)
                 failures.Add("types: a type that does not survive JSON, or a non-scalar host value, was accepted");
+            if (SessionData.TypeProblem(typeof(List<UnityEngine.Vector3>), false) == null ||
+                SessionData.TypeProblem(typeof(Dictionary<string, UnityEngine.Color>), false) == null ||
+                SessionData.TypeProblem(typeof(List<UnityEngine.Vector3>[]), false) == null ||
+                SessionData.TypeProblem(typeof(WithVector), false) == null)
+                failures.Add("types: a Unity type inside a generic, an array or a field was accepted");
+            if (SessionData.TypeProblem(typeof(PlainData), false) != null ||
+                SessionData.TypeProblem(typeof(decimal?), true) != null)
+                failures.Add("types: plain data with an ignored member, or a nullable decimal, was refused");
+        }
+
+        /// <summary>A date-shaped string and a decimal with more digits than a double carries come
+        /// back unchanged through every reader: the envelope from the wire string, the room
+        /// property and the sidecar.</summary>
+        private static void Exact(List<string> failures)
+        {
+            JObject keys = new JObject
+            {
+                ["date"] = JToken.FromObject(DateShaped, SessionData.Json),
+                ["decimal"] = JToken.FromObject(LongDecimal, SessionData.Json),
+            };
+            string wire = new JObject { ["other"] = 1, [SessionData.EnvelopeKey] = SessionData.Wrap(keys, TestActor) }
+                .ToString(Formatting.None);
+            string problem;
+            int stamp;
+            JObject back = SessionData.Unpack(SessionData.ExtractEnvelope(wire), out problem, out stamp);
+            CheckExact(failures, "envelope", back);
+
+            string raw = SessionData.PackRoomValue(TestActor, keys);
+            CheckExact(failures, "room property",
+                       SessionData.UnpackRoomValue(raw, TestActor, HostValueRoom.CapBytes, out problem) as JObject);
+            JToken roomDate = SessionData.UnpackRoomValue(raw, TestActor, HostValueRoom.CapBytes, out problem)["date"];
+            if (!SessionData.TokenFits(roomDate, typeof(string)))
+                failures.Add("exact text: a date-shaped string in the room property does not fit a string setting");
+
+            string dir = Path.Combine(Path.GetTempPath(), "ectype-selftest-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string id = Guid.NewGuid().ToString();
+                string error;
+                SessionData.WriteSidecar(dir, id, keys, out error);
+                CheckExact(failures, "sidecar", SessionData.ReadSidecar(dir, id, out error));
+            }
+            finally
+            {
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+                catch { }
+            }
+        }
+
+        private static void CheckExact(List<string> failures, string where, JObject keys)
+        {
+            if (keys == null)
+            {
+                failures.Add("exact text: " + where + " did not read");
+                return;
+            }
+            string date = keys["date"] != null ? keys["date"].ToObject<string>(SessionData.Json) : null;
+            if (date != DateShaped) failures.Add("exact text: " + where + " changed the date-shaped string to " + date);
+            decimal d = keys["decimal"] != null ? keys["decimal"].ToObject<decimal>(SessionData.Json) : 0m;
+            if (d != LongDecimal) failures.Add("exact text: " + where + " changed the decimal to " + d);
         }
 
         private static SessionData.PackItem Item(string key, JToken token, int cap = SessionData.DefaultKeyCapBytes)

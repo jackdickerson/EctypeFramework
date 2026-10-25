@@ -743,6 +743,7 @@ item that never drops usually has an anchor no table matches.
 | `Ectype: session data: adding the envelope to the session JSON failed: <exception>` | Host: writing the envelope threw. Clients get no values for this session. |
 | `Ectype: session data: activating the session's values failed: <exception>` | Capturing or applying at the session start threw. |
 | `Ectype: session data: this run is saved under session <id>, not <id> (the host changed); its sidecar follows the saved id.` | Logged once per saved id, on a host who took over mid-run. |
+| `Ectype: session data: the saved run's value for key '<key>' does not read as <Type>; a fresh value is sent.` | Host, on resume: the sidecar holds a value of another shape, usually from another version of the mod. |
 | `Ectype: session data: saved-run sidecar for session <id> unreadable; values are produced fresh: <message>` | The sidecar exists and could not be read. |
 | `Ectype: session data: saved-run sidecar write failed (<path>): <message>` | The config folder is not writable. A resumed run then gets fresh values. |
 | `Ectype: session data: refreshing the saved-run sidecar failed: <exception>` | Writing the sidecar at a save threw. |

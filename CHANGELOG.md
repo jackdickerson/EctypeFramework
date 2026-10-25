@@ -14,7 +14,9 @@ build.
   same values while generating the quest. The values sit under one `"ectype"` key of the
   session JSON, which clients without the framework ignore. `Current<T>`, `TryGetCurrent<T>`,
   `Has`, `SessionId` (the host's id for the session), `Changed`. `T` must be plain JSON data;
-  Unity types are refused at `Register`. Each key is capped (`SessionDataOptions.MaxBytes`,
+  `Register` refuses Unity types, delegates and abstract types, also inside arrays, generic
+  arguments and the public members of a class. Date-shaped strings arrive unchanged and a
+  `decimal` keeps every digit. Each key is capped (`SessionDataOptions.MaxBytes`,
   default 4096 bytes) and the whole envelope at 16384 bytes, over which the largest key is left
   out; each refusal logs one error naming its key.
 - A resumed saved run sends the values it started with, in a later game process too: they are
@@ -24,9 +26,10 @@ build.
   value instead.
 - The envelope carries the producing host's actor number. A live delivery must come from that
   actor, and that actor must be the master or have left; a late joiner, whose copy comes from
-  the room cache with no sender, accepts it only when it names the master or a departed actor.
-  A forged cached session can still pass for joiners until the host starts its next session, as
-  it does for the game itself.
+  the room cache with no sender, accepts it only when it does not name a present player other
+  than the master, so the master or any actor number not in the room passes. A forged cached
+  session can therefore still pass for joiners until the host starts its next session, as it
+  does for the game itself.
 - `SessionData.HostValue(configEntry, key)` returns a `HostValue<T>` (bool, number, enum or
   string) whose `Value` is the host's setting on every client: the host's own config on the
   host; in the hub, the host's values in the room property `Ectype.HostValues`
