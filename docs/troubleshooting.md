@@ -53,24 +53,6 @@ declares no VoidManager type, so VoidManager never refuses a join on its account
 Logged once, on a client with VoidManager joining a host without it. VoidManager's own check
 needs the host's mod list and would fail without one; the framework passes it for such a room.
 
-### `Ectype: progression guard engaged: this room is tagged modded, so profile progression, unlocks, the saved run, Steam stats and achievements are not saved until the game restarts; the block list and cosmetic, ship and gene-tree loadouts still are.`
-
-With or without VoidManager. The client is in a room the game tagged modded, which every room
-hosted with the framework is, the player's own hub room included. From here until the game
-restarts, nothing this process earns is saved to the profile or reported to Steam: profile
-data (level, experience, tokens, quest progress, and the seen hints, awakening flag and
-accepted EULA and GDPR versions saved with them), unlocks, achievements and their metrics,
-metaquest times, rewards, the resumable run, the offline profile's exit save, and Steam stats
-and achievements. The block list, the cosmetic loadout, ship loadout presets, gene-tree
-loadouts and the "new item" badges are still saved. [multiplayer.md](multiplayer.md) has the
-table.
-
-| Line | Meaning |
-| --- | --- |
-| `Ectype: progression guard skipped cloud write '<key>' (logged once per key).` (verbose) | A cloud profile entry carrying progression was not saved. |
-| `Ectype: progression guard is missing <methods> (game update?); those writes are not blocked in a modded session.` | A write method a game update renamed; those writes go through. |
-| `Ectype: progression guard could not patch <method>: <exception>` | One hook failed to apply; that write goes through. |
-
 ### `Ectype: disabled via config ([General] Enabled = false).`
 
 The framework did nothing: no patches, no registration, no driver. Set `[General] Enabled` to
