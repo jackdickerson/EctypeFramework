@@ -77,8 +77,6 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
-            try { ProgressionGuard.Install(harmony); }
-            catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
             try { InteractionClassifier.ApplyPatches(harmony); InteractionGatePatches.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: interaction gate patches failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
@@ -167,7 +165,6 @@ namespace Ectype
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
-            Step("progression guard", ProgressionGuard.Poll);
             Step("interaction gate", InteractionGatePatches.PollLate);
             Step("topology", Topology.Poll);
             Step("characterShip", CharacterShipRoute.Poll);

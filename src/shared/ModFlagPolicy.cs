@@ -32,15 +32,15 @@ using ResourceAssets;
 /// A mod with no runtime assets loses nothing but the version check, since it
 /// had nothing in the required set to begin with.
 ///
-/// The switch only reaches mods that compile this file. The Ectype framework is listed
-/// with VoidManager as MultiplayerType.All unconditionally, and VoidManager flags the
-/// session from that at load. A no-flag build of any mod that depends on the framework
-/// therefore still produces a flagged session whenever the framework and VoidManager are
-/// installed.
+/// The switch only reaches assemblies that compile this file. A normal build of the Ectype
+/// framework registers its network-contract marker with RequiredEffect, so a no-flag build
+/// of a mod that depends on it still produces a flagged session.
 ///
-/// For a mod that does not depend on the framework, a no-flag build means modded runs
-/// write cloud progression and unlock Steam achievements, and an unmodded player gets
-/// no signal that the room is modded. That is the purpose of the switch.
+/// For a mod that does not depend on the framework, a no-flag build means an unmodded
+/// player gets no signal that the room is modded, and VoidManager raises no session level
+/// for it. That is the purpose of the switch. The flag itself does not stop progression:
+/// the game never reads R_Mod for that, and VoidManager's progression switch reacts only
+/// to a mod calling its DisableProgression.
 ///
 /// The build records which way it went in AssemblyMetadata("ProgressionFlag"),
 /// so a DLL can always be identified after the fact.
