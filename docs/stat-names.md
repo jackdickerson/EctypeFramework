@@ -44,9 +44,9 @@ modifier surface:
   `character`-target perk reaches them.
 - `SystemModuleConstructionSpeed`, a factor on install, uninstall and upgrade rate, on the player's own
   collection.
-- `IncomingProjectileSpeed` on the player ship's collection: a factor (authored 1) on the
-  speed of every hostile NPC projectile, applied to each shot as it registers. Below 1 slows
-  enemy shots in flight.
+- `IncomingProjectileSpeed` on each player ship's collection: a factor (authored 1) on the
+  speed of hostile NPC projectiles aimed at that ship, applied to each shot as it registers.
+  Below 1 slows enemy shots in flight.
 - `ShipDrag` (the platform's quadratic drag) on the player ship's collection.
 - A hand-held attractor's `HandAttractorMaxRange`, `HandAttractorPullVelocity`,
   `HandAttractorDuration`, `HandAttractorCooldown` and `HandAttractorBeams` on the owning

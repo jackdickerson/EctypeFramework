@@ -190,12 +190,12 @@
       "id": 573323413,
       "displayName": "Incoming Projectile Speed",
       "wraps": "no field: a factor read by a consumer that puts an ExponentialMultiplier of (factor - 1) on each hostile SyncedProjectile's own Speed stat",
-      "collection": "the player ship's own StatTagCollection (PlayerControlledShip.Stats)",
-      "wiredBy": "src/ShipStats.cs, PlayerControlledShip.RegisterStats postfix; consumer is a SyncedProjectilesSynchronizer.RegisterNpcProjectile postfix plus a re-apply over in-flight shots on every change",
+      "collection": "each player ship's own StatTagCollection (PlayerControlledShip.Stats)",
+      "wiredBy": "src/ShipStats.cs, PlayerControlledShip.RegisterStats postfix; consumer is a SyncedProjectilesSynchronizer.RegisterNpcProjectile postfix that binds each shot to one ship, plus a re-apply over that ship's in-flight shots when its factor changes",
       "authored": 1,
       "units": "factor on projectile speed (floored at 0.05)",
       "lowerIsBetter": true,
-      "mechanism": "NPC shots move Speed.Value * fixedDeltaTime each tick and expire at Range / Speed, both read live, so a factor below 1 slows shots in flight and still lets them reach full range. The consumer also rescales the shot's Velocity snapshot, which sizes the collision sweep. Only shots whose Faction the ship counts as enemy are touched, so the ship's own missiles are not. Hitscan RayProjectiles ignore speed; LegacyWeaponProjectile and composite WeaponProjectile are not covered.",
+      "mechanism": "NPC shots move Speed.Value * fixedDeltaTime each tick and expire at Range / Speed, both read live, so a factor below 1 slows shots in flight and still lets them reach full range. The consumer also rescales the shot's Velocity snapshot, which sizes the collision sweep. Only shots whose Faction the chosen ship counts as enemy are touched, and shots whose Source is a player ship are skipped, so player missiles are not. With several ships, a shot takes the factor of its guided target's ship, else of the hostile ship with the smallest angle to its line at registration, ties to the nearest. Hitscan RayProjectiles ignore speed; LegacyWeaponProjectile and composite WeaponProjectile are not covered.",
       "consumers": [
         "perk StatMods targeting seatShip (applied on every client for every seated player, which keeps each client's simulation of the shot in step)"
       ],

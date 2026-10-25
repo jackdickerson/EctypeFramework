@@ -68,13 +68,18 @@ it cannot leak into other abilities.
 
 ## The ship's stat surface
 
-Both stats live on the player ship's collection, so `seatShip` and `characterShip` perks reach
-them (see [roles.md](roles.md)).
+Both stats live on each player ship's own collection, so `seatShip` and `characterShip` perks
+reach them (see [roles.md](roles.md)).
 
-- **`IncomingProjectileSpeed`** is a factor (authored 1). The framework puts the factor on each
-  enemy-faction shot's own `Speed` as the shot registers, and re-applies it to shots in
-  flight when it changes. Every client simulates NPC shots, and every client applies each
-  seated player's `seatShip` mods, so the factor agrees across the room.
+- **`IncomingProjectileSpeed`** is a factor (authored 1) on each ship. As a hostile NPC shot
+  registers, the framework picks one ship for it and puts that ship's factor on the shot's own
+  `Speed`. It re-applies the factor to that ship's shots in flight when the factor changes.
+  With one ship the pick is that ship. With several it is the guided shot's target ship, else
+  the hostile ship with the smallest angle between the shot's direction and the line to the
+  ship, ties going to the nearer one. A shot fired by a player ship is never slowed. Every
+  client simulates NPC shots and applies each seated player's `seatShip` mods to the seat's
+  own ship, and the pick uses only what every client sees at registration, so each shot
+  carries the same factor on every client.
 - **`ShipDrag`** is the platform's quadratic drag, `MovingSpacePlatform.PhysicalData.Friction`
   (authored 0.7), as a field-backed stat. A factor f scales top speed on every axis by
   1/sqrt(f). Every machine's platform reads it each fixed tick and stat changes are not
