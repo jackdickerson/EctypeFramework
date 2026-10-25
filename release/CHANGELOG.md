@@ -1,5 +1,7 @@
 ## 0.31.0
 
+Mods can give every ship or every player a lasting bonus, such as a tougher hull for a team match. Every player's game applies it as each ship or player appears, so new ships and players start at their full, larger maximum and every bar agrees.
+
 Every mod-made status, button, setting and stat carries the name of the mod that made it, so a problem in a modded game traces back to its mod from the log.
 
 A mod that lets players punch or hit each other can count the attacker's perks, so a longer reach, a shorter cooldown or more damage from a perk is accepted rather than refused or cut back.

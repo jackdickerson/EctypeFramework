@@ -66,6 +66,27 @@ build.
   `FromAbsentPlayer(view)`. A mod calls `RpcContext.Enable()` from `Awake`; the hooks go on once
   the game has loaded, with or without an interaction gate, never at plugin load. The interaction
   gate reads its owner-side senders from it. See `docs/reference/rpc-context.md`.
+- `StatContributions.Register(StatContribution)` puts a modifier on one stat of every player
+  ship (`StatTarget.PlayerShip`) or every player character (`StatTarget.Character`) for each
+  object's lifetime. `StatContribution` carries `Id` (`<plugin GUID>/<name>` with a loaded
+  plugin's GUID, refused otherwise), `Target`, `Stat`
+  (a vanilla, framework or `"<owner>/Name"` stat), `Kind` (`SessionStatModifierKind`: `Flat`,
+  `Percent`, `Factor`, mapped as a session-stat effect), `Amount` (`Func<OrbitObject, float?>`,
+  null for no contribution on that target; a character's is asked during its `Awake`) and
+  `Source` (the label). Register on every client in
+  `Awake`: each client applies it to every target, its own and every replica, as the target
+  spawns. A ship is caught after `GameSession.ApplyGlobalOrbitObjectSpawnProperties`, before the
+  game sets its hit points to their maximum, so a `MaxHitPoints` contribution is the hull a new
+  ship starts with on every screen (a resumed save's ship keeps its saved hit points); a
+  character in `Player.Awake`, and one frame after the character's `Start` the framework raises
+  each contributed stat's change event again, so the character's health and jetpack oxygen take
+  the new maximum and stay full. The modifier goes on the
+  target's own stat, never on its modules. Once per target and id; `Refresh(id)` asks `Amount`
+  again on every live target, null withdraws, `Unregister(id)` withdraws everywhere; a destroyed
+  target or an ended session drops it. The modifier's source holds a handle and the label only,
+  and a copy of the modifier follows the original and reads 0 once withdrawn, at its stat's
+  next recalculation for a deep-copied stat. `IsRegistered`,
+  `Current(target, id)`. See `docs/reference/stat-contributions.md`.
 
 ## 0.30.0
 

@@ -196,6 +196,7 @@ namespace Ectype
             Step("mod stats self-test", ModStatsSelfTest.Poll);
             Step("mutators self-test", SessionStatMutatorsSelfTest.Poll);
             Step("character status self-test", CharacterStatusSelfTest.Poll);
+            Step("stat contributions self-test", StatContributionsSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
@@ -212,6 +213,7 @@ namespace Ectype
             Step("enemy abilities", EnemyAbilities.Poll);
             Step("character statuses", CharacterStatuses.Poll);
             Step("timed stats", TimedStatContributions.Poll);
+            Step("stat contributions", StatContributions.Poll);
             Step("held ability starts", AbilityActiveMessage.PollHeld);
             Step("ability bar", HudAbilityBar.Tick);
             Step("loot warm-up", LootTables.PollWarmUp);
