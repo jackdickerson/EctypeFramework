@@ -840,6 +840,16 @@ namespace Ectype
                                                   int startTs, int durationMs, float magnitude,
                                                   int attackerView, int stacks)
         {
+            if (SessionData.PredatesSession(startTs))
+            {
+                // Raised in the previous session, dispatched after the new scene loaded: the view
+                // id may now name a different object.
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status '" + def.Key + "' on " + target.name +
+                                       ": an application from actor " + sender + " started before " +
+                                       "this client's current session; ignored.");
+                return StatusRefusal.InvalidDuration;
+            }
             if (Tombstones.Covers(target.photonView.ViewID, def.Key, startTs, PhotonNetwork.ServerTimestamp))
             {
                 // Sent before the sender learned of a removal this client already processed.

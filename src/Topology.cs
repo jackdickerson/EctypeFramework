@@ -391,7 +391,16 @@ namespace Ectype
 
         internal static void OnShipDestroyed(PlayerControlledShip ship)
         {
-            if (_all.Remove(ship)) MarkDirty();
+            if (!_all.Remove(ship)) return;
+            MarkDirty();
+            // The last ship gone (a scene change): forget its view id and faction now. A new ship
+            // can wake before the next poll, and the old view id would otherwise still rank it,
+            // numbering the new ship 2 in a one-ship room.
+            if (_all.Count == 0)
+            {
+                _seenViews.Clear();
+                _shipFactions.Clear();
+            }
         }
 
         internal static void OnShipDeathBegan(PlayerControlledShip ship)

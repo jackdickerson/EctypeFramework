@@ -6,7 +6,7 @@ Shows:
 
 - `stats\example.ectype-stats.json`, embedded under a resource name ending in `ectype-stats.json`: a `field` on the character (`HackSeconds`, base 60), a `factor` on the ship (`HackResistance`) and a `factor` in the session collection (`SupplyDropInterval`).
 - The id formula, computed in the mod: `0x20000000 | (the first four bytes of MD5("ectype:stat:" + owner + "/" + name), little-endian, & 0x0FFFFFFF)`. The ids it logs at load match the framework's `mod stats: 3 declared` line.
-- Reading the character's, the player's own crew ship's and the session's collection by id, with the mod's own constant as the value when a stat is absent. The crew ship comes from the framework's `Topology.CrewShipOf`, bound by reflection so the mod loads without the framework, with the game's `PlayerShip` as the fallback, which is right in a room with one ship.
+- Reading the character's, the player's own crew ship's and the session's collection by id, with the mod's own constant as the value when a stat is absent. The crew ship comes from the framework's `Topology.CrewShipOf`, bound by reflection so the mod loads without the framework, When the framework is installed and `CrewShipOf` answers no ship (spectating, not yet placed, ship dying), the mod reads no ship stat, since the ship on screen may be another player's. Without the framework, the game's `PlayerShip` stands in, which is right in a room with one ship.
 - The session collection found by name, `Ectype.SessionStats`, and the game's `IStatCollectionHolder` interface.
 - `MultiplayerType.All`: a perk naming a declared stat needs it declared on every client.
 

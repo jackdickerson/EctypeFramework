@@ -98,8 +98,10 @@ namespace ExampleModStats
         /// <summary>
         /// The local player's own crew ship. In a room with several player ships the game's
         /// PlayerShip is whichever ship this client views, so the framework's Topology.CrewShipOf
-        /// is asked first, bound by reflection so the mod still loads without the framework; the
-        /// game's getter is the fallback, which is right in a one-ship room.
+        /// answers when the framework is installed, bound by reflection so the mod still loads
+        /// without it. Its null (spectating, not yet placed, ship dying) means no own ship: the
+        /// viewed ship would be someone else's. The game's getter is used only without the
+        /// framework, which is right in a one-ship room.
         /// </summary>
         private static StatCollection OwnShipStats()
         {
@@ -112,10 +114,11 @@ namespace ExampleModStats
                     _crewShipOf = topology.GetMethod("CrewShipOf", BindingFlags.Public | BindingFlags.Static,
                                                      null, new[] { typeof(Player) }, null);
             }
-            if (me != null && _crewShipOf != null)
+            if (_crewShipOf != null)
             {
+                if (me == null) return null;
                 IStatCollectionHolder own = _crewShipOf.Invoke(null, new object[] { me }) as IStatCollectionHolder;
-                if (own != null) return own.Stats;
+                return own != null ? own.Stats : null;
             }
             return ClientGame.Current != null && ClientGame.Current.PlayerShip != null
                 ? ClientGame.Current.PlayerShip.Stats : null;

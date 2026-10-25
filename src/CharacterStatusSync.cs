@@ -675,6 +675,35 @@ namespace Ectype
             }
         }
 
+        /// <summary>
+        /// At a session change, completes every request still waiting with NoAnswer: it named a
+        /// character of the previous session, and its answer, if one comes, is ignored. A request
+        /// received from the previous session needs no rule of its own here: Photon delivers one
+        /// sender's events in order, so it reaches this client before that sender's new character
+        /// does, and is refused because the sender has no character here yet.
+        /// </summary>
+        internal static void ExpirePendingAtSessionStart()
+        {
+            if (Pending.Count == 0) return;
+            PendingScratch.Clear();
+            foreach (KeyValuePair<int, CharacterStatusRequest> kv in Pending) PendingScratch.Add(kv.Key);
+            int n = PendingScratch.Count;
+            // Before the callbacks: one may send a new request, which tracks its own target.
+            PendingByTarget.Clear();
+            List<CharacterStatusRequest> ended = new List<CharacterStatusRequest>(n);
+            for (int i = 0; i < PendingScratch.Count; i++)
+            {
+                CharacterStatusRequest h;
+                if (!Pending.TryGetValue(PendingScratch[i], out h)) continue;
+                Pending.Remove(PendingScratch[i]);
+                ended.Add(h);
+            }
+            foreach (CharacterStatusRequest h in ended) h.Complete(CharacterStatusRefusal.NoAnswer);
+            if (Plugin.Verbose)
+                Plugin.Log.LogInfo("Ectype: " + n + " character status request(s) still waiting at the " +
+                                   "session change completed with NoAnswer.");
+        }
+
         /// <summary>Completes sent requests whose answer is overdue.</summary>
         internal static void PollPending()
         {

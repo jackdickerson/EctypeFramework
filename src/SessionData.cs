@@ -256,6 +256,26 @@ namespace Ectype
         /// random id when the client activates the session.</summary>
         public static string SessionId { get { return _current != null ? _current.Id : null; } }
 
+        private static bool _hasStart;
+        private static int _startServerMs;
+
+        /// <summary>Raised on this machine when a new session object becomes active, after its
+        /// values are current. Internal: status replication drops what the old session left in
+        /// flight.</summary>
+        internal static event Action SessionStarted;
+
+        /// <summary>
+        /// Whether <paramref name="serverMs"/> (a Photon server timestamp) is earlier than the
+        /// moment this machine made its current session active. A status message stamped before
+        /// that was raised in the previous session and only dispatched now, because the game
+        /// pauses the message queue while the new scene loads; its view id may name an object
+        /// of the new scene. False with no session or while the session-data patches are absent.
+        /// </summary>
+        internal static bool PredatesSession(int serverMs)
+        {
+            return _hasStart && unchecked(serverMs - _startServerMs) < 0;
+        }
+
         /// <summary>
         /// Registers a session value. Call it at plugin <c>Awake</c>, on every client, with a key
         /// that is the same literal on every client; prefix it with your plugin GUID.
@@ -912,6 +932,21 @@ namespace Ectype
 
             RaiseChanged(prev, next);
             foreach (IHostValue hv in HostValues) hv.Recompute();
+
+            if (next == null) { _hasStart = false; return; }
+            if (prev != null && ReferenceEquals(prev.Session, next.Session)) return;
+            _hasStart = PhotonNetwork.InRoom;
+            _startServerMs = PhotonNetwork.ServerTimestamp;
+            Action started = SessionStarted;
+            if (started == null) return;
+            foreach (Action h in started.GetInvocationList())
+            {
+                try { h(); }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError("Ectype: session data: a session-start handler threw: " + e);
+                }
+            }
         }
 
         private static bool Decode(Entry e, JToken token, out object value)

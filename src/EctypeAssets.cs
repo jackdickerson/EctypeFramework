@@ -51,6 +51,9 @@ namespace Ectype
             if (!Plugin.PatchesApplied)
             { GlobalStatus = "inert: patching did not complete"; return; }
             if (!ReadyToRegister()) { GlobalStatus = "waiting for asset containers"; return; }
+            // Roles, stats files and content come from every plugin; a call made while BepInEx is
+            // still loading plugins (a profile read during a plugin's Awake) waits for the driver.
+            if (!PluginLoad.Finished) { GlobalStatus = "waiting for plugins to load"; return; }
 
             try { ContractMarker.EnsureRegistered(); }
             catch (Exception e)
@@ -62,6 +65,11 @@ namespace Ectype
             try { FrameworkStats.EnsureRegistered(); }
             catch (Exception e)
             { Plugin.Log.LogError("Ectype: framework-owned stat registration failed: " + e); }
+
+            // Data-file stats register beside the framework's own, before any role resolves a
+            // perk effect that may name one.
+            try { ModStats.DiscoverAndRegister(); }
+            catch (Exception e) { Plugin.Log.LogError("Ectype: mod stats: discovery failed: " + e); }
 
             // Mod content queued before the containers existed. Independent of roles.
             try { RuntimeContent.Pump(); }

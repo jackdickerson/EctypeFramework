@@ -149,6 +149,7 @@ namespace Ectype
         internal static void DiscoverOnce()
         {
             if (Discovered) return;
+            if (!PluginLoad.ReadyFor("role discovery")) return;
             if (RegistrationClosed)
             {
                 Plugin.Log.LogError("Ectype: discovery requested after registration closed " +

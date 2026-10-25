@@ -85,7 +85,11 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
-            try { InteractionClassifier.ApplyPatches(harmony); InteractionGatePatches.ApplyPatches(harmony); }
+            // Two passes, each on its own: a type missing after a game update fails the JIT of
+            // the method that names it, and must not take the other pass down with it.
+            try { InteractionClassifier.ApplyPatches(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: interaction gate classifier patches failed: " + e); }
+            try { InteractionGatePatches.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: interaction gate patches failed: " + e); }
             try { SessionData.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
@@ -93,6 +97,7 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: session stats install failed: " + e); }
             try { CharacterStatusLife.ApplyPatch(harmony); }
             catch (Exception e) { Log.LogError("Ectype: character status death hook failed: " + e); }
+            SessionData.SessionStarted += CharacterStatusSync.ExpirePendingAtSessionStart;
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }
@@ -170,6 +175,7 @@ namespace Ectype
         // Each step is guarded on its own, so one throwing step does not starve the rest.
         private void Update()
         {
+            PluginLoad.DriverStarted = true;
             if (Time.unscaledTime >= _nextRegister)
             {
                 _nextRegister = Time.unscaledTime + 2f;

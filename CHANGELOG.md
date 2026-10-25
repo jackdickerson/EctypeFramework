@@ -50,6 +50,20 @@ build.
 - Network contract 4: three new message subtypes carry character status requests, the target's
   answers and presentation announcements. A framework on contract 3 or earlier is refused at
   join.
+- Role and stats-file discovery wait until BepInEx has loaded every plugin.
+  `FrameworkStats.EnsureRegistered()` registers the framework's own stats only, so a call from a
+  plugin's `Awake` no longer runs discovery early and misses roles and stats files of plugins
+  loaded after it.
+- An enemy status application started before this client's current session is dropped: one
+  raised just before a session change is dispatched after the new scene loads, when its view id
+  may name another object. Character status requests still waiting at a session change complete
+  with `NoAnswer`.
+- The interaction gate's classifier and chokepoint patches install independently, so a failure
+  in one leaves the other in place.
+- A refused Photon send is warned about once per subtype and player in each room, instead of once
+  per subtype for the whole process.
+- `Topology` forgets the last ship's view id when that ship is destroyed, so a ship that wakes
+  before the next poll numbers 1.
 
 ## 0.27.0
 

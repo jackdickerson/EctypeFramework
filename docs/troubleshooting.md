@@ -13,7 +13,8 @@ per-open event appear only with `[Debug] VerboseLogging = true` in
 
 | Line | Value | Meaning |
 | --- | --- | --- |
-| `Pipeline:` | `waiting for asset containers` | The game's perk, tree, stat, tag and unlock tables are not loaded yet. Registration retries every 2 seconds. Stays here only if the game never reaches the point that loads them. |
+| `Pipeline:` | `waiting for plugins to load` | BepInEx is still loading plugins. Registration waits so that roles, stats files and content from every plugin are seen; the driver's first frame ends the wait. |
+| | `waiting for asset containers` | The game's perk, tree, stat, tag and unlock tables are not loaded yet. Registration retries every 2 seconds. Stays here only if the game never reaches the point that loads them. |
 | | `inert: patching did not complete` | Harmony patching failed. See the `FATAL` entry under Load. |
 | | `no role manifests found` | No installed mod carries a manifest. See "No role appears". |
 | | `<n>/<m> roles registered` | `n` of `m` discovered roles finished registering. `(<k> failed)` is appended when `k` gave up. |
@@ -21,6 +22,7 @@ per-open event appear only with `[Debug] VerboseLogging = true` in
 | `Session stats:` | `no session`, `session <id>, host`, `session <id>, client`, or `inert: session data unavailable` | The run-wide stat collection. `inert` means the session data hooks are missing, and every session stat reads its declared default. |
 | `Network :` | `event 181, contract <n>, marker <guid>` | The framework's Photon event code, the network contract this build speaks, and the contract marker asset once registered (`marker not registered yet` before the asset tables load). |
 | `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, `<n> tree(s) suppressed: <names>`, or `<k> suppressed role(s)` | Which stock gene trees role mods have removed through `suppress`, and how many framework roles other role mods have removed through `suppressRoles`; both parts appear joined by `+` when both apply. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
+| `Content :` | `<n> published (<r> registered, <p> pending, <f> failed)` | Items mods published through `RuntimeContent.Publish`, by state. `pending` waits for the asset containers; each `failed` has its own `content` line in the log. |
 | One line per role | `registered (stage limit 9); tree def published as EPerkTree <n>` | The role is registered and its tree is published. |
 | | `waiting for asset containers` | Same as the pipeline line, for this role. |
 | | `attempt <n> failed at [<stage>]: <message>` | Registration threw. See "Registration attempt failed". |
@@ -151,6 +153,20 @@ depends on the full set of roles, so a role that appeared later would get a diff
 ordinal on different clients. Discovery is refused instead. Restart the game. If it recurs on
 every launch, the framework's registration is not reaching the point where it runs; check the
 log for an earlier `FATAL` or `Pipeline` line.
+
+### `Ectype: role discovery deferred: BepInEx is still loading plugins, and a plugin loaded after this call would be missed. The registration driver runs it once loading has finished.`
+
+The same line names `stats-file discovery`. Something asked for discovery while BepInEx was
+still loading plugins, typically a plugin calling `FrameworkStats.EnsureRegistered()` or
+spawning a character from its `Awake`. Until loading has finished, the plugin list holds only the
+plugins loaded so far, so discovery waits instead of counting roles and stats files short.
+Nothing to fix: the driver runs discovery on its first pass, and `discovered <n> role(s)` then
+counts every installed role. Logged once per kind of discovery.
+
+The dev tools build checks this at load, logging
+`Ectype: dev self-test: discovery deferral passed (plugin loading not finished at load; role and stats-file discovery left to the driver).`
+or `Ectype: dev self-test: discovery deferral FAILED: <failures>`. Its own call logs the
+`role discovery deferred` line above, which is expected there.
 
 ### Role colour warnings
 
@@ -641,7 +657,7 @@ request, sent to the requester (`character-status-result`).
 | `Ectype: player '<name>' (actor <a>) runs a framework on network contract <n>, this one speaks <c>: no ability or status messages are exchanged with them.` | Logged once per player. The join check did not refuse them, which happens in a build made with `-p:NoProgressionFlag=true` (its marker is outside the compared set) or with the framework disabled on one side. Install the same framework on both sides. |
 | `Ectype: ignored net <name> (subtype <s>) from actor <a>: its fields match no declared layout` | Logged once per sender and subtype. A message with the wrong field types; the sender runs another layout under the same contract number, which is a framework bug. |
 | `Ectype: net <name> (subtype <s>) not sent: its arguments match no declared layout` | An error in the framework itself; reported once per subtype. |
-| `Ectype: net <name> (subtype <s>) send refused by Photon (not connected?)` | Photon would not queue the event. The verbose `net send` line ends in `FAILED` for each such send. |
+| `Ectype: net <name> (subtype <s>) send to actor(s) <list> refused by Photon (not connected?); reported once per subtype and player in each room.` | Photon would not queue the event, usually while the connection drops or the room is being left. The verbose `net send` line ends in `FAILED` for each such send. |
 
 To check replication between two clients, turn on VerboseLogging on both, activate a
 registered ability on one and apply an enemy status on it. The sender logs one `net send` line
@@ -706,6 +722,7 @@ These lines come from the APIs a non-role mod calls.
 | `Ectype: status '<key>' on <target>: <n> application(s) in one <w> ms window, 1 send.` or `..., 0 sends (no peers).` (verbose) | A `CoalesceMs` batch was flushed. `<n>` applications made on this client travelled as one message, or none was needed because no peer runs the framework. A batch goes out even when this client's copy has ended, for a peer whose copy another client extended. |
 | `Ectype: status '<key>' on <target>: a batch of <n> application(s) from actor <a> arrived after the status ended; ignored.` (verbose) | A coalesced batch reached this client after the timer it carries had run out, and this client has no copy of the status. Creating one would start a status already over. A copy still running here takes the stacks instead. |
 | `Ectype: status '<key>' on <target>: an application from actor <a> started before its removal here; ignored.` (verbose) | The sender applied the status before it learned of a removal this client had already processed, and the message arrived afterwards: Photon orders messages per sender, not across senders. Each client remembers a removal for `CoalesceMs` plus 2 s and ignores applications started before it, so the removed status is not re-created. |
+| `Ectype: status '<key>' on <target>: an application from actor <a> started before this client's current session; ignored.` (verbose) | The application was raised in the previous session and dispatched only after the new scene loaded, because the game pauses the message queue across a session change. Its view id may now name an object of the new scene, so it is dropped. |
 | `Ectype: sending coalesced status applications failed (reported once): <exception>` | Flushing the coalescing outbox threw. The batches taken this frame are lost; the status pump still ran. |
 | `Ectype: status marker for '<key>' on <target> evicted at <d> m from the view ship, for '<key>' on <target> at <d> m (MarkerCap <n>).` and `Ectype: status visual for ... (VfxCap <n>).` (verbose) | The cap was full, so the marker or visual farthest from the ship this client views gave its slot to a status nearer by 10% of that distance or 25 m, whichever is larger. The evicted status keeps running and takes a slot again when one frees. |
 | `Ectype: character status '<key>' registered (<n> stat mods, max stacks <m>[, accepts requests][, presented]).` | `Register` accepted the template. `accepts requests` and `presented` appear when it sets `AcceptsRequests` and `Presented`. |
@@ -721,6 +738,7 @@ These lines come from the APIs a non-role mod calls.
 | `Ectype: character status '<key>' requested on <name> (actor <a>, request <id>, <s> s, magnitude <m>).` (verbose) | A request left this client for the target's client, with the duration and magnitude after the template's caps. |
 | `Ectype: character status '<key>' request <id> to actor <a> answered <refusal>.` (verbose) | The target's verdict arrived; `None` means applied. |
 | `Ectype: character status '<key>' request <id> to actor <a> got no answer in 10 s.` (verbose) | No verdict arrived, and the handle is done with `NoAnswer`: the outcome is unknown. The target left, its client dropped the request at its cap across keys or failed while handling it, or the answer was lost or is late, in which case the status was applied. |
+| `Ectype: <n> character status request(s) still waiting at the session change completed with NoAnswer.` (verbose) | Requests sent in the previous session named its characters; their handles end with `NoAnswer` and a late answer is ignored. A request another client raised in the previous session reaches this one before that client's new character does, since Photon keeps one sender's events in order, and is refused because that client has no character here yet. |
 | `Ectype: character status '<key>' request <id> to actor <a> given up: 40 newer requests to that player are waiting.` (verbose) | This client keeps at most 40 requests to one player waiting; the oldest is done with `NoAnswer`. |
 | `Ectype: character status answer for request <id> from actor <a> ignored: no such request is waiting (timed out?).` (verbose) | An answer arrived after its request timed out, or for a request this client never sent. |
 | `Ectype: ignored a character status answer from actor <a>: request <id> went to actor <t>.` | An answer came from a player the request was not sent to. The request keeps waiting for its own target. Throttled as below. |
@@ -826,6 +844,7 @@ The dev tools build also logs, at load, `Ectype: dev self-test: content registry
 | `Ectype: interaction gate: the quick-warning channel failed (logged once); warnings are not shown: <message>` | Refusals still refuse; the player sees no text. |
 | `Ectype: interaction gate: the ownership failure listener could not be added; a grab that loses a race stays locked as in the game: <message>` | Refusals still work; only the race settle is missing. |
 | `Ectype: interaction gate patches failed: <exception>` | Installing the gate threw; no chokepoint is checked this session. |
+| `Ectype: interaction gate classifier patches failed: <exception>` | Installing the classifier's hooks threw. The chokepoints are still patched, and use still refuses, but a door's or an airlock's clickers can reach gates as `Other`, and a refused seat, terminal or repair still shows its prompt. |
 | `Ectype: dev self-test: interaction gate passed (throttle, evaluation order, classifier)[; not run: <probes>].` or `... FAILED: <failures>` (dev tools build only) | At load: the warning throttle on a test clock, registration order, null and silent answers, unregistering, and the classifier on game components added to an inactive object, including a switch outside any module reading `PowerSwitch` twice, and an item, a socket and a switch reaching gates as one component with one kind from every entry. `not run` names a probe whose component could not be added. |
 | `Ectype: dev check: a refused pick-up left the carry interaction unlocked.` or `Ectype: dev check: FAILED - the carry interaction is still locked 0.5 s after a refused pick-up (or a new pick-up started within that time).` (dev tools build only) | Half a second after the local player's pick-up was refused. A `FAILED` line with no second click means the player cannot carry until that item's owner next changes. |
 | `Ectype: dev check: the refused pick-up check could not run: <message>` (dev tools build only) | The carry ability or its lock field was not found. |
@@ -857,6 +876,7 @@ The dev tools build also logs, at load, `Ectype: dev self-test: content registry
 | `Ectype: session data: reading the envelope from the session JSON failed: <exception>` | Reading threw. The session gets no values. |
 | `Ectype: session data: adding the envelope to the session JSON failed: <exception>` | Host: writing the envelope threw. Clients get no values for this session. |
 | `Ectype: session data: activating the session's values failed: <exception>` | Capturing or applying at the session start threw. |
+| `Ectype: session data: a session-start handler threw: <exception>` | A framework feature's own reaction to the new session threw. The session's values are still current; the other handlers still ran. |
 | `Ectype: session data: this run is saved under session <id>, not <id> (the host changed); its sidecar follows the saved id.` | Logged once per saved id, on a host who took over mid-run. |
 | `Ectype: session data: the saved run's value for key '<key>' does not read as <Type>; a fresh value is sent.` | Host, on resume: the sidecar holds a value of another shape, usually from another version of the mod. |
 | `Ectype: session data: saved-run sidecar for session <id> unreadable; values are produced fresh: <message>` | The sidecar exists and could not be read. |

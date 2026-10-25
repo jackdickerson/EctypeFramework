@@ -177,10 +177,21 @@ namespace Ectype
             bool sent = PhotonNetwork.RaiseEvent(EventCode, payload,
                                      new RaiseEventOptions { TargetActors = actors.ToArray() },
                                      reliable ? SendOptions.SendReliable : SendOptions.SendUnreliable);
-            if (!sent && Warned.Add("send-failed:" + subtype))
-                Plugin.Log.LogWarning("Ectype: net " + NameOf(subtype) + " (subtype " + subtype +
-                                      ") send refused by Photon (not connected?); reported once " +
-                                      "per subtype.");
+            if (!sent)
+            {
+                // Once per subtype and recipient in each room: a refusal while leaving one room
+                // must not silence a refusal to another player, or in the next room.
+                string room = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.Name : "";
+                List<int> fresh = null;
+                foreach (int a in actors)
+                    if (Warned.Add("send-failed:" + room + "/" + subtype + "/" + a))
+                        (fresh ?? (fresh = new List<int>())).Add(a);
+                if (fresh != null)
+                    Plugin.Log.LogWarning("Ectype: net " + NameOf(subtype) + " (subtype " + subtype +
+                                          ") send to actor(s) " + string.Join(",", fresh) +
+                                          " refused by Photon (not connected?); reported once per " +
+                                          "subtype and player in each room.");
+            }
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: net send " + NameOf(subtype) + " (subtype " + subtype +
                                    ") to actor(s) " + string.Join(",", actors) +

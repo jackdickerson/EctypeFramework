@@ -96,6 +96,9 @@ namespace Ectype
         private static readonly HashSet<StatCollectionKind> _loggedSurface = new HashSet<StatCollectionKind>();
         private static readonly HashSet<string> _warnedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private static bool _discovered;
+
+        /// <summary>Whether stats-file discovery has run.</summary>
+        internal static bool Discovered { get { return _discovered; } }
         private static int _modCount;
 
         /// <summary>Discovery outcome for the F5 status page.</summary>
@@ -292,14 +295,18 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Reads every stats file and registers what it declares. Runs once, from
-        /// <see cref="FrameworkStats.EnsureRegistered"/>, after the framework's own stats and
-        /// before any role registers a perk. Each file is parsed in its own try/catch: a file that
-        /// throws is refused by name and the others still register.
+        /// Reads every stats file and registers what it declares. Runs once, from the registration
+        /// driver, after the framework's own stats and before any role registers a perk. Returns
+        /// without running while BepInEx is still loading plugins or before the framework's own
+        /// stats are registered, so an early call cannot latch on a partial plugin list. Each file
+        /// is parsed in its own try/catch: a file that throws is refused by name and the others
+        /// still register.
         /// </summary>
         internal static void DiscoverAndRegister()
         {
             if (_discovered) return;
+            if (!FrameworkStats.Registered) return;
+            if (!PluginLoad.ReadyFor("stats-file discovery")) return;
             _discovered = true;
 
             foreach (KeyValuePair<string, StatCollectionKind> kv in FrameworkPlain)
@@ -823,7 +830,7 @@ namespace Ectype
                 {
                     // The stat table loads after the first characters can spawn; the registration
                     // driver retries, and a later spawn pass wires them.
-                    try { FrameworkStats.EnsureRegistered(); }
+                    try { FrameworkStats.EnsureRegistered(); DiscoverAndRegister(); }
                     catch { return 0; }
                 }
                 int n = 0;

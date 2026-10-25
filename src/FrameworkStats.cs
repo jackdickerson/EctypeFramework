@@ -310,6 +310,9 @@ namespace Ectype
 
         private static bool _registered;
 
+        /// <summary>Whether the framework's own stats are in the stat table.</summary>
+        internal static bool Registered { get { return _registered; } }
+
         /// <summary>Registration outcome for the F5 status page.</summary>
         public static string Status = "not registered";
 
@@ -334,7 +337,9 @@ namespace Ectype
         /// the first success; the caller runs it on the same retry cadence as role
         /// registration, because the StatTable is Resources-backed and absent at plugin Awake.
         /// A failure leaves everything that reads these stats inert but never half a set
-        /// behind, because RegisterCustomStat is re-entrant per id.
+        /// behind, because RegisterCustomStat is re-entrant per id. Registers these stats only:
+        /// stats files and roles are discovered by the registration driver once BepInEx has
+        /// loaded every plugin, so a call from a plugin's Awake is safe.
         /// </summary>
         public static void EnsureRegistered()
         {
@@ -368,11 +373,6 @@ namespace Ectype
             Status = _ids.Count + " registered";
             Plugin.Log.LogInfo("Ectype: framework-owned stats registered (" +
                                string.Join(", ", lines.ToArray()) + ").");
-
-            // Data-file stats register beside the framework's own, before any role resolves a
-            // perk effect that may name one.
-            try { ModStats.DiscoverAndRegister(); }
-            catch (Exception e) { Plugin.Log.LogError("Ectype: mod stats: discovery failed: " + e); }
         }
     }
 }
