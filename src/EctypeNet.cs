@@ -54,6 +54,21 @@ namespace Ectype
         /// The count is a delta: each receiver adds that many applications.</summary>
         internal const byte EnemyStatusStacks = 3;
 
+        /// <summary>A request to put a status on the recipient's own character: [int requestId,
+        /// int targetActor, string key, int durationMs, float magnitude, int attackerView]. Sent
+        /// to the target's client alone, which judges it against its own view.</summary>
+        internal const byte CharacterStatusRequest = 4;
+
+        /// <summary>A character's own client announcing a status on that character for
+        /// presentation: [int targetActor, string key, int endTs, float magnitude] to show or
+        /// extend it until a server timestamp, [int targetActor, string key] when it ended
+        /// before that.</summary>
+        internal const byte CharacterStatusApplied = 5;
+
+        /// <summary>The target's verdict on a character status request, to the requester alone:
+        /// [int requestId, int refusal] (0 for applied).</summary>
+        internal const byte CharacterStatusResult = 6;
+
         /// <summary>
         /// Every message's field types, in order: the network contract in data. A subtype may
         /// have several layouts (enemy status remove and apply). The sender refuses to send,
@@ -79,6 +94,20 @@ namespace Ectype
                 {
                     new[] { typeof(int), typeof(string), typeof(int), typeof(int), typeof(float),
                             typeof(int), typeof(int) },
+                } },
+            { CharacterStatusRequest, new[]
+                {
+                    new[] { typeof(int), typeof(int), typeof(string), typeof(int), typeof(float),
+                            typeof(int) },
+                } },
+            { CharacterStatusApplied, new[]
+                {
+                    new[] { typeof(int), typeof(string) },
+                    new[] { typeof(int), typeof(string), typeof(int), typeof(float) },
+                } },
+            { CharacterStatusResult, new[]
+                {
+                    new[] { typeof(int), typeof(int) },
                 } },
         };
 
@@ -125,22 +154,23 @@ namespace Ectype
         /// <summary>
         /// Sends one message to the listed players. A null or empty list sends nothing. The
         /// arguments must be types Photon serializes (int, float, bool, byte, string, and
-        /// arrays of them, nested <c>object[]</c> included).
+        /// arrays of them, nested <c>object[]</c> included). True only when Photon queued the
+        /// event; false for no recipients, a layout mismatch or a refused send.
         /// </summary>
-        internal static void Send(byte subtype, Player[] to, object[] args, bool reliable)
+        internal static bool Send(byte subtype, Player[] to, object[] args, bool reliable)
         {
-            if (to == null || to.Length == 0) return;
+            if (to == null || to.Length == 0) return false;
             List<int> actors = new List<int>(to.Length);
             foreach (Player p in to)
                 if (p != null) actors.Add(p.ActorNumber);
-            if (actors.Count == 0) return;
+            if (actors.Count == 0) return false;
             if (!MatchesLayout(subtype, args))
             {
                 if (Warned.Add("send-layout:" + subtype))
                     Plugin.Log.LogError("Ectype: net " + NameOf(subtype) + " (subtype " + subtype +
                                         ") not sent: its arguments match no declared layout " +
                                         "(reported once per subtype).");
-                return;
+                return false;
             }
 
             object[] payload = Pack(subtype, args);
@@ -155,6 +185,7 @@ namespace Ectype
                 Plugin.Log.LogInfo("Ectype: net send " + NameOf(subtype) + " (subtype " + subtype +
                                    ") to actor(s) " + string.Join(",", actors) +
                                    (sent ? "." : ": FAILED, Photon refused the send."));
+            return sent;
         }
 
         /// <summary>The wire payload for one message: the subtype, then the arguments.</summary>

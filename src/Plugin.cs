@@ -70,6 +70,12 @@ namespace Ectype
                                EnemyStatusMessage.Receive);
             EctypeNet.Register(EctypeNet.EnemyStatusStacks, "enemy-status-applyN",
                                EnemyStatusMessage.ReceiveStacks);
+            EctypeNet.Register(EctypeNet.CharacterStatusRequest, "character-status-request",
+                               CharacterStatusMessage.ReceiveRequest);
+            EctypeNet.Register(EctypeNet.CharacterStatusApplied, "character-status-applied",
+                               CharacterStatusMessage.ReceiveApplied);
+            EctypeNet.Register(EctypeNet.CharacterStatusResult, "character-status-result",
+                               CharacterStatusMessage.ReceiveResult);
 
             // Resolved and patched gate by gate, so a renamed game member costs only the
             // system that needs it.
@@ -85,6 +91,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
             try { SessionStats.Install(); }
             catch (Exception e) { Log.LogError("Ectype: session stats install failed: " + e); }
+            try { CharacterStatusLife.ApplyPatch(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: character status death hook failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }
@@ -173,6 +181,7 @@ namespace Ectype
             Step("status self-test", StatusSelfTest.Poll);
             Step("session data self-test", SessionDataSelfTest.Poll);
             Step("mod stats self-test", ModStatsSelfTest.Poll);
+            Step("character status self-test", CharacterStatusSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);

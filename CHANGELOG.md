@@ -4,6 +4,53 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.28.0
+
+- `CharacterStatuses.Request(player, key, seconds, magnitude, attacker)` puts a status on another
+  player's character. On this client's own character it is `Apply`. Otherwise it sends a request
+  to the target's client alone, which judges it against its own view of both characters,
+  applies it there as a local `Apply` would or refuses it with a throttled warning, and answers.
+  The checks, in order: template registered and `AcceptsRequests`; duration at least
+  `MinSeconds` (default 0.25 s) and magnitude above 0, cut to `MaxSeconds` and `MaxMagnitude`
+  (default 30 s and 1); target alive; requester has a character and it is alive; optionally not
+  seated (`RefuseSeated`) and neither in a clone tube (`RefuseInTube`); `Stance`; `MaxRange`
+  (metres, 0 = none); `RequiresLineOfSight`; rate per requester and key (`MinInterval`, `Burst`,
+  with one extra token on the target for network jitter). Each requester is also capped across
+  keys at a burst of 21, refilled at 20 a second; past it requests are dropped unanswered, and the
+  requesting client keeps the same cap itself. The requesting client runs the same checks first, with a range
+  15% or 1 m looser, and sends nothing they refuse.
+- `Request` returns a `CharacterStatusRequest`: `Sent`, `Done`, `Refusal`, `Applied` and
+  `OnCompleted(callback)`. It completes at once when this client applied or refused the request,
+  else on the target's answer, at once with `SendFailed` when Photon refuses the send, or with
+  `NoAnswer`, which means the outcome is unknown, after 10 s or when 40 newer requests to the same
+  player are waiting.
+- A requested application never shortens or weakens a running status: its end moves only later
+  and a larger magnitude re-applies every stack at that value.
+- `CharacterStatusDef.AcceptsRequests` (default off) opts a template into requests.
+  `Replicated` keeps its meaning: it changes nothing, and `Apply` with it set logs one warning
+  per key, which now names `AcceptsRequests` and `Presented`.
+- `CharacterStatusDef.Presented`: the owning client announces each application to the peers
+  `Visibility` allows, and each runs a presentation copy with `CreateVfx` and
+  `CharacterStatuses.IsPresented` / `PresentedRemainingSeconds`, but no stats and no callbacks.
+  A copy ends on the announced server time; an earlier end is announced.
+- Every character status now ends when its character dies, with `OnRemoved`. The game keeps the
+  character object through death and respawn, so a status used to run on through the respawn
+  until it expired. Nothing is applied to a dead character: `Apply` logs one warning per key, and a
+  request is refused `TargetDead`.
+- `OnRemoved` runs after the status is unregistered and its modifiers are removed, so applying the
+  same key from it starts a fresh status instead of leaking modifiers.
+- Only the client that owns a character can remove a status on it. `CharacterStatuses.TryRemove`
+  returns `Authority` for another player's character, and `Remove` logs it once per key.
+- `CharacterStatuses.RequesterOf` and `AttackerOf` report the request that last applied a status.
+- `Register` refuses a character status template with `Burst` below 1, a negative or non-finite
+  range or interval, `MinSeconds` outside 0 to `MaxSeconds`, or a cap not above 0, and warns
+  about request or presentation fields set without `AcceptsRequests` or `Presented`.
+- `CharacterStatuses.Apply` on a character this client does not own still lands only on this
+  client's copy; its once-per-key warning now points at `Request`.
+- Network contract 4: three new message subtypes carry character status requests, the target's
+  answers and presentation announcements. A framework on contract 3 or earlier is refused at
+  join.
+
 ## 0.27.0
 
 - `RuntimeContent.Publish(kind, guid, assets, entry)`: publishes a weapon module, module or

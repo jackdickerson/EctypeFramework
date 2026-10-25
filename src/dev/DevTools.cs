@@ -35,6 +35,7 @@ namespace Ectype
             InteractionGateDev.SelfTest();
             InteractionGateDev.Bind(cfg);
             ContentSelfTest.Run();
+            CharacterStatusSelfTest.RunOffline();
         }
 
         private static void Bind(ConfigFile cfg)

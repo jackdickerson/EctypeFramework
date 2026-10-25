@@ -1,3 +1,7 @@
+## 0.28.0
+
+Mods can put timed effects on other players, such as a slow from a crewmate or an enemy. The affected player's own game checks each one first against the mod's rules (who sent it, how close they are, whether they can see each other, how often they send), so a modified client cannot apply them from afar, through walls or in a flood. Other players can see these effects. Effects on a player now end when that player dies. Players need this version to join a host running it.
+
 ## 0.27.0
 
 Mods can publish new weapons, modules and items through the framework. Item catalogs such as ship customizers list published items with no change of their own, every player in a room holds them in the same order, and an item without a recycle value is refused instead of breaking the end-of-run alloy count.
