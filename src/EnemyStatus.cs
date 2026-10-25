@@ -303,11 +303,13 @@ namespace Ectype
                 int durationMs = (int)(seconds * 1000f);
                 int attackerView = attacker != null && attacker.photonView != null
                                        ? attacker.photonView.ViewID : 0;
-                if (def.CoalesceMs > 0 && durationMs <= def.CoalesceMs &&
+                // The batch leaves on the first frame after the window and still has to travel;
+                // a receiver that never had the status ignores one that arrives after its end.
+                if (def.CoalesceMs > 0 && durationMs <= def.CoalesceMs + ShortDurationMarginMs &&
                     WarnedOnce.Add("coalesce-short:" + key))
                     Plugin.Log.LogWarning("Ectype: status '" + key + "' applied for " + durationMs +
                                           " ms with CoalesceMs " + def.CoalesceMs + "; it can end " +
-                                          "before its batch is sent, and the peers then never see it.");
+                                          "before its batch arrives, and the peers then never see it.");
                 bool created;
                 EnemyStatusEffect fx = ApplyLocal(target, def, startTs, durationMs, magnitude, attacker,
                                                   me, myForce, byAttacker, 1, out created);
@@ -368,6 +370,7 @@ namespace Ectype
                 RemoveLocal(target, key);
                 // Applications still queued would re-add the status on the peers after the removal.
                 Outbox.Drop(target.photonView.ViewID, key);
+                RecordRemoval(target.photonView.ViewID, def);
                 Broadcast(new object[] { (byte)1, target.photonView.ViewID, key });
                 return StatusRefusal.None;
             }
@@ -540,11 +543,23 @@ namespace Ectype
 
         internal static StatusRefusal JudgeStance(EnemyStatusDef def, StatusSide side)
         {
-            if (def.Stance == StatusStance.Any) return StatusRefusal.None;
+            return JudgeStance(def.Stance, side);
+        }
+
+        internal static StatusRefusal JudgeStance(StatusStance stance, StatusSide side)
+        {
+            if (stance == StatusStance.Any) return StatusRefusal.None;
             if (side == StatusSide.Unknown) return StatusRefusal.UnknownSide;
-            if (def.Stance == StatusStance.Hostile) return side == StatusSide.Other ? StatusRefusal.None : StatusRefusal.Stance;
-            if (def.Stance == StatusStance.Friendly) return side == StatusSide.Same ? StatusRefusal.None : StatusRefusal.Stance;
+            if (stance == StatusStance.Hostile) return side == StatusSide.Other ? StatusRefusal.None : StatusRefusal.Stance;
+            if (stance == StatusStance.Friendly) return side == StatusSide.Same ? StatusRefusal.None : StatusRefusal.Stance;
             return StatusRefusal.None;
+        }
+
+        /// <summary>The removal rule as a table over its inputs, for the offline self-test.</summary>
+        internal static StatusRefusal RemovalVerdict(StatusStance stance, bool senderIsMaster, StatusSide side)
+        {
+            if (stance == StatusStance.Any || senderIsMaster) return StatusRefusal.None;
+            return JudgeStance(stance, side) == StatusRefusal.None ? StatusRefusal.None : StatusRefusal.Authority;
         }
 
         /// <summary>
@@ -560,7 +575,7 @@ namespace Ectype
             if (def.Stance == StatusStance.Any || IsMaster(actor)) return StatusRefusal.None;
             int force;
             side = SideOf(actor, target, out force);
-            return JudgeStance(def, side) == StatusRefusal.None ? StatusRefusal.None : StatusRefusal.Authority;
+            return RemovalVerdict(def.Stance, false, side);
         }
 
         private static string Reason(StatusRefusal r, EnemyStatusDef def, StatusSide side)
@@ -644,6 +659,10 @@ namespace Ectype
 
         internal static void Unregister(EnemyStatusEffect fx)
         {
+            // Only this life: a successor under the same key (an OnRemoved that re-applied
+            // it) stays registered, and its batch stays open.
+            EnemyStatusEffect current;
+            if (!Active.TryGetValue(fx.MapKey, out current) || !ReferenceEquals(current, fx)) return;
             Active.Remove(fx.MapKey);
             // The life this batch belonged to is over: close it so a later application opens
             // a new one. A removal drops it right after.
@@ -720,21 +739,18 @@ namespace Ectype
             Outbox.TakeDue(Time.unscaledTime, all, FlushScratch);
             if (FlushScratch.Count == 0) return;
             Player[] to = RuntimeAbilities.Recipients();
-            int now = PhotonNetwork.ServerTimestamp;
             for (int i = 0; i < FlushScratch.Count; i++)
             {
+                // Sent even when this client's copy has ended: a peer whose copy runs later
+                // (another client extended it) still adds the stacks; one without a copy
+                // ignores a batch past its end.
                 EnemyStatusOutbox.Batch b = FlushScratch[i];
-                // A batch whose status has already ended adds nothing anywhere: the peers'
-                // copies end on the same clock.
-                bool ended = unchecked(b.EndTs - now) <= 0;
-                bool send = to.Length > 0 && !ended;
-                if (send)
+                if (to.Length > 0)
                     EctypeNet.Send(EctypeNet.EnemyStatusStacks, to, b.Args(), reliable: true);
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: status '" + b.Key + "' on " + b.TargetName + ": " +
                                        b.Applications + " application(s) in one " + b.WindowMs +
-                                       " ms window, " +
-                                       (send ? "1 send" : ended ? "0 sends (the status ended)" : "0 sends (no peers)") +
+                                       " ms window, " + (to.Length > 0 ? "1 send" : "0 sends (no peers)") +
                                        ".");
             }
             FlushScratch.Clear();
@@ -787,10 +803,12 @@ namespace Ectype
             EnemyStatusDef def = ReceivedDef(key);
             if (def == null) return StatusRefusal.NotRegistered;
             int startTs = (int)args[2], durationMs = (int)args[3];
-            if (unchecked(startTs + durationMs - PhotonNetwork.ServerTimestamp) <= 0)
+            if (unchecked(startTs + durationMs - PhotonNetwork.ServerTimestamp) <= 0 &&
+                Find(target, key) == null)
             {
-                // The applier's status ended before this batch arrived, and this copy ends on
-                // the same clock: the applications have nothing left to add to.
+                // The applier's status ended before this batch arrived and this client has no
+                // copy left: creating one would start a status already over. A copy still
+                // running here (extended by another client) takes the stacks instead.
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: status '" + key + "' on " + target.name + ": a batch of " +
                                        applications + " application(s) from actor " + sender +
@@ -822,12 +840,30 @@ namespace Ectype
                                                   int startTs, int durationMs, float magnitude,
                                                   int attackerView, int stacks)
         {
+            if (Tombstones.Covers(target.photonView.ViewID, def.Key, startTs, PhotonNetwork.ServerTimestamp))
+            {
+                // Sent before the sender learned of a removal this client already processed.
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status '" + def.Key + "' on " + target.name +
+                                       ": an application from actor " + sender + " started before " +
+                                       "its removal here; ignored.");
+                return StatusRefusal.InvalidDuration;
+            }
             PhotonView av = attackerView != 0 ? PhotonView.Find(attackerView) : null;
             OrbitObject attacker = av != null ? av.GetComponent<OrbitObject>() : null;
             int senderForce;
             bool byAttacker;
             StatusSide side = SenderSide(sender, target, attacker, out senderForce, out byAttacker);
             StatusRefusal stance = JudgeStance(def, side);
+            if (stance != StatusRefusal.None && attackerView != 0 && attacker == null && IsMaster(sender))
+            {
+                // The master named an attacker this client can no longer find: an NPC that died
+                // or despawned while a coalesced batch waited. Only the master applies on an
+                // NPC's behalf, and it judged the NPC's side when it applied.
+                stance = StatusRefusal.None;
+                byAttacker = true;
+                senderForce = -1;
+            }
             if (stance != StatusRefusal.None)
             {
                 StatusRefusalLog.Report(sender, "apply", def.Key, "Ectype: refused enemy status '" + def.Key +
@@ -859,7 +895,27 @@ namespace Ectype
             // This client's own queued applications would re-create the status on every
             // other peer after the removal.
             Outbox.Drop(target.photonView.ViewID, key);
+            RecordRemoval(target.photonView.ViewID, def);
             return StatusRefusal.None;
+        }
+
+        /// <summary>Recent removals: an application started before one is ignored while it lasts.</summary>
+        internal static readonly EnemyStatusTombstones Tombstones = new EnemyStatusTombstones();
+
+        /// <summary>How long a removal is remembered: one coalescing window plus two seconds of
+        /// delivery, longer than anything in flight when it was made.</summary>
+        internal static int RemovalMemoryMs(EnemyStatusDef def)
+        {
+            return Math.Max(0, def.CoalesceMs) + 2000;
+        }
+
+        /// <summary>Margin on top of CoalesceMs below which a duration may end before its batch
+        /// reaches a peer: the frame the flush waits for plus delivery.</summary>
+        internal const int ShortDurationMarginMs = 500;
+
+        private static void RecordRemoval(int viewId, EnemyStatusDef def)
+        {
+            Tombstones.Record(viewId, def.Key, PhotonNetwork.ServerTimestamp, RemovalMemoryMs(def));
         }
     }
 
@@ -1042,11 +1098,50 @@ namespace Ectype
             MapKey = mapKey;
             _activationTs = startTs;
             _endTs = unchecked(startTs + durationMs);
+            int now = PhotonNetwork.ServerTimestamp;
+            int grace = CatchUpGraceMs(def);
+            _catchUpFrom = CatchUpFrom(now, startTs, grace);
+            _lastTick = FirstUnpaidTick(now, startTs, TickMs(def), grace);
             ArmBaseTimer();
         }
 
         /// <summary>Server timestamp the status started at; the ticks are indexed from it.</summary>
         internal int ActivationTs { get { return _activationTs; } }
+
+        /// <summary>Where this client's catch-up for ticks and suspension begins: the start,
+        /// or, when the status reached this client later than the grace, the grace before its
+        /// arrival. A batch carries the start of the sender's whole life of the status, and a
+        /// copy created here from it must not owe what happened before it existed here.</summary>
+        private readonly int _catchUpFrom;
+
+        /// <summary>How late a status may reach this client and still pay everything since its
+        /// start: one coalescing window plus half a second of delivery.</summary>
+        internal static int CatchUpGraceMs(EnemyStatusDef def)
+        {
+            return Math.Max(0, def.CoalesceMs) + 500;
+        }
+
+        internal static int TickMs(EnemyStatusDef def)
+        {
+            return (int)(Math.Max(def.TickSeconds, 0.05f) * 1000f);
+        }
+
+        /// <summary>The later of the start and <paramref name="now"/> minus the grace (wrap-safe).</summary>
+        internal static int CatchUpFrom(int now, int startTs, int graceMs)
+        {
+            int floor = unchecked(now - graceMs);
+            return unchecked(floor - startTs) > 0 ? floor : startTs;
+        }
+
+        /// <summary>The tick index already counted as paid when a copy is created at
+        /// <paramref name="now"/>: every tick due before <see cref="CatchUpFrom"/>. Ticks due
+        /// within the grace are still paid, so a status that arrives a little late pays them
+        /// once, and one that arrives late by more pays nothing it missed.</summary>
+        internal static long FirstUnpaidTick(int now, int startTs, int tickMs, int graceMs)
+        {
+            long skipped = unchecked(CatchUpFrom(now, startTs, graceMs) - startTs);
+            return skipped > 0 ? (skipped - 1) / tickMs : 0;
+        }
 
         internal void NoteApplierSide(int side)
         {
@@ -1117,8 +1212,9 @@ namespace Ectype
             _tgt = target;
             ApplyStack();
             // Anchored on the status's own start, which every client shares, so a client
-            // the status reached late freezes the same span as the one that applied it.
-            if (_def.SuspendsAbilities) EnemyAbilities.Begin(this, target, _activationTs);
+            // the status reached a little late freezes the same span as the one that applied
+            // it; one it reached later than the grace starts the freeze just before arrival.
+            if (_def.SuspendsAbilities) EnemyAbilities.Begin(this, target, _catchUpFrom);
             Presentation(true);
         }
 
@@ -1190,9 +1286,11 @@ namespace Ectype
                 int now = PhotonNetwork.ServerTimestamp;
                 EnemyAbilities.End(this, unchecked(now - _endTs) >= 0 ? _endTs : now);
             }
-            if (_def.OnRemoved != null) SafeCb(() => _def.OnRemoved(t));
-            Presentation(false);
+            // Out of the registry before the callback: an OnRemoved that applies the same key
+            // again must start a new life, not stack onto this one, whose modifiers are gone.
             EnemyStatuses.Unregister(this);
+            Presentation(false);
+            if (_def.OnRemoved != null) SafeCb(() => _def.OnRemoved(t));
         }
 
         // ------------------------------------------------------------ the work
@@ -1261,8 +1359,11 @@ namespace Ectype
                            : StatusSide.Unknown;
             else
                 side = EnemyStatuses.SideOf(ApplierActor, target, out force);
+            // Unknown with no recorded side: the master applied for an NPC this client never
+            // resolved, and is trusted for it.
             bool hostile = side == StatusSide.Other ||
-                           (side == StatusSide.Unknown && ApplierForce >= 0 && ApplierForce != target.Faction);
+                           (side == StatusSide.Unknown && ApplierForce >= 0 && ApplierForce != target.Faction) ||
+                           (side == StatusSide.Unknown && ApplierForce < 0 && JudgedByAttacker);
             if (hostile) _tickSkipLogged = false;
             else if (!_tickSkipLogged)
             {

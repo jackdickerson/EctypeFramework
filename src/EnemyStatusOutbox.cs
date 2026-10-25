@@ -13,8 +13,9 @@ namespace Ectype
     /// The message carries a count, not a total, because counts from several appliers add up
     /// on every receiver in any order, where two totals for one target would overwrite each
     /// other. The timer it carries is the local status's own: its start and its current end.
-    /// A receiver that creates the status from the message starts and ends it where the
-    /// applier's does, and one that already has it extends its end to that point at most.
+    /// A receiver that creates the status from the message ends it where the applier's does
+    /// (paying ticks only from a grace before arrival when that start is old), and one that
+    /// already has it extends its end to that point at most.
     ///
     /// A batch belongs to one life of the local status. When that status ends or is created
     /// anew, the open batch is closed and goes out on the next flush, and later applications
@@ -142,6 +143,62 @@ namespace Ectype
                 into.Add(_open[_due[i]]);
                 _open.Remove(_due[i]);
             }
+        }
+    }
+
+    /// <summary>
+    /// Recent removals, per (target view, status key), on the server clock. A batch another
+    /// client flushed before it learned of a removal can still arrive after the removal here,
+    /// because Photon orders messages per sender, not across senders. Such a batch carries the
+    /// start of a life that began before the removal, and a single application carries its send
+    /// time, so an application whose start precedes the removal is ignored while the record
+    /// lasts: long enough for anything already in flight. An application started after the
+    /// removal is new and lands.
+    ///
+    /// Pure data, so the dev self-test drives it directly.
+    /// </summary>
+    internal sealed class EnemyStatusTombstones
+    {
+        private struct Tomb
+        {
+            internal int RemovedTs;
+            internal int UntilTs;
+        }
+
+        private readonly Dictionary<string, Tomb> _tombs = new Dictionary<string, Tomb>();
+        private readonly List<string> _stale = new List<string>();
+
+        private static string Id(int viewId, string key) { return viewId + "\0" + key; }
+
+        /// <summary>Records a removal at <paramref name="removedTs"/>, kept for
+        /// <paramref name="keepMs"/>.</summary>
+        internal void Record(int viewId, string key, int removedTs, int keepMs)
+        {
+            Prune(removedTs);
+            _tombs[Id(viewId, key)] = new Tomb { RemovedTs = removedTs, UntilTs = unchecked(removedTs + keepMs) };
+        }
+
+        /// <summary>True when an application started at <paramref name="startTs"/> predates a
+        /// removal recorded for this target and key that is still kept at <paramref name="now"/>.</summary>
+        internal bool Covers(int viewId, string key, int startTs, int now)
+        {
+            Tomb t;
+            if (!_tombs.TryGetValue(Id(viewId, key), out t)) return false;
+            if (unchecked(now - t.UntilTs) > 0)
+            {
+                _tombs.Remove(Id(viewId, key));
+                return false;
+            }
+            return unchecked(t.RemovedTs - startTs) > 0;
+        }
+
+        private void Prune(int now)
+        {
+            if (_tombs.Count < 32) return;
+            _stale.Clear();
+            foreach (KeyValuePair<string, Tomb> kv in _tombs)
+                if (unchecked(now - kv.Value.UntilTs) > 0) _stale.Add(kv.Key);
+            for (int i = 0; i < _stale.Count; i++) _tombs.Remove(_stale[i]);
         }
     }
 }
