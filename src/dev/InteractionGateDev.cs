@@ -145,6 +145,7 @@ namespace Ectype
                 Probe(failures, skipped, root, "repair", InteractionKind.Minigame, go => go.AddComponent<CG.Ship.Repair.RepairObject>());
                 Probe(failures, skipped, root, "defect", InteractionKind.Minigame, go => go.AddComponent<Gameplay.Defects.Defect>());
                 SwitchConverges(failures, skipped, root);
+                SameFromEveryEntry(failures, skipped, root);
             }
             catch (Exception e) { failures.Add("classifier threw: " + e.Message); }
             finally { UnityEngine.Object.DestroyImmediate(root); }
@@ -182,6 +183,62 @@ namespace Ectype
                 failures.Add("a switch outside any module classified " + first + " then " + again +
                              ", expected PowerSwitch both times");
             InteractionClassifier.ForgetControl(sw);
+        }
+
+        /// <summary>
+        /// Every chokepoint presents one thing as one component with one kind: an item through
+        /// its grab handle or itself, a socket through its interactable or itself, and a switch
+        /// as the component holding its value (what the owner side judges).
+        /// </summary>
+        private static void SameFromEveryEntry(List<string> failures, List<string> skipped, GameObject root)
+        {
+            try
+            {
+                GameObject go = Child(root, "item");
+                CG.Objects.CarryableObject item = go.AddComponent<CG.Objects.CarryableObject>();
+                Component grab = go.AddComponent<CG.Client.Ship.Interactions.Grabbable>();
+                Same(failures, "item", item, grab);
+            }
+            catch (Exception e) { skipped.Add("item entries (" + e.GetType().Name + ")"); }
+
+            try
+            {
+                GameObject go = Child(root, "socket");
+                Component socket = go.AddComponent<CG.Ship.Hull.CarryablesSocket>();
+                Component si = Child(go, "socket interactable").AddComponent<CG.Client.Ship.Interactions.SocketInteractable>();
+                Same(failures, "socket", socket, si);
+            }
+            catch (Exception e) { skipped.Add("socket entries (" + e.GetType().Name + ")"); }
+
+            try
+            {
+                // A holder whose type names no kind, under a clone tube: both sides must run the
+                // parent lookup from the holder, not from the switch.
+                GameObject tube = Child(root, "tube");
+                tube.AddComponent<CloneTube>();
+                MonoBehaviour holder = Child(tube, "holder").AddComponent<CG.Client.Ship.Interactions.DoorActor>();
+                var sw = Child(root, "held switch").AddComponent<CG.Client.Ship.Interactions.SwitchClicker>();
+                sw.ControlledValue = new MemberReference<ChangeResponsiveBool> { Component = holder, Member = "x" };
+                InteractionKind fromSwitch = InteractionClassifier.Classify(InteractionClassifier.Canonical(sw), false);
+                InteractionKind fromHolder = InteractionClassifier.Classify(InteractionClassifier.Canonical(holder), false);
+                if (fromSwitch != fromHolder || fromHolder != InteractionKind.CloneTube)
+                    failures.Add("a switch classified " + fromSwitch + " and its value holder " + fromHolder +
+                                 ", expected CloneTube both");
+                InteractionClassifier.ForgetControl(sw);
+                InteractionClassifier.ForgetControl(holder);
+            }
+            catch (Exception e) { skipped.Add("switch and holder (" + e.GetType().Name + ")"); }
+        }
+
+        private static void Same(List<string> failures, string name, Component canonical, Component other)
+        {
+            Component a = InteractionClassifier.Canonical(canonical);
+            Component b = InteractionClassifier.Canonical(other);
+            if (a != canonical || b != canonical)
+                failures.Add(name + " reaches gates as " + (a != null ? a.GetType().Name : "null") + " and " +
+                             (b != null ? b.GetType().Name : "null") + ", expected " + canonical.GetType().Name);
+            InteractionKind ka = InteractionClassifier.Classify(a, false), kb = InteractionClassifier.Classify(b, false);
+            if (ka != kb) failures.Add(name + " classified " + ka + " and " + kb);
         }
 
         private static GameObject Child(GameObject parent, string name)
