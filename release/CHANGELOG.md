@@ -1,10 +1,10 @@
 ## 0.22.0
 
-Rooms with more than one player ship, such as Void Crew Fleet's: perks that buff "the ship" now buff each player's own ship on every client, enemy-shot slowing works per ship, and a new event fires once when a whole fleet arrives from a jump. Timed stat effects survive being copied by other mods, a jump from one ship's inertia zone into another's ends channelled abilities, and spawns are lighter in large rooms. While a modded session keeps progression unsaved, your block list and cosmetic, ship and gene-tree loadouts are saved again.
+Rooms with more than one player ship, such as Void Crew Fleet's: perks that buff "the ship" now buff each player's own ship on every client, enemy-shot slowing works per ship, and a new event fires once when a whole fleet arrives from a jump. Timed stat effects survive being copied by other mods, a jump from one ship's inertia zone into another's ends channelled abilities, and spawns are lighter in large rooms.
 
 ## 0.21.0
 
-VoidManager is now optional: the framework runs without it, and with it installed the F5 page is unchanged. Players with and without VoidManager can share a room, unless the host runs VoidManager together with a mod that requires it of everyone. The framework now keeps modded sessions out of progression and achievements, with or without VoidManager. Multiplayer messages use the framework's own network channel, and a player whose framework cannot talk to the host's is refused at join with the host's framework version on the rejection screen.
+VoidManager is now optional: the framework runs without it, and with it installed the F5 page is unchanged. Players with and without VoidManager can share a room, unless the host runs VoidManager together with a mod that requires it of everyone. The framework does not block progression or achievements: rooms it hosts are still tagged modded, and with VoidManager installed VoidManager's own policy applies. Multiplayer messages use the framework's own network channel, and a player whose framework cannot talk to the host's is refused at join with the host's framework version on the rejection screen.
 
 ## 0.20.1
 
