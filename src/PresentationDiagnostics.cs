@@ -100,7 +100,7 @@ namespace Ectype
             {
                 // Same document, same build shape: the first watcher already covers it.
                 if (existing.Shape == shape) return;
-                // A different shape (tree count or wrapping changed under host suppression)
+                // A different shape (tree count or wrapping changed on a rebuild)
                 // is worth re-logging, but only from one watcher.
                 if (existing.Item != null) existing.Item.Pause();
                 _geometryWatches.Remove(watch);

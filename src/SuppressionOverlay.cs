@@ -5,7 +5,6 @@ using HarmonyLib;
 using CG.Client.UserData;
 using CG.Profile;
 using Gameplay.Perks;
-using Opsive.UltimateCharacterController.Character;
 using Opsive.UltimateCharacterController.Character.Abilities;
 using ResourceAssets;
 
@@ -22,53 +21,10 @@ namespace Ectype
     /// </summary>
     internal static class SuppressionOverlay
     {
-        private static bool _reportedSyncFailure;
-
         internal static bool IsSuppressed(ClassAbility ability)
         {
             PerkBuff perk = Refl.GetField<PerkBuff>(ability, "AbilityPerk", null);
             return perk != null && Suppression.IsSuppressedPerk(perk.ContainerGuid);
-        }
-
-        /// <summary>
-        /// Bring each local role ability's selection in line with the profile after a
-        /// suppression change, flipping only the abilities whose answer changed.
-        ///
-        /// A select runs OnClassAbilitySelected, which restarts the cooldown
-        /// (GoOnCooldown(wasInUse: false)) - a cost the game only pays on a real perk pick -
-        /// so the running cooldown is carried across it.
-        /// </summary>
-        internal static void SyncLocalSelection(UltimateCharacterLocomotion loco)
-        {
-            if (loco == null || loco.Abilities == null) return;
-            IPlayerPerkData data = PlayerProfile.PerkData;
-            if (data == null || data.PerkBuffLevels == null) return;
-
-            foreach (Ability a in loco.Abilities)
-            {
-                ClassAbility ca = a as ClassAbility;
-                if (ca == null) continue;
-                try
-                {
-                    PerkBuff perk = Refl.GetField<PerkBuff>(ca, "AbilityPerk", null);
-                    if (perk == null) continue;
-                    int level;
-                    bool want = data.PerkBuffLevels.TryGetValue(perk, out level) && level > 0 &&
-                                !Suppression.IsSuppressedPerk(perk.ContainerGuid);
-                    if (want == Refl.GetField(ca, "IsSelectedAbility", false)) continue;
-
-                    float cooldown = ca.CurrentCooldown;
-                    ca.SetAsSelectedAbility(want);
-                    if (want) ca.RefundCooldown(cooldown);
-                }
-                catch (Exception e)
-                {
-                    if (_reportedSyncFailure) continue;
-                    _reportedSyncFailure = true;
-                    Plugin.Log.LogError("Ectype: syncing role-ability selection after a " +
-                                        "suppression change failed (reported once): " + e);
-                }
-            }
         }
     }
 

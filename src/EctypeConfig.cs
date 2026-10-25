@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 using BepInEx.Configuration;
 
 namespace Ectype
@@ -21,24 +19,12 @@ namespace Ectype
         public static ConfigEntry<bool> StatusVfx;
         public static ConfigEntry<int> StatusVfxCap;
 
-        /// <summary>One HOST ONLY checkbox per discovered role in the [RoleSuppression]
-        /// section, keyed by roleId so a checkbox binds to the same player-facing role
-        /// across a plugin-load-order reshuffle. Read only by RoomSync; HostSuppression takes
-        /// a plain roleId list and knows nothing of a config UI.</summary>
-        public static readonly Dictionary<string, ConfigEntry<bool>> RoleSuppressToggles =
-            new Dictionary<string, ConfigEntry<bool>>(
-                System.StringComparer.OrdinalIgnoreCase);
-
-        private static ConfigFile _cfg;
-
         public static ConfigEntry<bool> EnableScroll;
         public static ConfigEntry<string> ScrollExcludeDocuments;
         public static ConfigEntry<bool> RoleWording;
 
         public static void Bind(ConfigFile cfg)
         {
-            _cfg = cfg;
-
             Enabled = cfg.Bind("General", "Enabled", true,
                 "Master switch. Off: no patches, no discovery, no registration - inert.");
 
@@ -99,28 +85,6 @@ namespace Ectype
                 "descriptions and the hub's \"Class: <role>\" projections. Display text only; " +
                 "other languages are untouched. Off restores the game's wording; a screen " +
                 "already open keeps its text until the game rebuilds it.");
-        }
-
-        /// <summary>
-        /// Bind one [RoleSuppression] checkbox per registered role, once - roleIds are only
-        /// known after discovery runs, well after Bind() above. Cheap to call every frame: a
-        /// count comparison short-circuits once every discovered role has an entry.
-        /// </summary>
-        public static void EnsureRoleToggles()
-        {
-            if (_cfg == null) return;
-            if (RoleSuppressToggles.Count == RoleRegistry.Roles.Count) return;
-
-            foreach (RoleRecord rec in RoleRegistry.Roles)
-            {
-                string roleId = rec.Manifest.roleId;
-                if (RoleSuppressToggles.ContainsKey(roleId)) continue;
-                RoleSuppressToggles[roleId] = _cfg.Bind("RoleSuppression",
-                    "Suppress_" + roleId, false,
-                    "Host only, applied while in the hub: make '" + rec.Manifest.roleName +
-                    "' unavailable to every player in the room. Spent points refund; each " +
-                    "player sees it on their next terminal open.");
-            }
         }
     }
 }

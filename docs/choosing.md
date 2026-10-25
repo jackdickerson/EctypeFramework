@@ -59,14 +59,14 @@ minimum version in `[BepInDependency]` refuses to load under an older one.
 
 A utility-only mod has no manifest and no role. It calls the framework's utilities: enemy and
 character statuses, loot tables, ship arrivals, timed stat contributions, the HUD ability bar,
-how-to toasts, framework-owned stats, runtime ability replication and the selection gate. [api.md](api.md)
+how-to toasts, framework-owned stats and runtime ability replication. [api.md](api.md)
 indexes them.
 
 It asks the author for C# against the framework, with the same rebuild rule as a role with
 code.
 
 Weapon mods and other content mods belong here. They are utility-only mods with no role, and
-they use the loot, selection gate and stat APIs.
+they use the loot and stat APIs.
 
 A utility-only mod's multiplayer type follows from what it changes:
 
@@ -99,9 +99,6 @@ A utility-only mod's multiplayer type follows from what it changes:
 - **Role content is mandatory for the whole room.** A role's tree and perks register in the
   game's required-asset set, and the game refuses a join when the host's required assets and
   the joiner's differ, whatever the mods declare. A role cannot be optional for some players.
-  This is the current build's posture. A coming framework version makes role mods optional
-  per player: the framework will suppress a role for the whole room when any member lacks
-  it, and refuse a joiner who lacks a role that is active in a running session.
 
 The listing for a mod that declares `All` says all of this in plain words;
 [publishing.md](publishing.md) lists the points.

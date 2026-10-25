@@ -14,10 +14,7 @@ in [manifest.md](../manifest.md), and the stat names an effect can use are in
 
 1. A plugin with `[BepInDependency("jack.voidcrew.ectype")]` and a `VoidPlugin` that declares
    `MultiplayerType.All` (see [../multiplayer.md](../multiplayer.md) for why a role mod cannot
-   be anything else). This is the current build's posture. A coming framework version makes
-   role mods optional per player: the framework will suppress a role for the whole room when
-   any member lacks it, and refuse a joiner who lacks a role that is active in a running
-   session.
+   be anything else).
 2. An embedded JSON manifest whose resource name ends `ectype-role.json`. That suffix is the
    discovery marker; a data-only role needs no reference to the framework assembly.
 3. Icons as PNGs embedded in the assembly, named by the manifest's icon keys. An icon
@@ -38,10 +35,10 @@ Two lookups help role code:
 - `RoleRegistry.PerkGuid(roleId, perkKey)` returns the asset GUID a perk registers under,
   the same derivation registration uses. Code that reads `PlayerPerkLoader.PerkBuffLevels`
   for one of its own perks needs no pinned literal.
-- `RoleRegistry.IsAvailableInRoom(roleId)` is true while the role is registered and
-  nothing suppresses it in the current room: neither the host's per-role toggle nor another
-  role's `suppressRoles`. The toggle is a room property every client applies, so every
-  client gives the same answer. Gate role-owned content (loot, spawns) on it.
+- `RoleRegistry.IsAvailableInRoom(roleId)` is true while the role is registered and no
+  other active role lists it in `suppressRoles`. Both halves come from the installed role
+  mods, and every player in a room runs the same set, so every client gives the same answer.
+  Gate role-owned content (loot, spawns) on it.
 
 ## Manifest rules in brief
 
@@ -192,8 +189,8 @@ The policy's rules:
 
 ## Suppression
 
-Three mechanisms remove a tree from the game while a role mod is installed. All three leave
-the role registered, so every player still needs the mod (see
+Two manifest fields remove a tree from the game while a role mod is installed. Both leave
+the suppressed content registered, so every player still needs every role mod (see
 [../multiplayer.md](../multiplayer.md)).
 
 ### Vanilla-tree suppression
@@ -207,21 +204,14 @@ refused.
 ### Modded-role suppression
 
 A manifest's `suppressRoles` list names other framework roles by `roleId`. Each is
-suppressed like a host-toggled role while the listing role is itself active, and its
-payloads are not adopted. The list is resolved from the manifests alone, because tree and
-perk GUIDs derive from the `roleId`, so registration order between role mods does not
-matter. A cycle is broken in `roleId` order with a warning. An id that is not installed is
-ignored with a warning.
-
-### Host-driven suppression
-
-The per-role suppress toggles under F5 -> Ectype Framework (and in the config) belong to the
-host. They are published as a room property and applied live on every client: already-built
-gene-tree screens rebuild, the role ability deselects, the perks stop applying and their
-points count as unspent. The save is never written. The perks stay in each loadout and are
-read as absent, so lifting suppression restores the build. Leaving the room clears it.
-Suppressing a role changes what every player in the room can do, so it arms the
-modded-session flag, which is one-way. See [../multiplayer.md](../multiplayer.md).
+suppressed while the listing role is itself active: its tree is kept out of both terminals,
+its role ability stays deselected, its perks stop applying and their points count as
+unspent, and its own `suppress` and `suppressRoles` entries stop counting. Its payloads are
+not adopted. The save is never written: the perks stay in each loadout and are read as
+absent, so removing the listing role mod restores the build. The list is resolved from the
+manifests alone, because tree and perk GUIDs derive from the `roleId`, so registration
+order between role mods does not matter. A cycle is broken in `roleId` order with a
+warning. An id that is not installed is ignored with a warning.
 
 ### Adoption
 

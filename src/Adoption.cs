@@ -40,10 +40,6 @@ namespace Ectype
         /// despawned character reads as null - unlike the abilities hanging off it.</summary>
         private static UltimateCharacterLocomotion _localLoco;
 
-        /// <summary>Read-only access for the selection pass after a host-suppression change,
-        /// which needs the local character's abilities.</summary>
-        internal static UltimateCharacterLocomotion LocalLoco { get { return _localLoco; } }
-
         /// <summary>
         /// Repoint every vanilla ability whose AbilityPerk sits in a suppressed tree at the
         /// suppressing role's banner perks, then re-run the selection check the ability

@@ -81,7 +81,7 @@ namespace Ectype
         {
             try
             {
-                List<Player> with = SelectionGate.PeersWithMod(EctypePluginInfo.PLUGIN_GUID);
+                List<Player> with = PeerPresence.PeersWithMod(EctypePluginInfo.PLUGIN_GUID);
                 if (with.Count == 0) return new Player[0];
                 Player me = PhotonNetwork.LocalPlayer;
                 List<Player> others = new List<Player>(with.Count);
@@ -369,7 +369,7 @@ namespace Ectype
             try
             {
                 if (player == null || LocomotionF == null) return;
-                if (!SelectionGate.PeerHasMod(player, EctypePluginInfo.PLUGIN_GUID)) return;
+                if (!PeerPresence.PeerHasMod(player, EctypePluginInfo.PLUGIN_GUID)) return;
 
                 MonoBehaviourPun pun = __instance as MonoBehaviourPun;
                 PhotonView view = pun != null ? pun.photonView : null;
@@ -392,6 +392,30 @@ namespace Ectype
             {
                 Plugin.Log.LogError("Ectype: late-join ability-sync failed: " + e);
             }
+        }
+    }
+
+    /// <summary>
+    /// Which peers run a given mod, as VoidManager's mod-list exchange reports it. Ability
+    /// replication goes only to peers running the framework, since a peer without it has no
+    /// handler for the framework's messages. The answer comes from the mod list alone.
+    /// </summary>
+    internal static class PeerPresence
+    {
+        /// <summary>Every peer whose mod list carries the mod. Empty in solo, or before
+        /// VoidManager has a peer manager.</summary>
+        internal static List<Player> PeersWithMod(string modGuid)
+        {
+            NetworkedPeerManager peers = NetworkedPeerManager.Instance;
+            if (peers == null) return new List<Player>();
+            return peers.NetworkedPeersWithMod(modGuid) ?? new List<Player>();
+        }
+
+        /// <summary>Whether a player's mod list carries the mod.</summary>
+        internal static bool PeerHasMod(Player player, string modGuid)
+        {
+            NetworkedPeerManager peers = NetworkedPeerManager.Instance;
+            return peers != null && player != null && peers.NetworkedPeerHasMod(player, modGuid);
         }
     }
 }

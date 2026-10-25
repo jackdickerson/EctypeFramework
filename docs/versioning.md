@@ -90,8 +90,10 @@ to a mod of that type when a player joins a room.
    numbers do not help: the hash covers the whole file, including every embedded manifest and
    icon.
 
-Host migration changes who runs the second check. The framework re-sends each client's hashed
-list to the new host so the check keeps working for members who were already present.
+The Void Crew Mod Launcher installs the host's exact Thunderstore versions on a joiner's machine
+before the game starts. A Thunderstore version number is uploaded once, so the same package
+version is the same bytes everywhere and both checks pass. A build that is not on Thunderstore
+cannot reach a joiner that way.
 
 ### Rebuild only to use new API
 
@@ -108,9 +110,10 @@ The consequences for the author of a dependent:
 2. A framework update does not by itself require reshipping dependents. The host's hash check
    compares each DLL with the same DLL on the joiner's machine, so a dependent's bytes change
    only when its author rebuilds it. Players still update the framework itself to the host's
-   build.
-3. When you do rebuild, raise the dependent's own version. Two builds of the same version
-   number that differ in bytes are bounced by the host's hash check, and the version number is
-   what tells a player which copy is stale.
+   version.
+3. Publish every build you give to anyone to Thunderstore, under a new version. Thunderstore
+   refuses a version number it already has, so a new build forces a new number, and the mod
+   launcher can then install it for a joiner. A build handed out any other way cannot be
+   downloaded by a joiner, and two builds under one number are kicked by the host's hash check.
 4. Name the framework version you built against, or newer, in the Thunderstore dependency
    string, so a mod manager installs a framework that has every member your build calls.

@@ -18,7 +18,6 @@ Paths are relative to the framework project folder.
 | Framework-owned stat declarations | `src/FrameworkStats.cs` |
 | Field-backed stat wrapper | `src/FieldStat.cs` |
 | Mutator safety | `src/MutatorSafety.cs` |
-| Selection gate | `src/SelectionGate.cs` |
 | Loot tables | `src/LootTables.cs` |
 | Enemy statuses | `src/EnemyStatus.cs`, `src/EnemyStatusFx.cs` |
 | Enemy abilities and suspension | `src/EnemyAbilities.cs` |
@@ -56,8 +55,6 @@ column.
 | `PlayerProfile.UsedPerkPoints` getter postfix | suppressed role perks stay in the save but do not count as spent |
 | `ClassAbility.SetAsSelectedAbility` prefix | a request to select an ability whose perk is suppressed becomes a deselect, so nothing ever selects-then-deselects it; each such pair restarts the cooldown and republishes the HUD selection event |
 | `UnlockContainer.IsUnlocked(GUIDUnion)` postfix | a `PlayerPerk` unlock gated on a suppressed perk reads as locked |
-| `PlayerPerkLoader.ReApplyPerks` (called) | on a host-suppression change, every player's stats re-apply from their published `PBL` with `OnPerkBuffLevelsUpdated` held, then one pass flips only the local abilities whose selection changed, carrying the running cooldown across a select |
-| `TokenTerminal` / `LogBookManager` `treeController` (read, replaced) | both build their tree controller once in `Start`; a host-suppression change disposes it and constructs a new one over fresh authored tree elements |
 | `UI.Token.PerkTreeController` ctor prefix | tree elements must exist before the ctor's unchecked `Q`; failed injections and suppressed vanilla trees filter the def collection, and suppressed elements are removed from the document |
 | `UI.Token.PerkTreeVE.CreateClassTooltip` postfix | the game re-localizes the ClassName label ~1s after attach; restore the manifest title for our trees |
 | `UI.NavigatorVE.TryFocusElement` postfix | pad bridge: when controller focus lands inside the tree scroller, scroll the owning tree column into view |
@@ -112,8 +109,8 @@ compiles none of it, so a player's `.cfg` has no `[Dev]` section and the F5 page
 developer section. The dev build carries `AssemblyMetadata("EctypeDevTools", "true")` and logs
 `Ectype Framework <version> (dev tools build)` at startup.
 
-Never ship a dev build. Its bytes differ from the release build at the same version, and the
-host's hash check bounces anyone whose build differs from the host's.
+Never ship a dev build. Its bytes differ from the release build at the same version, and
+VoidManager's host-side check removes a joiner whose DLL differs from the host's.
 
 What it adds:
 
@@ -216,8 +213,9 @@ added to the list, and a renamed key logs `no entry '<key>'`.
 
 `MultiplayerType.All`: an unmodded peer runs `ReApplyPerks` over framework GUIDs and wipes the
 modded player's perks on the peer's client; only a process with this DLL carries that guard.
-The mutator-safety prefix needs the same posture for the same reason. The room is version- and
-hash-locked, updates are all-hands re-sends, and `PLUGIN_VERSION` is bumped on every deploy.
+The mutator-safety prefix needs the same posture for the same reason. Every player in a room
+runs the same Thunderstore version of the framework, which the mod launcher installs for a
+joiner and VoidManager's join check enforces, and `PLUGIN_VERSION` is bumped on every build.
 Registered role content sits in the Required mask, so hosting with any role mod installed
 flags the session (one-way). The framework alone also flags at load, from its declared
 `MPType`. The flag is a process-wide static that is never reset, so a room hosted later in the

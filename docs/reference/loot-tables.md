@@ -94,9 +94,13 @@ composite-weapon GUID into its build box and hand any other GUID to the object f
 spawns it as itself. Rolls that spawn anything run on the master. The sector on-death table is
 also built on every other client, where it only counts remaining loot.
 
-A registered item must resolve on every client in the room. In a room with a member who
-cannot resolve it, close the gate. See [../multiplayer.md](../multiplayer.md) for how rooms
-are composed and [selection-gate.md](selection-gate.md) for checking members.
+A registered item must resolve on every client in the room. An item your mod adds resolves
+only where your mod is installed, so a mod that registers one declares
+`MultiplayerType.All`: VoidManager then refuses a joiner who lacks it or runs another
+version. An item that belongs to a role gates on `RoleRegistry.IsAvailableInRoom(roleId)`,
+which closes the roll while that role is not registered or another installed role
+suppresses it. See
+[../multiplayer.md](../multiplayer.md) for how rooms are composed.
 
 `LootTables.Status` reports the patch state. `[Info]` lines name each table an owner's items
 were first added to. If the postfix fails to apply, loot alone is affected.

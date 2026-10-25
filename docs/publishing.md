@@ -69,8 +69,10 @@ A minimal `manifest.json`:
 ```
 
 Keep the mod's own `PLUGIN_VERSION` and the package's `version_number` identical. VoidManager
-compares the plugin's version across the room, and a player reading the listing compares the
-package version.
+compares the plugin's version across the room, while the mod launcher and a player reading the
+listing go by the package version. Raise both on every build you give to anyone: a joiner can
+download only what is on Thunderstore, and the host refuses a joiner whose DLL differs under
+the same version number.
 
 ## Where the files land
 
@@ -91,13 +93,13 @@ plain words.
 
 1. **Everyone in the room needs it.** A role mod and the framework are multiplayer type
    `All`. A player without them cannot join a room that has them, and a host without them
-   bounces a joiner who has them. This is the current build's posture. A coming framework
-   version makes role mods optional per player: the framework will suppress a role for the
-   whole room when any member lacks it, and refuse a joiner who lacks a role that is active
-   in a running session.
-2. **Everyone needs the same build.** Versions must match, and the host also compares a hash
-   of each DLL. A player on an older copy is refused. State the version the listing was
-   written for and tell players to update the framework and your mod together.
+   bounces a joiner who has them.
+2. **Everyone needs the same version.** VoidManager refuses a joiner whose version differs
+   from the host's, and the host also compares the DLL's bytes. A Thunderstore version number
+   is uploaded once, so the same package version is the same bytes on every machine. Players
+   who use the Void Crew Mod Launcher get the host's versions installed for them when they
+   join; everyone else updates by hand. State the version the listing was written for and
+   tell players to update the framework and your mod together.
 3. **Sessions are flagged as modded.** The game tags a room as modded and shows the tag in
    the server browser, which is how it separates modded rooms in matchmaking. VoidManager
    also blocks cloud profile writes and Steam stats and achievements for a tagged session.
