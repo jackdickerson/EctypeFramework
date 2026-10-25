@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 using CG.Game;
 using CG.Ship.Modules;
@@ -13,33 +14,36 @@ using ResourceAssets;
 namespace Ectype
 {
     /// <summary>
-    /// The characterShip perk target, PerkBuffTarget value 4: a perk's effects land on the
-    /// holder's ship's stat collection for every player holding it, seated or not.
+    /// The framework-routed perk targets: every perk whose asset carries PerkBuffTarget value 4.
+    /// The game's perk loader skips that value, so vanilla never applies these perks; their
+    /// effects stay on the perk asset's own levels, where the tooltip already renders them from.
+    /// What value 4 means for one perk is its entry in the scope table (PerkScopes): a ship set
+    /// (the holder's crew ship, the ship they are aboard, every ship on their side, every ship on
+    /// their seat's side) and a distribution. A perk with no entry is characterShip.
     ///
-    /// Which ship. With one ship object in the room it is that ship. With several, the game's
-    /// player-ship getter can return a different ship on each client (a multi-ship mod points it
-    /// at the ship the viewer is looking at), so each holder is resolved on its own through
-    /// Topology.CrewShipOf, from data every client shares: the holder's crew ship, else the ship
-    /// the holder is aboard when it is of the holder's own faction. A holder with no answer
-    /// (spectating, not yet placed, crew ship dying) stays pending. Resolution is repeated twice a
-    /// second and on every topology change, and only a holder whose ship changed is rebuilt.
+    /// This route applies them at the two moments vanilla applies every other target -
+    /// ReApplyPerks and ResetPerks, which run on every client for every player - so every client
+    /// carries every holder's contribution: per holder and per ship, one copy of the level's
+    /// modifiers.
     ///
-    /// The effects live on the perk asset's own levels, where the tooltip already renders
-    /// them from; ReApplyPerks's target switch has no case for 4, so vanilla never applies
-    /// them. This route applies them at the two moments vanilla applies every other target -
-    /// ReApplyPerks and ResetPerks, which run on every client for every player - so every
-    /// client carries every holder's contribution, one contribution per holder.
+    /// Which ships. With one ship object in the room every set names that ship, as the stock
+    /// targets do. With several, the game's player-ship getter can return a different ship on
+    /// each client (a multi-ship mod points it at the ship the viewer is looking at), so each
+    /// holder is resolved on its own from data every client shares (TopologyView). A holder whose
+    /// set is empty (spectating, not yet placed, crew ship dying, not seated) contributes nothing
+    /// until it is not. Resolution is repeated four times a second, the frame after every topology
+    /// change and every seat change, and only a holder whose ships changed is rebuilt.
     ///
     /// Each applied StatMod gets its own source object, never the player. Standing up removes
     /// every ship modifier whose source is the player (SittingInChair.AbilityStopped and
-    /// OnDestroy), so a player-sourced characterShip modifier would vanish on the first stand.
-    /// Nothing but this route ever holds a per-StatMod source, so nothing else removes one.
+    /// OnDestroy), so a player-sourced modifier would vanish on the first stand. Nothing but this
+    /// route ever holds a per-StatMod source, so nothing else removes one.
     ///
     /// The ship's collection does not reach every module. A ship module joins the ship's tree
     /// only through a build socket (BuildSocket.SetModule, whose socket parents itself to the
     /// ship in CarryablesSocket.Start) or by registering itself (Helm, CentralShipComputer,
     /// CloneTube). A core system nested in the ship prefab that does neither - the Fabricator -
-    /// is the root of its own tree, and nothing applied to the ship reaches it. So the
+    /// is the root of its own tree, and nothing applied to the ship reaches it. So a ship
     /// contribution also goes onto the root of every module collection that does not chain up
     /// to the ship's. When one of those roots later gains a parent, the parent replays its
     /// modifiers into it, so every holder is rebuilt at that moment to keep one copy.
@@ -57,23 +61,44 @@ namespace Ectype
             public override string ToString() { return _label; }
         }
 
+        /// <summary>One collection a holder's contribution sits in: a ship's, with the ship's
+        /// detached module roots, or the holder's own character's.</summary>
+        private sealed class Placement
+        {
+            /// <summary>The ship, or the character, whose collection this is.</summary>
+            public UnityEngine.Object Owner;
+            public PlayerControlledShip Ship;
+            public StatTagCollection Root;
+            public readonly List<StatTagCollection> Detached = new List<StatTagCollection>();
+            public readonly List<StatMod> Mods = new List<StatMod>();
+        }
+
+        /// <summary>One held perk this route applies.</summary>
+        private struct Entry
+        {
+            public PerkBuff Perk;
+            public PerkScope Scope;
+            public List<StatMod> Level;
+        }
+
         private sealed class Holder
         {
             public PlayerPerkLoader Loader;
             public CG.Game.Player.Player Player;
-            /// <summary>The collection Applied sits in; null while no ship exists.</summary>
-            public PlayerControlledShip Ship;
-            /// <summary>Detached module roots Applied also sits in.</summary>
-            public readonly List<StatTagCollection> Detached = new List<StatTagCollection>();
-            public readonly List<StatMod> Applied = new List<StatMod>();
+            /// <summary>Held perks this route applies, at the last rebuild.</summary>
+            public int Routed;
+            public readonly List<Placement> Placed = new List<Placement>();
+            /// <summary>What each ship set the held perks use named at the last rebuild.</summary>
+            public readonly Dictionary<ShipSet, object[]> Resolved = new Dictionary<ShipSet, object[]>();
             public string LoggedState;
-            public string LoggedShip;
+            public readonly Dictionary<ShipSet, string> LoggedShips = new Dictionary<ShipSet, string>();
         }
 
-        private const float PassSeconds = 0.5f;
+        private const float PassSeconds = 0.25f;
 
         private static readonly List<Holder> _holders = new List<Holder>();
         private static readonly HashSet<string> _reported = new HashSet<string>();
+        private static readonly List<object> _scratch = new List<object>();
         private static ClientGame _boundGame;
         private static bool _busBound;
         private static bool _topologyBound;
@@ -91,66 +116,31 @@ namespace Ectype
                 h = new Holder { Loader = loader, Player = loader.GetComponent<CG.Game.Player.Player>() };
                 _holders.Add(h);
             }
-            RemoveFromShip(h);
+            RemoveAll(h);
 
-            // The ReApplyPerks prefix has already dropped unresolvable and suppressed entries
-            // from this dictionary and clamped out-of-range levels, in place; the level check
-            // below is the backstop if that prefix failed.
-            Dictionary<GUIDUnion, int> levels = loader.PerkBuffLevels;
-            PerkBuffContainer container = PerkBuffContainer.Instance;
-            if (levels != null && container != null)
+            List<Entry> entries = Held(loader);
+            h.Routed = entries.Count;
+            if (entries.Count > 0)
             {
-                foreach (KeyValuePair<GUIDUnion, int> kv in levels)
-                {
-                    if (kv.Key.IsNull || kv.Value <= 0) continue;
-                    PerkBuffDef def;
-                    if (!container.TryGetByGuid(kv.Key, out def) || def == null) continue;
-                    PerkBuff perk = def.Asset;
-                    if (perk == null || perk.Target != CharacterShip) continue;
-                    if (perk.Levels == null || kv.Value > perk.Levels.Count ||
-                        perk.Levels[kv.Value - 1] == null || perk.Levels[kv.Value - 1].Mods == null)
-                    {
-                        if (_reported.Add(kv.Key.AsHex() + ":" + kv.Value))
-                            Plugin.Log.LogError("Ectype: characterShip perk '" + perk.name +
-                                                "' held at level " + kv.Value + " has no such " +
-                                                "level - skipped.");
-                        continue;
-                    }
-                    // Deep-copied and attributed exactly as the perk loader does for the other
-                    // three targets, so readouts name the perk as the origin.
-                    foreach (StatMod mod in perk.Levels[kv.Value - 1].Mods.DeepCopy())
-                    {
-                        if (mod == null || mod.Mod == null) continue;
-                        mod.Mod.Source = new Source("Ectype characterShip " + perk.name);
-                        mod.Mod.InformationSource = perk;
-                        h.Applied.Add(mod);
-                    }
-                }
-            }
-
-            string source;
-            PlayerControlledShip ship = Resolve(h, out source);
-            if (h.Applied.Count > 0) LogShip(h, ship, source);
-            if (h.Applied.Count > 0 && ship != null && ship.Stats != null)
-            {
-                ship.Stats.ApplyModifiers(h.Applied);
-                h.Ship = ship;
-                foreach (StatTagCollection root in DetachedRoots(ship))
-                {
-                    root.ApplyModifiers(h.Applied);
-                    h.Detached.Add(root);
-                }
+                int actor = Topology.ActorOf(h.Player);
+                foreach (Entry e in entries)
+                    if (!h.Resolved.ContainsKey(e.Scope.Ships))
+                        h.Resolved[e.Scope.Ships] = ResolveSet(h, e.Scope.Ships, actor);
+                foreach (KeyValuePair<ShipSet, object[]> kv in h.Resolved) LogShips(h, kv.Key, kv.Value, actor);
+                foreach (Entry e in entries) Place(h, e);
+                foreach (Placement p in h.Placed) Apply(p);
             }
             LogState(h);
         }
 
-        /// <summary>Takes one holder's contribution off the ship; the perk loader's
-        /// ResetPerks counterpart.</summary>
+        /// <summary>Takes one holder's contribution off; the perk loader's ResetPerks
+        /// counterpart.</summary>
         public static void Remove(PlayerPerkLoader loader)
         {
             Holder h = Find(loader);
             if (h == null) return;
-            RemoveFromShip(h);
+            RemoveAll(h);
+            h.Routed = 0;
             LogState(h);
         }
 
@@ -161,47 +151,158 @@ namespace Ectype
             return null;
         }
 
-        /// <summary>The ship a holder's contribution sits on, or null while it is pending or the
-        /// holder carries no characterShip perk.</summary>
+        /// <summary>A ship one of the holder's contributions sits on, or null while every one is
+        /// pending, sits on the character, or the holder carries no routed perk.</summary>
         internal static PlayerControlledShip ShipOf(PlayerPerkLoader loader)
         {
             Holder h = Find(loader);
-            return h != null ? h.Ship : null;
+            if (h == null) return null;
+            foreach (Placement p in h.Placed)
+                if (p.Ship != null) return p.Ship;
+            return null;
         }
 
-        /// <summary>The holder's ship. The player-ship getter is read only while one ship object
-        /// exists, where it is the same on every client.</summary>
-        private static PlayerControlledShip Resolve(Holder h, out string source)
+        /// <summary>The routed perks the loader holds, each with its level's modifiers.</summary>
+        private static List<Entry> Held(PlayerPerkLoader loader)
         {
-            if (!Topology.Multi)
+            List<Entry> entries = new List<Entry>();
+            // The ReApplyPerks prefix has already dropped unresolvable and suppressed entries
+            // from this dictionary and clamped out-of-range levels, in place; the level check
+            // below is the backstop if that prefix failed.
+            Dictionary<GUIDUnion, int> levels = loader.PerkBuffLevels;
+            PerkBuffContainer container = PerkBuffContainer.Instance;
+            if (levels == null || container == null) return entries;
+            foreach (KeyValuePair<GUIDUnion, int> kv in levels)
             {
-                PlayerControlledShip only = ClientGame.Current != null ? ClientGame.Current.PlayerShip : null;
-                // The last ship of a team match is not the other team's ship.
-                if (only != null && !Topology.OnSide(only, Topology.ActorOf(h.Player), h.Player))
+                if (kv.Key.IsNull || kv.Value <= 0) continue;
+                PerkBuffDef def;
+                if (!container.TryGetByGuid(kv.Key, out def) || def == null) continue;
+                PerkBuff perk = def.Asset;
+                if (perk == null || perk.Target != CharacterShip) continue;
+                PerkScope scope = PerkScopes.Of(kv.Key);
+                if (perk.Levels == null || kv.Value > perk.Levels.Count ||
+                    perk.Levels[kv.Value - 1] == null || perk.Levels[kv.Value - 1].Mods == null)
                 {
-                    source = "single, other side's ship";
-                    return null;
+                    if (_reported.Add(kv.Key.AsHex() + ":" + kv.Value))
+                        Plugin.Log.LogError("Ectype: " + scope.Target + " perk '" + perk.name +
+                                            "' held at level " + kv.Value + " has no such " +
+                                            "level - skipped.");
+                    continue;
                 }
-                source = "single";
-                return only != null ? only : null;
+                entries.Add(new Entry { Perk = perk, Scope = scope, Level = perk.Levels[kv.Value - 1].Mods });
             }
-            return Topology.ResolveCrewShip(Topology.ActorOf(h.Player), h.Player, out source);
+            return entries;
         }
 
-        /// <summary>Verbose: "actor N → ship K (source)" whenever a holder's resolution changes.</summary>
-        private static void LogShip(Holder h, PlayerControlledShip ship, string source)
+        /// <summary>The collections one ship set names for the holder: ships with a stat
+        /// collection, or the character for <see cref="ShipSet.Character"/>.</summary>
+        private static object[] ResolveSet(Holder h, ShipSet set, int actor)
         {
-            if (!Plugin.Verbose || h.Player == null) return;
-            string line = "Ectype: characterShip - actor " + Topology.ActorOf(h.Player) + " → " +
-                          (ship != null ? "ship " + Topology.ShipNumberOf(ship) : "no ship") +
-                          " (" + source + ").";
-            if (line == h.LoggedShip) return;
-            h.LoggedShip = line;
+            if (set == ShipSet.Character)
+                return h.Player != null && h.Player.Stats != null ? new object[] { h.Player } : new object[0];
+            PerkScopes.Resolve(Topology.View, set, actor, _scratch);
+            List<object> ships = new List<object>(_scratch.Count);
+            foreach (object o in _scratch)
+            {
+                PlayerControlledShip ship = o as PlayerControlledShip;
+                if (ship != null && ship.Stats != null) ships.Add(ship);
+            }
+            return ships.ToArray();
+        }
+
+        /// <summary>One copy of the entry's level per collection its set names, each modifier
+        /// with its own source and, for a split, its share of the amount.</summary>
+        private static void Place(Holder h, Entry e)
+        {
+            object[] targets = h.Resolved[e.Scope.Ships];
+            float factor = PerkScopes.SplitFactor(e.Scope.Share, targets.Length);
+            foreach (object target in targets)
+            {
+                Placement p = PlacementFor(h, target);
+                // Deep-copied and attributed exactly as the perk loader does for the stock
+                // targets, so readouts name the perk as the origin.
+                foreach (StatMod mod in e.Level.DeepCopy())
+                {
+                    if (mod == null || mod.Mod == null) continue;
+                    mod.Mod.Source = new Source("Ectype " + e.Scope.Target + " " + e.Perk.name);
+                    mod.Mod.InformationSource = e.Perk;
+                    PerkScopes.Scale(mod, factor);
+                    p.Mods.Add(mod);
+                }
+            }
+        }
+
+        private static Placement PlacementFor(Holder h, object target)
+        {
+            foreach (Placement existing in h.Placed)
+                if (ReferenceEquals(existing.Owner, target)) return existing;
+            Placement p = new Placement();
+            PlayerControlledShip ship = target as PlayerControlledShip;
+            if (ship != null) { p.Owner = ship; p.Ship = ship; p.Root = ship.Stats; }
+            else { p.Owner = h.Player; p.Root = h.Player.Stats; }
+            h.Placed.Add(p);
+            return p;
+        }
+
+        private static void Apply(Placement p)
+        {
+            if (p.Mods.Count == 0 || p.Root == null) return;
+            p.Root.ApplyModifiers(p.Mods);
+            if (p.Ship == null) return;
+            foreach (StatTagCollection root in DetachedRoots(p.Ship))
+            {
+                root.ApplyModifiers(p.Mods);
+                p.Detached.Add(root);
+            }
+        }
+
+        /// <summary>Verbose: "&lt;target&gt; - actor N → ship K (source)" whenever what a holder's
+        /// ship set names changes.</summary>
+        private static void LogShips(Holder h, ShipSet set, object[] ships, int actor)
+        {
+            if (!Plugin.Verbose || h.Player == null || set == ShipSet.Character) return;
+            string line = "Ectype: " + PerkScopes.TargetOf(set) + " - actor " + actor + " → " +
+                          ShipList(ships) + " (" + SourceOf(set, ships, actor) + ").";
+            string last;
+            if (h.LoggedShips.TryGetValue(set, out last) && last == line) return;
+            h.LoggedShips[set] = line;
             Plugin.Log.LogInfo(line);
         }
 
-        /// <summary>Driven from EctypeDriver.Update: runs the pass twice a second, and on the frame
-        /// after a topology change or a ship set.</summary>
+        private static string ShipList(object[] ships)
+        {
+            if (ships.Length == 0) return "no ship";
+            List<string> numbers = new List<string>(ships.Length);
+            foreach (object o in ships) numbers.Add(Topology.ShipNumberOf(o as PlayerControlledShip).ToString());
+            return (ships.Length == 1 ? "ship " : "ships ") + string.Join(", ", numbers.ToArray());
+        }
+
+        /// <summary>Which rule decided, for the verbose line.</summary>
+        private static string SourceOf(ShipSet set, object[] ships, int actor)
+        {
+            switch (set)
+            {
+                case ShipSet.Crew:
+                {
+                    string source;
+                    LiveTopologyView.Instance.CrewShip(actor, out source);
+                    return source;
+                }
+                case ShipSet.Aboard:
+                    if (ships.Length > 0) return "aboard";
+                    return Topology.View.AboardShip(actor) == null ? "open space" : "aboard another side's ship";
+                case ShipSet.Force:
+                    return ships.Length > 0 ? "holder's side" : "no living ship on the holder's side";
+                case ShipSet.SeatForce:
+                    if (Topology.View.SeatShip(actor) == null) return "not seated";
+                    return ships.Length > 0 ? "seat's side" : "no living ship on the seat's side";
+                default:
+                    return "";
+            }
+        }
+
+        /// <summary>Driven from EctypeDriver.Update: runs the pass four times a second, and on the
+        /// frame after a topology change, a ship set or a seat change.</summary>
         internal static void Poll()
         {
             if (_holders.Count == 0) { _passDue = false; return; }
@@ -213,53 +314,70 @@ namespace Ectype
             Pass();
         }
 
+        /// <summary>Asks for a pass on the next driver frame.</summary>
+        internal static void RequestPass() { _passDue = true; }
+
         private static void BindTopology()
         {
             if (_topologyBound) return;
             _topologyBound = true;
-            Topology.Changed += () => _passDue = true;
+            Topology.Changed += RequestPass;
         }
 
-        /// <summary>Re-resolves every holder and rebuilds only those whose ship changed: a new
-        /// resolution, a pending holder whose ship now exists, or a ship destroyed under it.</summary>
+        /// <summary>Re-resolves every holder and rebuilds only those whose ships changed: a set
+        /// that now names other ships, a pending set whose ship now exists, or a ship destroyed
+        /// under a contribution.</summary>
         private static void Pass()
         {
             foreach (Holder h in _holders.ToArray())
             {
                 if (h.Loader == null)
                 {
-                    RemoveFromShip(h);
+                    RemoveAll(h);
                     _holders.Remove(h);
                     continue;
                 }
-                if (h.Applied.Count == 0) continue;
-                string source;
-                PlayerControlledShip now = Resolve(h, out source);
-                bool destroyed = !ReferenceEquals(h.Ship, null) && h.Ship == null;
-                if (!destroyed && ReferenceEquals(now, h.Ship)) continue;
+                if (h.Routed == 0 || !Changed(h)) continue;
                 try { Reapply(h.Loader); }
                 catch (Exception e)
                 {
-                    Plugin.Log.LogError("Ectype: characterShip rebuild for a ship change failed: " + e);
+                    Plugin.Log.LogError("Ectype: perk route rebuild for a ship change failed: " + e);
                 }
             }
         }
 
-        private static void RemoveFromShip(Holder h)
+        private static bool Changed(Holder h)
         {
-            // A destroyed ship took its collection with it; there is nothing to remove from.
-            if (h.Ship != null && h.Ship.Stats != null)
-                foreach (StatMod mod in h.Applied)
-                    h.Ship.Stats.RemoveModifier(mod.Mod.Source);
-            foreach (StatTagCollection root in h.Detached)
+            foreach (Placement p in h.Placed)
+                if (!ReferenceEquals(p.Owner, null) && p.Owner == null) return true;
+            int actor = Topology.ActorOf(h.Player);
+            foreach (KeyValuePair<ShipSet, object[]> kv in h.Resolved)
             {
-                if (!Alive(root)) continue;
-                foreach (StatMod mod in h.Applied)
-                    root.RemoveModifier(mod.Mod.Source);
+                object[] now = ResolveSet(h, kv.Key, actor);
+                if (now.Length != kv.Value.Length) return true;
+                for (int i = 0; i < now.Length; i++)
+                    if (!ReferenceEquals(now[i], kv.Value[i])) return true;
             }
-            h.Detached.Clear();
-            h.Applied.Clear();
-            h.Ship = null;
+            return false;
+        }
+
+        private static void RemoveAll(Holder h)
+        {
+            foreach (Placement p in h.Placed)
+            {
+                // A destroyed ship or character took its collection with it.
+                if (p.Owner != null && p.Root != null)
+                    foreach (StatMod mod in p.Mods)
+                        p.Root.RemoveModifier(mod.Mod.Source);
+                foreach (StatTagCollection root in p.Detached)
+                {
+                    if (!Alive(root)) continue;
+                    foreach (StatMod mod in p.Mods)
+                        root.RemoveModifier(mod.Mod.Source);
+                }
+            }
+            h.Placed.Clear();
+            h.Resolved.Clear();
         }
 
         /// <summary>False when the collection's Unity holder is destroyed: its change
@@ -307,27 +425,38 @@ namespace Ectype
             if (child == null) return;
             bool hit = false;
             for (int i = 0; i < _holders.Count && !hit; i++)
-                if (_holders[i].Detached.Contains(child)) hit = true;
+                foreach (Placement p in _holders[i].Placed)
+                    if (p.Detached.Contains(child)) { hit = true; break; }
             if (!hit) return;
             foreach (Holder h in _holders.ToArray())
                 if (h.Loader != null) Reapply(h.Loader);
         }
 
+        /// <summary>Verbose: "perk route - actor N contributes M modifier(s) to K ship(s) ..."
+        /// whenever a holder's totals change.</summary>
         private static void LogState(Holder h)
         {
-            string state = h.Applied.Count + (h.Applied.Count > 0 && h.Ship == null ? " pending" : "") +
-                           "/" + h.Detached.Count;
+            int mods = 0, ships = 0, detached = 0;
+            bool character = false;
+            foreach (Placement p in h.Placed)
+            {
+                mods += p.Mods.Count;
+                if (p.Ship != null) ships++; else character = true;
+                detached += p.Detached.Count;
+            }
+            bool pending = h.Routed > 0 && h.Placed.Count == 0;
+            string state = mods + "/" + ships + "/" + character + "/" + detached + "/" + pending;
             if (state == h.LoggedState) return;
             h.LoggedState = state;
+            if (!Plugin.Verbose) return;
             string who = "actor ?";
             try { if (h.Player != null) who = "actor " + h.Player.ActorId; }
             catch (Exception) { }
-            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: characterShip - " + who + " contributes " +
-                                                   h.Applied.Count + " modifier(s)" +
-                                                   (h.Applied.Count > 0 && h.Ship == null
-                                                    ? ", waiting for a player ship." : " to the player ship") +
-                                                   (h.Detached.Count > 0
-                                                    ? " and " + h.Detached.Count + " detached module tree(s)." : "."));
+            string line = "Ectype: perk route - " + who + " contributes " + mods + " modifier(s) to " +
+                          ships + " ship(s)" + (character ? " and the character" : "") +
+                          (detached > 0 ? ", " + detached + " detached module tree(s)" : "") +
+                          (pending ? ", waiting for a ship" : "") + ".";
+            Plugin.Log.LogInfo(line);
         }
 
         /// <summary>
@@ -344,13 +473,16 @@ namespace Ectype
                 {
                     try
                     {
-                        _boundGame.OnPlayerShipSet -= OnShipSet;
+                        _boundGame.OnPlayerShipSet -= RequestPass;
                         if (_busBound && _boundGame.ModelEventBus != null)
                             _boundGame.ModelEventBus.OnPlayerRemoved.Unsubscribe(OnPlayerRemoved);
                     }
                     catch (Exception) { }
                 }
-                game.OnPlayerShipSet += OnShipSet;
+                // ClientGame.OnPlayerShipSet: a ship finished spawning. Each ship's start raises
+                // it, so a mission with several ships raises it several times; the pass these
+                // requests trigger runs once, on the next frame.
+                game.OnPlayerShipSet += RequestPass;
                 _boundGame = game;
                 _busBound = false;
                 // The previous game's players are gone with it.
@@ -363,17 +495,9 @@ namespace Ectype
             }
         }
 
-        /// <summary>ClientGame.OnPlayerShipSet: a ship finished spawning. Each ship's start raises
-        /// it, so a mission with several ships raises it several times; the pass these requests
-        /// trigger runs once, on the next frame, and moves only holders whose ship changed.</summary>
-        private static void OnShipSet()
-        {
-            _passDue = true;
-        }
-
-        /// <summary>ModelEventBus.OnPlayerRemoved: the leaving player's contribution comes off
-        /// the ship. Published after the character's destroy is queued, so match by
-        /// reference rather than through the character.</summary>
+        /// <summary>ModelEventBus.OnPlayerRemoved: the leaving player's contribution comes off.
+        /// Published after the character's destroy is queued, so match by reference rather than
+        /// through the character.</summary>
         private static void OnPlayerRemoved(CG.Game.Player.Player player)
         {
             try
@@ -382,23 +506,53 @@ namespace Ectype
                 {
                     Holder h = _holders[i];
                     if (!ReferenceEquals(h.Player, player) && h.Loader != null) continue;
-                    RemoveFromShip(h);
+                    RemoveAll(h);
+                    h.Routed = 0;
                     LogState(h);
                     _holders.RemoveAt(i);
                 }
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError("Ectype: characterShip player-removal handling failed: " + e);
+                Plugin.Log.LogError("Ectype: perk route player-removal handling failed: " + e);
             }
+        }
+
+        // ------------------------------------------------------------------ seat hooks
+
+        /// <summary>
+        /// Postfixes on the seat ability's start and stop, so a seatFleet holder is rebuilt the
+        /// frame after they sit or stand rather than at the next pass. The seat ability runs on
+        /// every client's copy of the character. Patched by name on its own: a miss leaves the
+        /// four-a-second pass to notice seat changes.
+        /// </summary>
+        internal static void ApplyPatches(Harmony harmony)
+        {
+            MethodInfo postfix = AccessTools.Method(typeof(CharacterShipRoute), nameof(SeatChanged));
+            foreach (string name in new[] { "AbilityStarted", "AbilityStopped" })
+            {
+                MethodInfo target = AccessTools.DeclaredMethod(typeof(SittingInChair), name);
+                if (target == null)
+                {
+                    Plugin.Log.LogWarning("Ectype: SittingInChair." + name + " not found (game update?); " +
+                                          "seatFleet perks follow seat changes at the next pass instead.");
+                    continue;
+                }
+                harmony.Patch(target, postfix: new HarmonyMethod(postfix));
+            }
+        }
+
+        private static void SeatChanged()
+        {
+            if (_holders.Count > 0) _passDue = true;
         }
     }
 
     /// <summary>
-    /// Postfix: applies the holder's characterShip effects after vanilla has applied the other
-    /// three targets. Finalizer: a throw inside ReApplyPerks skips the postfix but has already
-    /// run ResetPerks, which took the contribution off - the finalizer puts it back. The
-    /// postfix also reports framework effects that reach no stat in their target's tree.
+    /// Postfix: applies the holder's routed effects after vanilla has applied the stock
+    /// targets. Finalizer: a throw inside ReApplyPerks skips the postfix but has already run
+    /// ResetPerks, which took the contribution off - the finalizer puts it back. The postfix
+    /// also reports framework effects that reach no stat in their target's tree.
     /// </summary>
     [HarmonyPatch(typeof(PlayerPerkLoader), "ReApplyPerks")]
     internal static class Patch_PlayerPerkLoader_ReApplyPerks_CharacterShip
@@ -424,12 +578,12 @@ namespace Ectype
             if (!Plugin.PatchesApplied || !EctypeConfig.Enabled.Value) return;
             try { CharacterShipRoute.Reapply(loader); }
             catch (Exception e)
-            { Plugin.Log.LogError("Ectype: characterShip reapply failed: " + e); }
+            { Plugin.Log.LogError("Ectype: perk route reapply failed: " + e); }
         }
     }
 
     /// <summary>Postfix: a detached module root that gains a parent has just had the parent's
-    /// modifiers replayed into it; the characterShip contribution is rebuilt so it sits there
+    /// modifiers replayed into it; every routed contribution is rebuilt so it sits there
     /// once.</summary>
     [HarmonyPatch(typeof(StatTagCollection), "RegisterChildCollection")]
     internal static class Patch_StatTagCollection_RegisterChildCollection_CharacterShip
@@ -440,12 +594,12 @@ namespace Ectype
             if (!Plugin.PatchesApplied || !EctypeConfig.Enabled.Value) return;
             try { CharacterShipRoute.OnChildAttached(collection); }
             catch (Exception e)
-            { Plugin.Log.LogError("Ectype: characterShip re-parent handling failed: " + e); }
+            { Plugin.Log.LogError("Ectype: perk route re-parent handling failed: " + e); }
         }
     }
 
     /// <summary>Postfix: ResetPerks removes the player-sourced modifiers and the parked seat
-    /// lists; this removes the holder's characterShip modifiers alongside them.</summary>
+    /// lists; this removes the holder's routed modifiers alongside them.</summary>
     [HarmonyPatch(typeof(PlayerPerkLoader), "ResetPerks")]
     internal static class Patch_PlayerPerkLoader_ResetPerks_CharacterShip
     {
@@ -455,7 +609,7 @@ namespace Ectype
             if (!Plugin.PatchesApplied || !EctypeConfig.Enabled.Value) return;
             try { CharacterShipRoute.Remove(__instance); }
             catch (Exception e)
-            { Plugin.Log.LogError("Ectype: characterShip reset failed: " + e); }
+            { Plugin.Log.LogError("Ectype: perk route reset failed: " + e); }
         }
     }
 }

@@ -134,6 +134,7 @@ namespace Ectype
         {
             if (!Matches(rec.Manifest, spec)) return;
             perk.Target = CharacterShipRoute.CharacterShip;
+            PerkScopes.Set(perk.ContainerGuid, PerkScopes.CharacterShipScope);
             perk.Levels = Levels(rec, spec);
         }
 

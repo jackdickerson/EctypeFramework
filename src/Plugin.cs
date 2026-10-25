@@ -95,6 +95,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
             try { SessionStats.Install(); }
             catch (Exception e) { Log.LogError("Ectype: session stats install failed: " + e); }
+            try { CharacterShipRoute.ApplyPatches(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: perk route seat hooks failed: " + e); }
             try { CharacterStatusLife.ApplyPatch(harmony); }
             catch (Exception e) { Log.LogError("Ectype: character status death hook failed: " + e); }
             SessionData.SessionStarted += CharacterStatusSync.ExpirePendingAtSessionStart;

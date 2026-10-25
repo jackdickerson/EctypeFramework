@@ -324,9 +324,11 @@ namespace Ectype
             // PerkBuff's ctor initialises none of its lists, and the reapply path indexes
             // Levels[level-1].Mods unchecked.
             perk.RequiredFor = new List<PerkBuffRef>();
-            PerkBuffTarget target;
-            TryParseTarget(spec.target, out target);   // validation refused an unknown one
-            perk.Target = target;
+            // Validation parsed the scope and refused an unknown target; a routed scope is
+            // written as the one value the game's loader skips and recorded by GUID.
+            PerkScope scope = spec.Scope ?? PerkScopes.CharacterScope;
+            perk.Target = scope.GameTarget;
+            PerkScopes.Set(guid, scope);
             perk.DisplayType = hero ? PerkDisplayType.Hero
                                     : DisplayTypeFor(spec.row, spec.wide);
             perk.BuyingDisabled = false;
@@ -340,28 +342,8 @@ namespace Ectype
             rec.Perks[spec.key] = perk;
         }
 
-        /// <summary>
-        /// PerkBuffTarget is the routing that makes "when manning" work: Character goes to
-        /// player.Stats, Seat to the manned module only, SeatShip to the ship's stat
-        /// collection while seated in any chair. characterShip is value 4, which the perk
-        /// loader's switch skips; CharacterShipRoute applies it to the ship's collection for
-        /// every holder, seated or not. Manifest validation refuses an unrecognised name.
-        /// </summary>
-        internal static bool TryParseTarget(string s, out PerkBuffTarget target)
-        {
-            switch ((s ?? "").Trim().ToLowerInvariant())
-            {
-                case "seat": target = PerkBuffTarget.Seat; return true;
-                case "seatship": target = PerkBuffTarget.SeatShip; return true;
-                case "": case "character": target = PerkBuffTarget.Character; return true;
-                case "charactership": target = CharacterShipRoute.CharacterShip; return true;
-                default: target = PerkBuffTarget.Character; return false;
-            }
-        }
-
-        internal const string KnownTargets = "character, seat, seatShip, characterShip";
-
-        /// <summary>A target's authored name; value 4 has no enum member to print.</summary>
+        /// <summary>A stock target's name; value 4, the framework-routed targets' shared value,
+        /// prints as characterShip (PerkScopes names a framework perk's own target).</summary>
         internal static string TargetName(PerkBuffTarget target)
         {
             return target == CharacterShipRoute.CharacterShip
