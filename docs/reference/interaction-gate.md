@@ -42,7 +42,7 @@ it shows and logs nothing.
 | `Actor` | The acting `Photon.Realtime.Player`. Null only outside a room. |
 | `ActorNumber`, `ActorIsHost` | Its actor number (0 outside a room); whether it is the room's host. |
 | `Character` | The actor's character, or null (not spawned, spectating). |
-| `Interactable` | What is being used. An item sitting in a socket is the socket, as the game's own raycast reads it. On the owner side it is the part the request names: the seat, the socket, the door, the airlock, the power component, the panel, or the network object an ownership event names. |
+| `Interactable` | What is being used. One thing reaches every chokepoint, on both sides, as one component: an item is its `CarryableObject` (not its grab handle), an item sitting in a socket and a socket's interactable are the `CarryablesSocket`, as the game's own raycast reads them. Otherwise it is the part the chokepoint names: the seat, the terminal, the door, the airlock, the power component, the panel, the module, or the network object an ownership event names. A gate that tests a type should still prefer `GetComponent` on it. |
 | `Ship` | The player ship `Interactable` belongs to, through `Topology.ShipOfPart`, or null. |
 | `Kind` | What the player is trying to do (below). |
 | `Side` | `Client` or `Owner` (below). |
@@ -77,10 +77,11 @@ screen, an enhancement panel, a minigame). A control that sits outside the objec
 is registered by that object as it starts: a door's clickers, an airlock panel's lever and
 safety switch, a panel's switch and minigame, a seat's clicker, a module terminal's clicker, a
 repair's and a defect's clicker. A switch is judged by what it switches: a power switch when a
-module above it names it as its power switch, else the kind of the component holding the value
-it controls (the component the owner side judges when the switch's request arrives). A switch
-with no module above it is a power switch; one met while its module is still being assembled
-keeps that answer and is read again two seconds later, at most three times. Where the
+module above it names it as its power switch, else exactly as the component holding the value
+it controls is judged (the component the owner side judges when the switch's request arrives).
+A switch with no module above it and no value holder is a power switch; one met while its
+module is still being assembled keeps that answer and is computed again two seconds later,
+three computations in all. Where the
 chokepoint itself says what is happening, the chokepoint names the kind: a socket request, a
 door or airlock request, a power request, the upgrade tool.
 
@@ -104,7 +105,7 @@ which never cross the network.
 | A repair or a defect repair starting | Nothing starts: no instant-win roll, no skill modifier; warning. |
 | The station activation event (clone tubes, the periscope, a mod's own station) | The station does not start; warning. |
 | The carry interaction (pick up, insert, take out) | Nothing happens; warning. A swap at an occupied socket is judged as all three of its steps: the insert, the release and the pick-up of the old item. |
-| The pick-up itself, one frame later, and the pick-up that follows a swap | Nothing is requested, and the carry lock the game set is cleared; warning. |
+| The pick-up itself, at the end of the click's frame, and the pick-up that follows a swap | Nothing is requested, and the carry lock the game set is cleared; warning. |
 | The module upgrade tool's target check | The module is an invalid target and the tool stops; warning. |
 
 Each station is refused at its own entry, before the game changes anything. The game raises
@@ -160,14 +161,28 @@ changes their owner on each client by itself when a player takes one (209) or is
 (210), without asking the owner. The ownership update (212) sets owners on any object, and only
 the game's host sends it.
 
+- **Either judge refusing returns the object to its previous owner.**
 - **The owner decides.** The client that owns the object, or the host for an object whose owner
   is absent, judges the change. On a refusal it ignores the change and hands the object back to
   itself. The server delivers that hand-back after the refused change to every client, so a
-  client that applied the change, with or without the framework, falls back to the owner. A
-  client without the framework is therefore harmless for ownership.
+  client that applied the change, with or without the framework, falls back to the owner.
 - **The taker's own game judges its own request too**, with its client-side verdict. On a
   refusal it answers the game's pending pick-up as a failure, so the carry interaction is not
-  left waiting for an owner change that never comes.
+  left waiting for an owner change that never comes, and hands the object back to the owner it
+  still records. Every client that applied the request falls back with it, so the room
+  converges even where the owner allowed the change. An owner that answers a request-only
+  object by handing it over gets it handed back by the taker on the next frame.
+- **A grab that loses a race is settled too.** When PUN refuses the local player's takeover
+  because the item changed hands first (two players grabbing one item, or a grab during a
+  hand-back), the pending pick-up is answered as a failure, so the grabber can carry again.
+- **An ownership update from anyone but the host** has its refused pairs rewritten to the
+  current owner; the rest of the update applies unchanged.
+- **A client without the framework is harmless for ownership once the hand-back arrives**, about
+  one round trip to the owner after its own request came back. Until then it holds the item. Its
+  game drops an item it is still pulling in when the hand-back lands (the pull takes about 0.3 s
+  per metre); a pick-up that completed before the hand-back stays in that player's hands on
+  their game, while the owner keeps simulating it, until they put it down. A taker without the
+  framework whose request a request-only owner refused waits on it, locked, as in the game.
 - Every client that judges an ownership change must give the same answer. A gate that differs
   between the owner and the taker leaves the taker holding an item the owner then takes back.
 
@@ -276,7 +291,7 @@ consistency rule, which is why the vocabulary would be closed rather than free c
 
 - **A client without the gate gets no prompt hiding and no warning.** The owner side still
   drops its requests, so the player clicks and nothing happens; an item such a player takes
-  over is handed back by its owner a moment later. Install the gating mod on every client.
+  over is handed back by its owner about one round trip later (see Ownership changes). Install the gating mod on every client.
 - **A seat taken before a gate started refusing stays taken**, and a minigame already running
   runs to its end. The gate judges the start, not what follows.
 - **A refused airlock safety request leaves the asker's switch shown flipped** until the next
@@ -311,6 +326,7 @@ consistency rule, which is why the vocabulary would be closed rather than free c
 | `Ectype: interaction gate: <Type>.<member> not found (game update?).`, `Ectype: interaction gate: <Type>.<method> not usable (game update?); <consequence>.` | A classifier registration seam is missing; those controls classify by type and parents alone. |
 | `Ectype: interaction gate: <hook> hook failed (logged once): <exception>` | A hook threw. It let the interaction through. |
 | `Ectype: interaction gate: the quick-warning channel failed (logged once); warnings are not shown: <message>` | Refusals still refuse; the player sees no text. |
+| `Ectype: interaction gate: the ownership failure listener could not be added; a grab that loses a race stays locked as in the game: <message>` | Refusals still work; only the race settle is missing. |
 
 Related: [topology.md](topology.md) (ships, sides, `ShipOfPart`),
 [multiplayer.md](../multiplayer.md), [troubleshooting.md](../troubleshooting.md).
