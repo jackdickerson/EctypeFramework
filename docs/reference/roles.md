@@ -230,14 +230,20 @@ effects, and otherwise left untouched.
 that uses it sets `minFrameworkVersion` to at least `0.18.1`. The effects stay on the perk asset's levels,
 where the tooltip renders them. The game's perk loader skips the value, so the game never
 applies them itself. After `ReApplyPerks` the framework deep-copies the holder's level into
-the player ship's collection with the perk as `InformationSource`, one contribution per
+the holder's ship's collection with the perk as `InformationSource`, one contribution per
 holder, and `ResetPerks` takes it off again. Both run on every client for every player, so
 every client carries every holder's effects.
 
+- The holder's ship is the room's ship when there is one. With several ships it is the
+  holder's crew ship, resolved on every client from shared data ([topology.md](topology.md));
+  a holder with no crew ship yet contributes nothing until one exists. With `[Debug]
+  VerboseLogging` on, each resolution logs `characterShip - actor <n> → ship <k> (<source>)`.
 - Each `StatMod` gets its own source object. Standing up removes every ship modifier sourced
   from the player, so a player-sourced one would not survive leaving a chair.
-- A new player ship gets every holder's contribution rebuilt onto it, and a player leaving the
-  room takes theirs off. Death and respawn keep the perk loader, so nothing is done for them.
+- Twice a second, and the frame after a ship spawns, starts dying or is destroyed, every holder
+  is resolved again and only a holder whose ship changed is rebuilt. A player leaving the room
+  takes their contribution off. Death and respawn keep the perk loader, so nothing is done for
+  them.
 - The ship's collection does not reach every module. A module joins the ship's tree through
   its build socket or by registering itself, and a core system nested in the ship prefab that
   does neither (the Fabricator) roots its own tree. The contribution therefore also goes onto
@@ -253,8 +259,9 @@ target's collection tree does not hold. It still registers and changes nothing. 
 `ReApplyPerks` the framework walks that tree (the `Stats` keys, recursively through
 `ChildCollections`, the same match `ApplyModifiers` makes) and logs one warning per perk,
 stat and target. A miss counts only when a reapply at least 10 s later still misses, because
-modules and abilities join the tree after spawn. Seat effects are checked against the player
-ship's tree, which contains every mannable module.
+modules and abilities join the tree after spawn. Seat and ship effects are checked against
+the holder's own ship's tree, which contains every mannable module. A holder with no resolved
+ship (spectating, not yet placed) is not checked.
 
 ## Related pages
 

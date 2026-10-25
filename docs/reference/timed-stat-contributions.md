@@ -21,8 +21,13 @@ TimedStatContributions.Find(ship.Stats, "mymod.afterburn");  // + c.Active, Prog
 - **Starting a live key again replaces it** on that collection, so restarts never stack.
 - **It ends** when the window closes, when `keepAlive` returns false, on `End`, when the active
   session changes, and when the collection's holder is destroyed. The last case leaves the
-  dead collection untouched. The others call `RemoveModifier` with the contribution, which is
-  the mod's source.
+  dead collection untouched. The others call `RemoveModifier` with the mod's source.
+- **A copy of the modifier is harmless.** The game deep-copies stat modifiers, and other mods
+  copy dynamic values before applying them. The copier recurses through every field, so the
+  mod's dynamic value and its source hold only an integer handle and a label, never the
+  contribution or its target collection. A copy reads the same curve while the contribution
+  runs and contributes nothing once it ends. The stat tooltip still shows the label and the
+  progress.
 - **Nothing is networked.** Progress is time on `PhotonNetwork.ServerTimestamp` since
   `startServerMs`, so machines that each start the same contribution from the same replicated
   signal and stamp agree without messages. A stamp in the past starts part-way along the

@@ -23,6 +23,8 @@ Paths are relative to the framework project folder.
 | Enemy abilities and suspension | `src/EnemyAbilities.cs` |
 | Character statuses | `src/CharacterStatus.cs` |
 | Ship arrivals | `src/ShipArrivals.cs` |
+| Ship registry and per-player ship resolution | `src/Topology.cs` |
+| Crafting-data audit | `src/CraftingAudit.cs` |
 | Timed stat contributions | `src/TimedStatContributions.cs` |
 | Ship speed surge | `src/ShipSpeedSurge.cs` |
 | HUD ability bar | `src/HudAbilityBar.cs` |
@@ -45,9 +47,15 @@ column.
 | --- | --- |
 | `PlayerDataHelper.GetPlayerRole(Dictionary<GUIDUnion,int>)` prefix (replacing) | Replaces fixed Roles array with N-tree to allow more PerkTreeDefs. N-tree seeds from framework-registered PerkTreeDefs. |
 | `PlayerPerkLoader.ReApplyPerks` prefix | null-def dereference and unchecked `Levels[level - 1]` wipe perks after `ResetPerks`; drop unknown GUIDs and perks with no levels (covers all mods' strays), plus suppressed perks so their effects never apply, and clamp a held level above the perk's `Levels.Count` to its top level (backstop for a peer whose owner did not refund at load) |
-| `PlayerPerkLoader.ReApplyPerks` postfix + finalizer | applies the holder's `characterShip` effects to `ClientGame.Current.PlayerShip.Stats`; the finalizer re-runs the apply when the method threw after `ResetPerks` had already removed them. The postfix also runs the target-reach check |
+| `PlayerPerkLoader.ReApplyPerks` postfix + finalizer | applies the holder's `characterShip` effects to the holder's resolved ship (`ClientGame.PlayerShip` only while one ship object exists, else `Topology`'s crew-ship rules); the finalizer re-runs the apply when the method threw after `ResetPerks` had already removed them. The postfix also runs the target-reach check against the same ship |
 | `PlayerPerkLoader.ResetPerks` postfix | removes the holder's `characterShip` modifiers, each by its own source |
-| `ClientGame.OnPlayerShipSet` (subscribed) | raised from `PlayerControlledShip.Start` after `Awake` has set `PlayerShip`; rebuilds every holder's `characterShip` contribution onto the new ship |
+| `ClientGame.OnPlayerShipSet` (subscribed) | raised from `PlayerControlledShip.Start` after `Awake` has set `PlayerShip`, once per ship; requests the `characterShip` pass on the next frame, which rebuilds only holders whose resolved ship changed |
+| `PlayerControlledShip.Awake` postfix, `OnDestroy` prefix, `NetPublishShipDeathBegan` postfix | the `Topology` ship registry. `Awake` runs on every client for every ship and is where the ship assigns itself as the game's player ship; the death-began method is an RPC sent to all and sets `StartedDeath` |
+| `ClientGame.PlayerShip` (read) | presentation only (the status-marker lock gate), and simulation only while `Topology.Multi` is false. A multi-ship mod can postfix the getter to return the viewing client's ship |
+| `ClientGame.Players`, `Player.ActorId`, `Player.ZonedPlatform` / `Platform`, `OrbitObject.Faction`, `ShipHull.Ship`, `CarryableObject.ParentPlatform` (read) | `Topology`'s answers: a character by actor, the ship a character is aboard, a part's ship, sides |
+| Plugin `com.captainchunck.voidcrew.fleet`: `VoidCrewFleet.FleetApi.ApiVersion`, `ShipOfPlayer(int)`, `TeamOf(int)`, `TeamOfShip(int)`, events `ShipsChanged` / `TeamsChanged` (bound by reflection); room property `VCF_Ships` (read, shape-checked) | `Topology`'s crew-ship and team answers and ship numbering under Void Crew Fleet. A missing member is logged once and answered from game data |
+| `GuidedProjectile.Target`, `SyncedProjectile.Source` / `Velocity` / `ProjectileId` (read) | the per-shot ship choice for `IncomingProjectileSpeed` |
+| `ObjectMarkerHelpers.GetAffiliationBasedOnFaction(OrbitObject)` (called) | status-marker colour; the same helper the game's own object markers use |
 | `ModelEventBus.OnPlayerRemoved` (subscribed) | raised by `ClientGame.RemovePlayerInternal` on every client; removes the leaving player's `characterShip` contribution |
 | `StatTagCollection.RegisterChildCollection` postfix | a detached module root carrying a `characterShip` contribution has just had its new parent's modifiers replayed into it; every holder is rebuilt so the contribution is not counted twice |
 | `PlayerPerkLoader.ReApplyPerks` postfix | catch-up for ability adoption: the spawn-time sweep skips a role whose registration has not settled, and this path runs on every perk change |
@@ -73,7 +81,7 @@ column.
 | `CustomPunCharacter.OnPlayerEnteredRoom` postfix | late-join sync for running registered abilities, sent to the joiner alone and only if VoidManager reports them running the framework |
 | `ChannelGrapplingHook.Awake` postfix | registers the framework's grapple stats onto that hook's own stat collection, and a hook-scoped alias onto the cooldown the base class already registered |
 | `PlayerControlledShip.RegisterStats` postfix | registers the framework's ship-scoped stats (`IncomingProjectileSpeed`, and `ShipDrag` over the `MovingSpacePlatform` on the same GameObject, since `Platform` is assigned after `RegisterStats` runs) onto the player ship's own collection |
-| `SyncedProjectilesSynchronizer.RegisterNpcProjectile` postfix | applies the incoming-projectile-speed factor to each hostile NPC shot as it registers |
+| `SyncedProjectilesSynchronizer.RegisterNpcProjectile` postfix | binds each hostile NPC shot to one ship as it registers and applies that ship's incoming-projectile-speed factor |
 | `VoidJumpSystem.ChangeActiveStateByIndex` prefix + postfix | every void-jump state change on every machine: the owner's from `UpdateState`, everyone else's from `OnPhotonSerializeView`. Raises `ShipArrivals` |
 | `VoidJumpSpinningDown.enterTimestamp`, `VoidJumpInterdiction.enterTimestamp` (read) | the replicated start of the exit state, plus its length constant, stamps an arrival on the server clock |
 | `ModDynamicValue<FloatModifier, float>` (subclassed), `StatTagCollection.ApplyModifiers` / `RemoveModifier` (called) | a timed stat contribution's amount is rewritten in place through the game's dynamic-value recalculation, which dirties the stat in each collection that registers it; removal is by source |
@@ -86,6 +94,8 @@ column.
 | `BaseToggleableAbility.LastUsageTimestamp`, `ActTimer.idleStartTime`, `BehShieldGenerateAOE.AbilityStartTime`, `ActReinforce.reinforceStartTimestamp`, `NpcReinforcementCaller._callStartTimeInMilliseconds` (written) | the server-timestamp clocks suspension moves forward |
 | `NpcAbilityMarkerProvider.Markers`, `MarkerVE.abilitySchedule` / `abilityTime` / `AbilityProgress` (read, written) | the game's cast and call countdown, paused and resumed with the enemy |
 | `RuntimeAssetsRegister` / `PerkBuffContainer` / `PerkTreeContainer` / `StatTable` | runtime asset + stat surface |
+| `RuntimeAssetsRegister.GetAllIds`, `CarryableContainer.HasItem`, `CraftingDataContainer.HasItem` (called) | the crafting-data audit: a carryable with no crafting definition makes `GetPlayerShipRecycledAlloyValue` throw when it dereferences the missing definition's crafting rules |
+| `Client.Utils.ObjectExtensions.DeepCopy` (called, dev tools build only) | the timed-stat copy self-test runs the game's own copier, the one the perk loader runs on every reapply |
 | `LootTable.ApplyLimiters` postfix, patched by name after the attribute pass | not role-related - appends registered items to each per-roll table copy; see [reference/loot-tables.md](reference/loot-tables.md). A miss costs loot alone |
 | `LootTable.Loot`, `LootTableEntry` (read, appended on the copy) | the anchor baseline (smallest `Amount`, union of `PossibleSpawnLocationTypes`, authored entries only), the rarities the table offers, and the added entry |
 | `Resources.LoadAll<LootTable>("Loot")`, `Resources.FindObjectsOfTypeAll<LootTable>()` | the loot warm-up's table list: every shipped table sits in `Resources/Loot`, and nothing else does |

@@ -1,8 +1,8 @@
 # Multiplayer
 
 What every player in a room needs when a mod depends on EctypeFramework, how a room's mod set
-is matched, how the game and VoidManager refuse a join, and what a dependent mod has to tell
-its players. The VoidManager behaviour described here is that of VoidManager 1.2.11.
+is matched, how the game and VoidManager refuse a join, what a dependent mod has to tell its
+players, and what changes in a room with more than one player ship. The VoidManager behaviour described here is that of VoidManager 1.2.11.
 
 ## The short version
 
@@ -160,3 +160,42 @@ For a mod that declares `All`:
 - Hosting with the mod installed marks the session as modded and turns off progression for it,
   and the mark lasts until the game restarts. Disabling the mod in its config does not undo it.
 - A player who has the mod cannot join a host who lacks it. The asset check is symmetric.
+
+## Rooms with more than one ship
+
+A mod can put several player ships in one room, for co-op crews or for teams playing against
+each other. The game was written for one ship and reads it through one getter. Such a mod can
+make that getter mean "the ship this client is viewing", which differs between clients and
+changes as a player walks between ships or a spectator switches view.
+
+Anything a mod changes on every client must therefore resolve each player's ship from data
+every client shares, never from that getter. The framework does this itself and offers the same
+resolution to dependents as [`Topology`](reference/topology.md): the list of living ships, each
+player's crew ship, the ship a character stands in, the ship a part belongs to, and whether two
+things are on opposing sides. With one ship in the room every answer is that ship, so nothing
+changes there.
+
+What the framework's own features do with several ships:
+
+- **`characterShip` perks** land on each holder's own crew ship, resolved per holder on every
+  client. A holder with no crew ship yet (spectating, not placed, ship dying) contributes
+  nothing until one exists. Twice a second, and whenever a ship spawns or dies, each holder is
+  resolved again, and only a holder whose ship changed is rebuilt. A player boarding an enemy
+  ship never buffs it.
+- **`seatShip` perks** land on the ship of the chair the player sits in. The game applies them
+  from the chair's own events.
+- **`IncomingProjectileSpeed`** is per ship. Each hostile shot takes the factor of one ship,
+  chosen as it registers from what every client sees at that moment: the guided shot's target
+  ship, else the hostile ship closest to the shot's line. A shot fired by a player ship is never
+  slowed.
+- **`ShipArrivals.Arrived`** fires once per ship per jump, each time naming that ship.
+  `ShipArrivals.FleetArrived` fires once per jump, after the last ship is out of the void
+  ([ship-arrivals.md](reference/ship-arrivals.md)).
+- **Status markers** follow the ship this client views for target-lock gating, and take their
+  colour from the game's own affiliation rule, which a team mod can make side-relative.
+- **Enemy ability suspension** lifts the enemy's modifiers from every player ship.
+
+[topology.md](reference/topology.md) lists the rules a dependent follows in such a room: never
+read the player-ship getter for another player, spawn through the game's own paths, keep live
+objects out of dynamic stat rules, do not graft components another mod indexes, and register
+crafting data for every carryable.

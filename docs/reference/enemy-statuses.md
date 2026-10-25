@@ -50,8 +50,11 @@ EnemyStatuses.IsActive(target, "mymod.breach");      // + RemainingSeconds, Stac
   [../multiplayer.md](../multiplayer.md).
 - **The marker is the game's own countdown visual.** It has the same `ObjectMarkerData` shape
   the game builds for an NPC's reinforcement-call channel, so the stock viewer draws and
-  animates it. `Icon` null falls back to the stock ability icon. `MarkerRequiresTargetLock`
-  gates visibility on target lock.
+  animates it. `Icon` null falls back to the stock ability icon. The marker's colour comes
+  from the game's own affiliation rule for the target, the one its object markers use, then the
+  marker table's per-asset override. `MarkerRequiresTargetLock` gates visibility on the target
+  locks of the ship this client is viewing, and follows the view when it moves to another
+  ship.
 - **Presentation is capped.** `[EnemyStatuses] MarkerCap` and `VfxCap` bound concurrent
   markers and visuals; past the cap a status runs undecorated rather than failing. `Markers`
   and `Vfx` turn each layer off outright. See [config.md](config.md).

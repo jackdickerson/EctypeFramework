@@ -248,6 +248,16 @@ Two installed roles list the same item in their `unlocks`. The first to register
 unlock definition, and the second perk registers normally but grants nothing for that item.
 Remove the entry from one role, or give each role its own item.
 
+### `Ectype: carryable '<name>' (<guid>) is registered with no crafting data; it breaks the end-of-run alloy tally, ...`
+
+A mod registered a carryable at runtime without a crafting definition under the same GUID. The
+game's recycled-alloy count reads the crafting rules of every carryable on the player ship with
+no null check, so it throws on this one. It runs on the host at session start and at the end of
+every run, while rewards are computed, in a one-ship vanilla-rules room too. The line names the
+asset; the mod that registers it needs to register crafting data for it. The framework checks
+each runtime asset once, after its own roles have settled, and logs nothing in an install with
+no such carryable.
+
 ### `Ectype: perk '<name>' (target <t>) has an effect on <stat> that matches no stat in <where> collection tree - it stays registered and changes nothing there.`
 
 A perk's effect names a stat that the perk's `target` does not hold. A stat's category never
@@ -567,6 +577,24 @@ mod does not throw when the host activates it.
 
 A registered ability reaches only peers whose mod list carries the framework. A peer without it
 sees no message it cannot act on and ignores keys it has no ability for.
+
+### Rooms with more than one ship
+
+Each check below is a log line a tester can look for. The verbose ones need `[Debug]
+VerboseLogging` on, on every client compared.
+
+| Line | What it shows | Check |
+| --- | --- | --- |
+| `Ectype: topology: <n> ship(s), provider=<single\|fleet>.` | The settled ship count, about two seconds after each mission start and each ship loss. `provider=fleet` means Void Crew Fleet's API is bound. | A vanilla mission logs `1 ship(s), provider=single`. A three-ship Fleet mission logs `3 ship(s), provider=fleet` on every client. |
+| `Ectype: topology: Void Crew Fleet <version> bound, API v<n>.` | Fleet was found at start-up. A `; missing <members>` tail names API members this Fleet lacks; those answers come from game data. | Logged once per launch with Fleet installed. |
+| `Ectype: topology: Fleet's VCF_Ships room property failed its shape check (<why>); ship numbers come from view-id rank instead.` | Fleet's published ship list was not the expected shape, so ship numbers come from spawn order. | Numbers can then differ on a client that joined after a ship was lost. |
+| `Ectype: characterShip - actor <n> → ship <k> (<source>).` (verbose) | Where one holder's `characterShip` contribution sits, and which rule chose it: `single`, `only living ship`, `fleet crew`, `aboard, same faction`, `pending`. | With holders on two ships, every client, the host included, logs the same `<k>` for each actor. A PvP boarder never resolves to the enemy's ship. |
+| `Ectype: IncomingProjectileSpeed: shot <id> → ship <k>, factor <f>.` (verbose; with one ship, only when the factor is not 1) | The ship a hostile shot was bound to as it registered, and the factor it carries. | Two ships with different factors: a shot aimed at each carries its own ship's factor, and the same `<id>` logs the same `<k>` on both clients. |
+| `Ectype: IncomingProjectileSpeed on ship <k> now <f>.` (verbose) | One ship's factor changed; its shots in flight take the new value. | Only that ship's shots change speed. |
+| `Ectype: status marker lock gate bound to ship <k>.` (verbose) | The ship whose target locks gate lock-only status markers on this client. | In co-op, walking from one ship into another logs the new ship. |
+| `Ectype: fleet arrived from the void (<n> ship(s), <kind>, server <ms>, <k> subscribers).` | `ShipArrivals.FleetArrived` fired. | A three-ship jump logs three `ship arrived from the void` lines and one of these on each client. |
+| `Ectype: topology: ship <k> started dying.` (verbose) | The death-start broadcast reached this client. Holders on that ship go pending at the next pass. | Logged once per lost ship on every client. |
+| `Ectype: dev self-test: timed stat copy passed - DeepCopy returned; <n> objects walked, no StatCollection, no Unity object other than a ScriptableObject.` (dev tools build only) | A stat modifier carrying a live timed-stat value survives the game's deep copy without dragging in the target collection. A `FAILED` line names what the copy reached. | Logged once per launch, a few seconds after a ship or character exists. |
 
 ## Utility APIs
 

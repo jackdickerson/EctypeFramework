@@ -47,7 +47,7 @@ everything resumes from where it stopped. It runs on every client that has the s
   reset. The total is capped at the status's own end, which every client shares, so a client
   the status reached late freezes the same span.
 - **Effects are lifted.** An ability's stat modifiers carry the ability as their source.
-  Every modifier on the sector's ships, the players and the enemy whose source is one of the
+  Every modifier on the sector's ships, every player ship, the players and the enemy whose source is one of the
   enemy's abilities or stat actions is removed, from the outermost collection holding it, and
   re-applied at the end. A source whose state changed meanwhile (an ability that stopped or
   started, a stat action that changed target) is left to manage its own. Nothing is

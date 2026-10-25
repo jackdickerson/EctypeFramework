@@ -58,8 +58,9 @@ Register them from literals that are identical on every client.
 
 | Type | Purpose |
 | --- | --- |
-| `ShipArrivals` | Events raised on every machine when the player ship leaves the void. `Arrived` carries a `ShipArrival`; `LeftNormalFlight` fires when the ship leaves the flight state in which cruise control is allowed; `InNormalFlight(ship)` queries it. |
-| `ShipArrival` | `Ship`, `Kind`, and `ServerMs`, the moment the ship left the void on the Photon server clock. A timed effect started from `ServerMs` has the same phase on every machine. |
+| `Topology` | Which player ships exist and which is whose, answered the same on every client. `Ships` (living, by ship number), `Multi`, `CrewShipOf(player)`, `AboardShipOf(player)`, `ShipOfPart(component)`, `ShipNumberOf(ship)`, `ShipByNumber(n)`, `ForceOf(ship or player)`, `Hostile(a, b)`, `Changed`, `Stamp`, `Provider`. Use it instead of the game's player-ship getter for anything about another player; see [reference/topology.md](reference/topology.md). |
+| `ShipArrivals` | Events raised on every machine when a player ship leaves the void. `Arrived` carries a `ShipArrival` and fires once per ship; `FleetArrived` fires once per jump, after every ship that jumped is back in normal flight; `LeftNormalFlight` fires when a ship leaves the flight state in which cruise control is allowed; `InNormalFlight(ship)` queries it. |
+| `ShipArrival` | `Ship`, `Kind`, and `ServerMs`, the moment the ship left the void on the Photon server clock. A timed effect started from `ServerMs` has the same phase on every machine. For `FleetArrived`: the last ship to arrive, the worst kind, the latest stamp. |
 | `ShipArrivalKind` | `Normal`, `Interdiction`, `Unknown`. Treat `Unknown` as not normal. |
 | `TimedStatContributions` | One `StatMod` on any `StatTagCollection` whose amount follows a curve over a fixed window. `Start(key, target, statAlias, type, amountAt, durationSeconds, startServerMs, keepAlive, label)`, `End`, `Find`, `LinearDecay(startAmount)`. Starting a live key again replaces it. Nothing is networked: machines starting from the same server timestamp agree. |
 | `TimedStatContribution` | The handle `Start` returns: `Key`, `Label`, `Target`, `StatId`, `StartServerMs`, `DurationSeconds`, `Active`, `Progress`, `Amount`, `EndReason`. |
