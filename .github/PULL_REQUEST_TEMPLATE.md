@@ -11,4 +11,5 @@ Game version and what you ran:
 - [ ] `CHANGELOG.md` line added, if a dependent mod can observe the change
 - [ ] Doc comments on new public members
 - [ ] Every new patch body is wrapped in a try/catch that logs
+- [ ] `tools\offline-checks.ps1` passes, if patches, by-name lookups or public API changed
 - [ ] Docs under `docs/` updated
