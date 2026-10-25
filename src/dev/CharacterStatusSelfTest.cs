@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using CG.Game;
 using CG.Game.Player;
 using ExitGames.Client.Photon;
+using HarmonyLib;
 using Photon.Pun;
 using UnityEngine;
 
@@ -46,7 +47,10 @@ namespace Ectype
     ///   and an answer for a request nobody sent is ignored;
     /// - a presentation copy on this client's character leaves the movement stat and the
     ///   OnApplied count as they were, is not IsActive, and answers IsPresented until hidden;
-    /// - the death hook ends a running status and a copy on the character;
+    /// - an OnRemoved that applies the same key again starts a fresh status with one stack and
+    ///   leaves no modifier of the ended one;
+    /// - the death hook is a postfix on the life-state setter, and ends a running status and a
+    ///   copy on the character;
     /// - with another player's character in the room, TryRemove on it answers Authority.
     /// The templates accept requests only from 0.01 m, so no other player can use them.
     /// </summary>
@@ -56,6 +60,7 @@ namespace Ectype
         private const string PlainKey = "ectype.dev.selftest-char-plain";
         private const string ExtendKey = "ectype.dev.selftest-char-extend";
         private const string PresentedKey = "ectype.dev.selftest-char-presented";
+        private const string RelapseKey = "ectype.dev.selftest-char-relapse";
         private const int Stranger = 9999;
 
         private static bool _done;
@@ -355,7 +360,7 @@ namespace Ectype
                 }.AddStat("MotorAcceleration", "percent", -0.5f);
                 CharacterStatuses.Register(presented);
                 CharacterStatusSync.Accepted.Forget(me + "/" + AcceptKey);
-                CharacterStatusSync.Accepted.Forget(me + "/*");
+                CharacterStatusSync.Flood.Forget(me.ToString());
 
                 int lines = StatusRefusalLog.Lines;
                 CharacterStatusRefusal stranger = CharacterStatusSync.HandleRequest(Stranger, Req(me, AcceptKey, 3f, 1f));
@@ -406,6 +411,36 @@ namespace Ectype
                 if (statMoved && !(strong < weak - 0.001f))
                     fails.Add("a stronger request left MotorAcceleration at " + strong.ToString("0.##") +
                               " from " + weak.ToString("0.##") + ", expected lower");
+
+                // An OnRemoved that applies the same key again starts a fresh status and leaks
+                // no modifier from the ended one.
+                int relapses = 0;
+                CharacterStatuses.Register(new CharacterStatusDef(RelapseKey)
+                {
+                    MaxStacks = 2,
+                    OnRemoved = p =>
+                    {
+                        if (relapses++ == 0 && p != null) CharacterStatuses.Apply(p, RelapseKey, 3f);
+                    },
+                }.AddStat("MotorAcceleration", "percent", -0.5f));
+                CharacterStatuses.Apply(character, RelapseKey, 3f);
+                CharacterStatuses.Remove(character, RelapseKey);
+                int relapseStacks = CharacterStatuses.Stacks(character, RelapseKey);
+                CharacterStatuses.Remove(character, RelapseKey);
+                if (relapseStacks != 1)
+                    fails.Add("a re-apply from OnRemoved left " + relapseStacks + " stack(s), expected a fresh status with 1");
+                if (Math.Abs(Accel(character) - before) > 0.001f)
+                    fails.Add("a re-apply from OnRemoved leaked a modifier: MotorAcceleration " +
+                              Accel(character).ToString("0.##") + ", expected " + before.ToString("0.##"));
+
+                // The death hook is on the life-state setter.
+                Patches info = Harmony.GetPatchInfo(AccessTools.PropertySetter(typeof(Player), "State"));
+                bool hooked = false;
+                if (info != null)
+                    foreach (Patch patch in info.Postfixes)
+                        if (patch.PatchMethod != null && patch.PatchMethod.DeclaringType == typeof(CharacterStatusLife))
+                            hooked = true;
+                if (!hooked) fails.Add("the life-state setter carries no death-hook postfix");
 
                 // Death ends the status, and a copy.
                 CharacterStatusCopies.Show(character, presented, PhotonNetwork.ServerTimestamp + 3000);
@@ -463,16 +498,18 @@ namespace Ectype
                 try { CharacterStatuses.Remove(character, AcceptKey); } catch (Exception) { }
                 try { CharacterStatuses.Remove(character, ExtendKey); } catch (Exception) { }
                 try { CharacterStatuses.Remove(character, PresentedKey); } catch (Exception) { }
+                try { CharacterStatuses.Remove(character, RelapseKey); } catch (Exception) { }
                 try { CharacterStatusCopies.Hide(character, PresentedKey); } catch (Exception) { }
                 CharacterStatusSync.Accepted.Forget(me + "/" + AcceptKey);
-                CharacterStatusSync.Accepted.Forget(me + "/*");
+                CharacterStatusSync.Flood.Forget(me.ToString());
             }
             if (fails.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: character status authority passed - actor " +
                                    Stranger + " was refused SenderMissing, a key without AcceptsRequests " +
                                    "NotAccepted, another actor's request InvalidTarget, a request from actor " + me +
-                                   " landed and a third was RateLimited, a shorter request kept the end, the " +
-                                   "death hook ended a status and a copy, a forged announcement was refused " +
+                                   " landed and a third was RateLimited, a shorter request kept the end, a " +
+                                   "re-apply from OnRemoved started clean, the death hook is on the life-state " +
+                                   "setter and ended a status and a copy, a forged announcement was refused " +
                                    "Authority, and a presentation copy changed no stat and ran no callback; " +
                                    string.Join("; ", notes.ToArray()) + ".");
             else

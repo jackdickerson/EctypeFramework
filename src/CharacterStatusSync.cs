@@ -65,6 +65,8 @@ namespace Ectype
         NoAnswer = 19,
         /// <summary>The call threw, or a message was malformed.</summary>
         Failed = 20,
+        /// <summary>Photon refused to send the request (not connected?).</summary>
+        SendFailed = 21,
     }
 
     /// <summary>
@@ -232,6 +234,10 @@ namespace Ectype
         /// <summary>Requests waiting for an answer on this client.</summary>
         internal const int MaxPending = 256;
 
+        /// <summary>Requests to one target waiting for an answer; past this the oldest completes
+        /// with NoAnswer.</summary>
+        internal const int MaxPendingPerTarget = 40;
+
         /// <summary>The requesting client's range is MaxRange times this, or MaxRange plus
         /// <see cref="RangeSlackMetres"/>, whichever is larger.</summary>
         internal const float RangeSlackFactor = 1.15f;
@@ -247,8 +253,19 @@ namespace Ectype
         /// <summary>Sent requests on the requester's client, per target and key.</summary>
         internal static readonly CharacterStatusRate Sent = new CharacterStatusRate();
 
+        /// <summary>All requests per requester on the target's client (a burst of
+        /// <see cref="SenderBurst"/> + 1, then <see cref="SenderBurst"/> a second), all requests
+        /// per target on the requester's client (<see cref="SenderBurst"/>, the same rate), and
+        /// all announcements per announcer on a receiving client. Kept apart from the per-key
+        /// buckets so no key can share their ids.</summary>
+        internal static readonly CharacterStatusRate Flood = new CharacterStatusRate();
+        internal static readonly CharacterStatusRate SentFlood = new CharacterStatusRate();
+        internal static readonly CharacterStatusRate AnnounceFlood = new CharacterStatusRate();
+
         private static readonly Dictionary<int, CharacterStatusRequest> Pending =
             new Dictionary<int, CharacterStatusRequest>();
+        private static readonly Dictionary<int, Queue<int>> PendingByTarget =
+            new Dictionary<int, Queue<int>>();
         private static readonly List<int> PendingScratch = new List<int>();
         private static int _nextRequestId;
 
@@ -534,6 +551,11 @@ namespace Ectype
                     handle.Complete(CharacterStatusRefusal.InvalidDuration);
                     return;
                 }
+                if (!Alive(target))
+                {
+                    handle.Complete(CharacterStatusRefusal.TargetDead);
+                    return;
+                }
                 CharacterStatuses.ApplyLocal(target, def, seconds, magnitude, 0, attacker, LocalSide(), false);
                 handle.Complete(CharacterStatusRefusal.None);
                 return;
@@ -543,7 +565,10 @@ namespace Ectype
             PhotonPlayer owner = PlayerOf(targetActor);
             Player me = Topology.CharacterOf(EnemyStatuses.LocalActor());
             CharacterRequestFacts f = Gather(me, target, def);
-            float s = seconds, m = magnitude;
+            // Judged as it will travel, in whole milliseconds, so a duration just above MinSeconds
+            // cannot pass here and fail on the target.
+            float s = Finite(seconds) ? (float)(Math.Round(seconds * 1000.0) / 1000.0) : seconds;
+            float m = magnitude;
             CharacterStatusRefusal r = Judge(def, ref s, ref m, f, true);
             if (r == CharacterStatusRefusal.None && (owner == null || !PeerPresence.HasFramework(owner)))
                 r = CharacterStatusRefusal.NoPeer;
@@ -558,6 +583,10 @@ namespace Ectype
             if (r == CharacterStatusRefusal.None &&
                 !Sent.TryTake(targetActor + "/" + def.Key, def.Burst, def.MinInterval, Time.unscaledTime))
                 r = CharacterStatusRefusal.RateLimited;
+            // The target's cap across keys, kept here too, so nothing is sent that it would drop.
+            if (r == CharacterStatusRefusal.None &&
+                !SentFlood.TryTake(targetActor.ToString(), SenderBurst, 1f / SenderBurst, Time.unscaledTime))
+                r = CharacterStatusRefusal.RateLimited;
             if (r != CharacterStatusRefusal.None)
             {
                 if (Plugin.Verbose)
@@ -569,14 +598,21 @@ namespace Ectype
 
             int id = unchecked(++_nextRequestId);
             if (id == 0) id = unchecked(++_nextRequestId);
+            int attackerView = attacker != null && attacker.photonView != null ? attacker.photonView.ViewID : 0;
+            if (!EctypeNet.Send(EctypeNet.CharacterStatusRequest, new[] { owner },
+                                RequestArgs(id, targetActor, def.Key, s, m, attackerView), reliable: true))
+            {
+                handle.Complete(CharacterStatusRefusal.SendFailed);
+                return;
+            }
+            // Answers are dispatched on the main thread after this returns, so registering
+            // after the send cannot miss one.
             handle.Id = id;
             handle.TargetActor = targetActor;
             handle.Deadline = Time.unscaledTime + AnswerTimeoutSeconds;
             handle.MarkSent();
             Pending[id] = handle;
-            int attackerView = attacker != null && attacker.photonView != null ? attacker.photonView.ViewID : 0;
-            EctypeNet.Send(EctypeNet.CharacterStatusRequest, new[] { owner },
-                           RequestArgs(id, targetActor, def.Key, s, m, attackerView), reliable: true);
+            TrackPerTarget(handle);
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: character status '" + def.Key + "' requested on " +
                                    target.name + " (actor " + targetActor + ", request " + id + ", " + s +
@@ -614,6 +650,29 @@ namespace Ectype
         {
             Photon.Realtime.Room room = PhotonNetwork.CurrentRoom;
             return room != null ? room.GetPlayer(actor) : null;
+        }
+
+        /// <summary>Keeps at most <see cref="MaxPendingPerTarget"/> requests to one target
+        /// waiting; the oldest beyond that completes with NoAnswer. The queue may hold ids already
+        /// answered, which are skipped, so it never grows past the cap.</summary>
+        private static void TrackPerTarget(CharacterStatusRequest h)
+        {
+            Queue<int> q;
+            if (!PendingByTarget.TryGetValue(h.TargetActor, out q))
+                PendingByTarget[h.TargetActor] = q = new Queue<int>();
+            q.Enqueue(h.Id);
+            while (q.Count > MaxPendingPerTarget)
+            {
+                int old = q.Dequeue();
+                CharacterStatusRequest oh;
+                if (!Pending.TryGetValue(old, out oh)) continue;
+                Pending.Remove(old);
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: character status '" + oh.Key + "' request " + old +
+                                       " to actor " + oh.TargetActor + " given up: " + MaxPendingPerTarget +
+                                       " newer requests to that player are waiting.");
+                oh.Complete(CharacterStatusRefusal.NoAnswer);
+            }
         }
 
         /// <summary>Completes sent requests whose answer is overdue.</summary>
@@ -687,12 +746,13 @@ namespace Ectype
             if (!EctypeNet.MatchesLayout(EctypeNet.CharacterStatusRequest, args))
                 return CharacterStatusRefusal.Failed;
             int requestId = (int)args[0];
-            if (!Accepted.TryTake(sender + "/*", SenderBurst, 1f / SenderBurst, Time.unscaledTime))
+            // One token above the requester's own cap, for requests the network bunched up.
+            if (!Flood.TryTake(sender.ToString(), SenderBurst + 1, 1f / SenderBurst, Time.unscaledTime))
             {
                 StatusRefusalLog.Report(sender, "character request flood", "*",
                                         "Ectype: refused character status requests from actor " + sender +
-                                        ": more than " + SenderBurst + " a second across all keys; they " +
-                                        "are dropped unanswered.");
+                                        ": more than a burst of " + (SenderBurst + 1) + ", then " + SenderBurst +
+                                        " a second, across all keys; they are dropped unanswered.");
                 return CharacterStatusRefusal.RateLimited;
             }
             CharacterStatusRefusal r = Decide(sender, args);
@@ -861,6 +921,14 @@ namespace Ectype
         {
             if (!EctypeNet.MatchesLayout(EctypeNet.CharacterStatusApplied, args))
                 return CharacterStatusRefusal.Failed;
+            if (!AnnounceFlood.TryTake(sender.ToString(), SenderBurst, 1f / SenderBurst, Time.unscaledTime))
+            {
+                StatusRefusalLog.Report(sender, "character announcement flood", "*",
+                                        "Ectype: refused character status announcements from actor " + sender +
+                                        ": more than a burst of " + SenderBurst + ", then " + SenderBurst +
+                                        " a second; they are dropped.");
+                return CharacterStatusRefusal.RateLimited;
+            }
             int targetActor = (int)args[0];
             string key = (string)args[1];
             if (key.Length > MaxKeyLength)
@@ -916,7 +984,6 @@ namespace Ectype
                                        sender + " arrived after its end; ignored.");
                 return CharacterStatusRefusal.InvalidDuration;
             }
-            if (!Alive(target)) return CharacterStatusRefusal.TargetDead;
             if (unchecked(endTs - now) > MaxCopyMs) endTs = unchecked(now + MaxCopyMs);
             CharacterStatusCopies.Show(target, def, endTs);
             return CharacterStatusRefusal.None;

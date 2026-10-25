@@ -85,8 +85,12 @@ namespace Ectype
         /// lives. The place for bespoke per-tick work that is not a registered stat.</summary>
         public Action<Player, float> OnTick;
 
-        /// <summary>Runs when the status ends, after its StatMods are removed. Target can
-        /// be null if the character was destroyed first.</summary>
+        /// <summary>Runs when the status ends, after its StatMods are removed and it is no longer
+        /// active, so applying the same key again from here starts a fresh status. Target can
+        /// be null if the character was destroyed first. On death it runs inside the game's own
+        /// death handling, before the game marks the character's health dead, and it can run
+        /// inside this status's own OnTick when that tick killed the character: it must not
+        /// kill the character.</summary>
         public Action<Player> OnRemoved;
 
         /// <summary>Declares that this status should be visible on every client. It changes
@@ -224,7 +228,6 @@ namespace Ectype
         private static readonly Dictionary<string, CharacterStatus> Active =
             new Dictionary<string, CharacterStatus>();
         private static readonly List<CharacterStatus> DriveScratch = new List<CharacterStatus>();
-        private static readonly List<string> ReapScratch = new List<string>();
 
         private static readonly HashSet<string> WarnedOnce = new HashSet<string>();
 
@@ -272,6 +275,14 @@ namespace Ectype
                     return;
                 }
                 if (def.Replicated) CharacterStatusSync.WarnReplicated(def);
+                if (!CharacterStatusSync.Alive(target))
+                {
+                    if (WarnedOnce.Add("dead:" + key))
+                        Plugin.Log.LogWarning("Ectype: Apply('" + key + "') on " + target.name +
+                                              " refused: the character is dead, and a status put on " +
+                                              "it now would outlive the respawn (logged once per status).");
+                    return;
+                }
                 if (target.photonView != null && !target.photonView.IsMine)
                     CharacterStatusSync.WarnNotOwned(def, target);
                 ApplyLocal(target, def, seconds, magnitude, 0, null, CharacterStatusSync.LocalSide(), false);
@@ -376,14 +387,12 @@ namespace Ectype
         public static void RemoveAll(Player target)
         {
             if (target == null) return;
-            ReapScratch.Clear();
+            // A local list: an OnRemoved that calls RemoveAll on another character must not
+            // change which statuses this call ends.
+            List<CharacterStatus> ending = new List<CharacterStatus>();
             foreach (KeyValuePair<string, CharacterStatus> kv in Active)
-                if (kv.Value.Targets(target)) ReapScratch.Add(kv.Key);
-            for (int i = 0; i < ReapScratch.Count; i++)
-            {
-                CharacterStatus live;
-                if (Active.TryGetValue(ReapScratch[i], out live)) live.End();
-            }
+                if (kv.Value.Targets(target)) ending.Add(kv.Value);
+            for (int i = 0; i < ending.Count; i++) ending[i].End();
         }
 
         /// <summary>True while the status with this key is active on the player, on this
@@ -482,12 +491,15 @@ namespace Ectype
         /// joins the set the OwnForce audience reads. A requested application never shortens or
         /// weakens a running status: its end moves only later and its magnitude only up. A
         /// status on a character this client owns is then announced to its audience when the
-        /// template is Presented.
+        /// template is Presented. Returns null, applying nothing, for a dead character.
         /// </summary>
         internal static CharacterStatus ApplyLocal(Player target, CharacterStatusDef def, float seconds,
                                                    float magnitude, int requester, OrbitObject attacker,
                                                    int applierSide, bool requested)
         {
+            // Nothing applied to a dead character: death ended its statuses, and one put on it
+            // now would outlive the respawn.
+            if (!CharacterStatusSync.Alive(target)) return null;
             string mapKey = MapKey(target, def.Key);
             CharacterStatus live;
             if (Active.TryGetValue(mapKey, out live))
@@ -518,7 +530,12 @@ namespace Ectype
             for (int i = 0; i < DriveScratch.Count; i++) DriveScratch[i].Update();
         }
 
-        internal static void Unregister(CharacterStatus live) { Active.Remove(live.MapKey); }
+        internal static void Unregister(CharacterStatus live)
+        {
+            CharacterStatus current;
+            if (Active.TryGetValue(live.MapKey, out current) && ReferenceEquals(current, live))
+                Active.Remove(live.MapKey);
+        }
 
         /// <summary>How many statuses this client runs on the character.</summary>
         internal static int CountOn(Player target)
@@ -634,6 +651,7 @@ namespace Ectype
         internal void Reapply(float seconds, float magnitude, int requester, OrbitObject attacker,
                               int applierSide, bool requested)
         {
+            if (_ended) return;
             RequesterActor = requester;
             Attacker = attacker;
             NoteApplierSide(applierSide);
@@ -689,11 +707,16 @@ namespace Ectype
             }
         }
 
+        /// <summary>Unregisters, removes the modifiers and announces the end before OnRemoved
+        /// runs, so an OnRemoved that applies the same key again starts a fresh status, whose
+        /// announcement follows this one's end.</summary>
         internal void End()
         {
             if (_ended) return;
             _ended = true;
             Player t = _target;
+            _target = null;
+            CharacterStatuses.Unregister(this);
             try
             {
                 if (t != null && t.Stats != null) t.Stats.RemoveModifier(this);
@@ -703,7 +726,6 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: character status '" + _def.Key + "' stat " +
                                     "removal failed: " + e);
             }
-            if (_def.OnRemoved != null) SafeCb(() => _def.OnRemoved(t));
             try { CharacterStatusSync.AnnounceEnd(this, Time.time < _endTime); }
             catch (Exception e)
             {
@@ -711,8 +733,7 @@ namespace Ectype
                     Plugin.Log.LogError("Ectype: character status '" + _def.Key + "' end " +
                                         "announcement failed (reported once): " + e);
             }
-            _target = null;
-            CharacterStatuses.Unregister(this);
+            if (_def.OnRemoved != null) SafeCb(() => _def.OnRemoved(t));
         }
 
         /// <summary>Fresh StatMod instances per application: the game keys removal on the
@@ -720,6 +741,7 @@ namespace Ectype
         /// shared between targets or stacks.</summary>
         internal void ApplyStack()
         {
+            if (_ended || _target == null) return;
             bool anyMatched;
             List<StatMod> mods = StatusStats.BuildMods(_def.Entries, _magnitude, _target.Stats,
                                                        "character status", out anyMatched);
@@ -745,7 +767,7 @@ namespace Ectype
             if (_def.OnTick == null) return;
             float slice = Math.Max(_def.TickSeconds, 0.05f);
             int due = (int)((Time.time - _startTime) / slice);
-            while (_lastTick < due)
+            while (_lastTick < due && !_ended)
             {
                 _lastTick++;
                 Action<Player, float> cb = _def.OnTick;
