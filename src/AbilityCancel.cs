@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using CG.Space;
+using Gameplay.SpacePlatforms;
 using Opsive.UltimateCharacterController.Character;
 using Opsive.UltimateCharacterController.Character.Abilities;
 using UnityEngine;
@@ -23,7 +25,8 @@ namespace Ectype
         /// <summary>Any grappling hook on the character attaching to a surface.</summary>
         GrappleAttach = 1 << 2,
 
-        /// <summary>The character entering a ship's inertia zone.</summary>
+        /// <summary>The character entering a ship's inertia zone, including straight from one
+        /// ship's zone into another's.</summary>
         InertiaZoneEntry = 1 << 3,
 
         /// <summary>The character not flying the EVA jetpack on a tick of the channel: it landed
@@ -162,6 +165,8 @@ namespace Ectype
         private Action<RaycastHit> _collisionHandler;
         private CharacterAtmosphericDataTracker _tracker;
         private Action<bool> _zoneHandler;
+        private Action<SpacePlatform> _platformHandler;
+        private PlayerControlledShip _platformShip;
         private readonly List<ChannelGrapplingHook> _hooks = new List<ChannelGrapplingHook>();
         private Action _grappleHandler;
         private FlyJetpack _jetpack;
@@ -268,6 +273,12 @@ namespace Ectype
                 {
                     if (_zoneHandler == null) _zoneHandler = OnInertiaZoneChange;
                     tracker.OnInInertiaZoneChange += _zoneHandler;
+                    // A hop from one ship's bubble straight into another's never leaves the
+                    // zone, so the zone event stays silent; the platform the tracker connects
+                    // the character to changes ship instead.
+                    if (_platformHandler == null) _platformHandler = OnConnectedPlatform;
+                    tracker.OnUpdateSpacePlatform += _platformHandler;
+                    _platformShip = ShipOfPlatform(tracker.ConnectedSpacePlatform);
                     _tracker = tracker;
                 }
             }
@@ -311,6 +322,27 @@ namespace Ectype
         {
             try { if (inZone) Fire(CancelTriggers.InertiaZoneEntry, "entering an inertia zone"); }
             catch (Exception e) { CancelFailed("the inertia-zone trigger", e); }
+        }
+
+        /// <summary>The tracker sets its platform on every zone check, so only a change of ship
+        /// counts: from one player ship straight to another, still inside a zone.</summary>
+        private void OnConnectedPlatform(SpacePlatform platform)
+        {
+            try
+            {
+                PlayerControlledShip ship = ShipOfPlatform(platform);
+                PlayerControlledShip last = _platformShip;
+                _platformShip = ship;
+                if (ship == null || last == null || ReferenceEquals(ship, last)) return;
+                if (_tracker != null && _tracker.InInertiaZone)
+                    Fire(CancelTriggers.InertiaZoneEntry, "entering another ship's inertia zone");
+            }
+            catch (Exception e) { CancelFailed("the inertia-zone platform trigger", e); }
+        }
+
+        private static PlayerControlledShip ShipOfPlatform(SpacePlatform platform)
+        {
+            return platform != null ? platform.GetComponentInParent<PlayerControlledShip>() : null;
         }
 
         private void PollJetpack()
@@ -385,9 +417,14 @@ namespace Ectype
             _hooks.Clear();
             if (!ReferenceEquals(_tracker, null))
             {
-                try { _tracker.OnInInertiaZoneChange -= _zoneHandler; }
+                try
+                {
+                    _tracker.OnInInertiaZoneChange -= _zoneHandler;
+                    _tracker.OnUpdateSpacePlatform -= _platformHandler;
+                }
                 catch (Exception e) { CancelFailed("unsubscribing the inertia-zone trigger", e); }
                 _tracker = null;
+                _platformShip = null;
             }
             _jetpack = null;
         }

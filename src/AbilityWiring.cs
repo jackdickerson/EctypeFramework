@@ -65,8 +65,17 @@ namespace Ectype
                     return;
                 }
 
+                // Wire every role first, then rebuild the array once: the Abilities setter
+                // re-runs Initialize and Awake on every ability in it, so a rebuild per role
+                // cost roles x abilities per character spawn on every client.
+                List<KeyValuePair<RoleRecord, ClassAbility>> added =
+                    new List<KeyValuePair<RoleRecord, ClassAbility>>();
                 foreach (RoleRecord rec in RoleRegistry.Roles)
-                    InstallOne(rec, loco);
+                {
+                    ClassAbility a = InstallOne(rec, loco);
+                    if (a != null) added.Add(new KeyValuePair<RoleRecord, ClassAbility>(rec, a));
+                }
+                if (added.Count > 0) StartInstalled(loco, added);
 
                 // Adoption resolves selection against the LOCAL player's perk profile, so
                 // unlike the install sweep it is meaningless for a character we don't own.
@@ -82,16 +91,19 @@ namespace Ectype
             }
         }
 
-        private static void InstallOne(RoleRecord rec, UltimateCharacterLocomotion loco)
+        /// <summary>Builds and wires one role's ability for this character and records it.
+        /// Returns it, or null when nothing was installed; the caller rebuilds the array and
+        /// starts it.</summary>
+        private static ClassAbility InstallOne(RoleRecord rec, UltimateCharacterLocomotion loco)
         {
             if (rec.AbilityFactory == null || rec.AbilityInstallFailed || !rec.Registered)
-                return;
+                return null;
             // Same character already served (Start fires once per prefab ability, so this
             // sweep runs up to four times per spawn).
-            if (rec.AbilityInstances.ContainsKey(loco)) return;
+            if (rec.AbilityInstances.ContainsKey(loco)) return null;
 
             PerkBuff hero = RoleRegistry.BannerPerk(rec, 0);
-            if (hero == null) return;   // registration not finished; a later Start retries
+            if (hero == null) return null;   // registration not finished; a later Start retries
 
             ClassAbility ability;
             try
@@ -104,7 +116,7 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: ability factory for '" +
                                     rec.Manifest.roleId + "' threw - the role stays " +
                                     "data-only this session: " + e);
-                return;
+                return null;
             }
             if (ability == null)
             {
@@ -112,7 +124,7 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: ability factory for '" + rec.Manifest.roleId +
                                     "' returned null or a non-ClassAbility - the role " +
                                     "stays data-only this session.");
-                return;
+                return null;
             }
 
             PerkBuff capstone = RoleRegistry.BannerPerk(rec, 5) ?? hero;
@@ -132,7 +144,7 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: ability field wiring failed for '" +
                                     rec.Manifest.roleId + "' (member rename? see " +
                                     "warnings above) - ability not installed.");
-                return;
+                return null;
             }
 
             // Record BEFORE Start(): Start re-enters our ClassAbility.Start postfix.
@@ -140,26 +152,52 @@ namespace Ectype
             // Opt into key-based replication so the ability's array position on other
             // clients is irrelevant to its start/stop sync (see AbilitySync).
             RuntimeAbilities.Register(ability, "ectype:" + rec.Manifest.roleId);
+            return ability;
+        }
 
+        /// <summary>One array rebuild for every ability this sweep installed, then each one's
+        /// manual Start (only prefab abilities get it from Unity).</summary>
+        private static void StartInstalled(UltimateCharacterLocomotion loco,
+                                           List<KeyValuePair<RoleRecord, ClassAbility>> added)
+        {
             try
             {
                 // Rebuild, never append: appending would park a role at whatever index its
                 // arrival order gave it, which differs per client and breaks index parity.
                 RebuildArray(loco);
-                ability.Start();   // manual - only prefab abilities get it from Unity
             }
             catch (Exception e)
             {
-                rec.AbilityInstances.Remove(loco);
-                rec.AbilityInstallFailed = true;
-                Plugin.Log.LogError("Ectype: installing '" + rec.Manifest.roleId +
-                                    "' ability into the locomotion failed: " + e);
+                foreach (KeyValuePair<RoleRecord, ClassAbility> kv in added)
+                {
+                    kv.Key.AbilityInstances.Remove(loco);
+                    kv.Key.AbilityInstallFailed = true;
+                }
+                Plugin.Log.LogError("Ectype: installing " + added.Count + " role ability(ies) into " +
+                                    "the locomotion failed: " + e);
                 return;
             }
 
-            if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: ability " + ability.GetType().Name +
-                               " installed for '" + rec.Manifest.roleId + "' (slot " +
-                               Array.IndexOf(loco.Abilities, ability) + ").");
+            foreach (KeyValuePair<RoleRecord, ClassAbility> kv in added)
+            {
+                RoleRecord rec = kv.Key;
+                ClassAbility ability = kv.Value;
+                try
+                {
+                    ability.Start();
+                }
+                catch (Exception e)
+                {
+                    rec.AbilityInstances.Remove(loco);
+                    rec.AbilityInstallFailed = true;
+                    Plugin.Log.LogError("Ectype: installing '" + rec.Manifest.roleId +
+                                        "' ability into the locomotion failed: " + e);
+                    continue;
+                }
+                if (Plugin.Verbose) Plugin.Log.LogInfo("Ectype: ability " + ability.GetType().Name +
+                                   " installed for '" + rec.Manifest.roleId + "' (slot " +
+                                   Array.IndexOf(loco.Abilities, ability) + ").");
+            }
         }
 
         /// <summary>Rebuild loco.Abilities as [non-Ectype abilities] + [every role with an

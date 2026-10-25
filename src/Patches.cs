@@ -24,6 +24,21 @@ namespace Ectype
     {
         private static bool _reportedFailure;
 
+        /// <summary>Each def's tree enum, read once by reflection. The master runs this for every
+        /// room member each time any character's perks reapply, so the uncached read cost grew
+        /// with the square of the player count.</summary>
+        private static readonly Dictionary<PerkTreeDef, EPerkTree> TreeOf =
+            new Dictionary<PerkTreeDef, EPerkTree>();
+
+        private static EPerkTree TreeEnum(PerkTreeDef def)
+        {
+            EPerkTree tree;
+            if (TreeOf.TryGetValue(def, out tree)) return tree;
+            tree = Refl.GetField(def, "perkTree", (EPerkTree)0);
+            TreeOf[def] = tree;
+            return tree;
+        }
+
         [HarmonyPrefix]
         private static bool Prefix(Dictionary<GUIDUnion, int> __0, ref EPlayerRole __result)
         {
@@ -42,7 +57,7 @@ namespace Ectype
                     PerkTreeDef def = container.GetAssetDefById(treeRef.AssetGuid, true);
                     if (def == null || def.Asset == null || def.Asset.Perks == null) continue;
 
-                    EPerkTree tree = Refl.GetField(def, "perkTree", (EPerkTree)0);
+                    EPerkTree tree = TreeEnum(def);
                     if (!tally.ContainsKey(tree)) tally[tree] = 0;
 
                     foreach (PerkBuffRef perk in def.Asset.Perks)

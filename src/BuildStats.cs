@@ -117,7 +117,10 @@ namespace Ectype
                 Installer who;
                 if (!_installers.TryGetValue(process, out who))
                 {
-                    who = new Installer { Player = Player.GetByActorId(process.RequesterActorId) };
+                    // Cached even when no character is found, so a process is looked up once.
+                    // Not the game's GetByActorId: its single-match query throws while the
+                    // player list still holds a destroyed character as a match ends.
+                    who = new Installer { Player = Topology.CharacterOf(process.RequesterActorId) };
                     _installers.Add(process, who);
                     if (Plugin.Verbose)
                         Plugin.Log.LogInfo("Ectype: " + process.Type + " started by actor " +
@@ -132,10 +135,16 @@ namespace Ectype
             }
             catch (Exception e)
             {
+                // Run is called every frame per process, so a fault would otherwise log every
+                // frame.
+                if (_reportedFailure) return;
+                _reportedFailure = true;
                 Plugin.Log.LogError("Ectype: applying " + FrameworkStats.SystemModuleConstructionSpeed +
-                                    " failed: " + e);
+                                    " failed (suppressing further reports): " + e);
             }
         }
+
+        private static bool _reportedFailure;
     }
 
     /// <summary>
