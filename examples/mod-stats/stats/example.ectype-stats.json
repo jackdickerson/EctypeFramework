@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../docs/schemas/ectype-stats.schema.json",
+  "owner": "example.modstats",
+  "stats": [
+    {
+      "name": "HackSeconds",
+      "kind": "field",
+      "default": 60,
+      "collection": "character",
+      "display": "Hack Time",
+      "tooltip": "Seconds a hack takes.",
+      "lowerIsBetter": true,
+      "iconFrom": "ClassAbilityDuration"
+    },
+    {
+      "name": "HackResistance",
+      "kind": "factor",
+      "collection": "ship",
+      "display": "Hack Resistance",
+      "tooltip": "Multiplier on how long a hack of this ship takes."
+    },
+    {
+      "name": "SupplyDropInterval",
+      "kind": "factor",
+      "collection": "session",
+      "display": "Supply Drop Interval",
+      "tooltip": "Multiplier on the time between supply drops.",
+      "lowerIsBetter": true
+    }
+  ]
+}
