@@ -17,6 +17,8 @@ namespace ExampleFrameworkStat
     /// F6 toggles a +50% walking top speed on the local character by contributing a modifier
     /// against a stat the framework registers, Ectype.FrameworkStats.MotorAcceleration. The
     /// game's own modifier stack composes it with any perk or other mod touching the same stat.
+    /// It also registers the Hostile Surge mutator, which puts the session stat
+    /// HostileSpawnScale at x1.5 for a run that has it active.
     /// </summary>
     [BepInPlugin(PLUGIN_GUID, "Example Framework Stat", PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
@@ -39,12 +41,40 @@ namespace ExampleFrameworkStat
                 // Registration normally runs on its own once the game loads; calling it here
                 // makes Id() answer from Awake. The id is 0 until registered.
                 FrameworkStats.EnsureRegistered();
+                RegisterHostileSurge();
                 Log.LogInfo("Example Framework Stat v" + PLUGIN_VERSION + " loaded.");
             }
             catch (Exception e)
             {
                 Log.LogError("Example Framework Stat failed to start: " + e);
             }
+        }
+
+        /// <summary>
+        /// A mutator in the game's own Mutators menu. While it is active, the host's session
+        /// collection holds HostileSpawnScale at x1.5 and every client reads that value. The
+        /// framework registers the asset, makes it selectable, and contributes the modifier
+        /// before the host publishes the session's stats; this mod writes no session code.
+        /// </summary>
+        private static void RegisterHostileSurge()
+        {
+            MutatorSpec spec = new MutatorSpec
+            {
+                Owner = PLUGIN_GUID,
+                Key = "hostile-surge",
+                DisplayName = "Hostile Surge",
+                Description = "Hostile spawn groups are half again as large.",
+            };
+            spec.Effects.Add(new SessionStatEffect
+            {
+                Stat = "ectype/HostileSpawnScale",
+                Kind = SessionStatModifierKind.Factor,
+                Amount = 1.5f,
+            });
+            // Pending until the game's containers exist; the framework completes it.
+            MutatorHandle surge = SessionStatMutators.Register(spec);
+            if (surge.State == ContentState.Failed)
+                Log.LogError("Hostile Surge refused: " + surge.Reason);
         }
 
         /// <summary>Identity of this mod's modifier, so it can be removed by source.</summary>
@@ -96,11 +126,12 @@ namespace ExampleFrameworkStat
 
     /// <summary>Session: the modifier changes this character's movement. Stat changes are not
     /// replicated, so a modifier applied only here is seen by the local simulation alone.
-    /// Presence flags the session.</summary>
+    /// Presence flags the session. The mutator is registered with the game's Required effect,
+    /// so a player without this mod cannot join a room hosted with it.</summary>
     public class ExampleVoidPlugin : VoidPlugin
     {
         public override MultiplayerType MPType { get { return MultiplayerType.Session; } }
         public override string Author { get { return "Example Author"; } }
-        public override string Description { get { return "Toggles a walking speed modifier on a framework stat."; } }
+        public override string Description { get { return "Toggles a walking speed modifier on a framework stat and adds the Hostile Surge mutator."; } }
     }
 }

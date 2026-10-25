@@ -26,3 +26,9 @@ not modified, so re-enabling the mod brings the selection back.
 
 Registering a mutator asset still counts as content that changes what a run contains; see
 [../multiplayer.md](../multiplayer.md) for the session flag and the join checks.
+
+A mutator whose rule is a set of session-stat modifiers can be registered through the framework
+itself: see [mod-stats.md](mod-stats.md#contributions-from-mutators). Such a mutator is
+registered with the game's Required effect, so a joiner without its mod is refused at the join
+screen and this guard does not come into play for it. The guard still applies to a saved run or
+a menu selection that names it after its mod was disabled on this machine.

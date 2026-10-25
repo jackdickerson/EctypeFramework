@@ -70,6 +70,11 @@
       "description": "Conditions that must hold on the owning client for the role's ability to start. An invalid entry rejects the role.",
       "$ref": "#/$defs/conditions"
     },
+    "mutators": {
+      "description": "Mutators this role registers in the game's Mutators menu, each a set of session-stat modifiers. A refused entry is logged and skipped; the role still registers.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/mutator" }
+    },
     "classId": { "description": "Contract version 1 name, renamed roleId in version 2.", "not": {} },
     "className": { "description": "Contract version 1 name, renamed roleName in version 2.", "not": {} },
     "classDesc": { "description": "Contract version 1 name, renamed roleDesc in version 2.", "not": {} },
@@ -262,6 +267,45 @@
           "type": ["string", "null"],
           "enum": ["", "value", "percentage", "bool", null]
         }
+      }
+    },
+    "mutator": {
+      "type": "object",
+      "required": ["key", "name", "effects"],
+      "properties": {
+        "key": {
+          "description": "Stable key within the role. The GUID derives from MD5(\"ectype:mutator:\" + roleId + \"/\" + key); renaming it makes a new mutator.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+        },
+        "guid": { "description": "Explicit mutator GUID overriding the derivation.", "$ref": "#/$defs/nullableGuid" },
+        "name": { "description": "The menu card's title.", "type": "string", "minLength": 1 },
+        "description": { "description": "The menu card's body. Rich text is allowed.", "type": ["string", "null"] },
+        "icon": { "description": "Icon key: an embedded PNG whose resource name ends with <key>.png.", "type": ["string", "null"] },
+        "iconDonor": { "description": "A registered mutator's GUID whose icon this one borrows.", "$ref": "#/$defs/nullableGuid" },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/mutatorEffect" }
+        }
+      }
+    },
+    "mutatorEffect": {
+      "type": "object",
+      "required": ["stat", "kind", "amount"],
+      "properties": {
+        "stat": {
+          "description": "A session stat: \"owner/Name\" for a stats file's stat, or a framework stat (\"ectype/HostileSpawnScale\" or \"HostileSpawnScale\"). Any other stat refuses the mutator.",
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "description": "flat: added to the base. percent: 0.25 is +25%. factor: 1.5 is x1.5.",
+          "type": "string",
+          "enum": ["flat", "percent", "factor"]
+        },
+        "amount": { "description": "The addend, the fraction or the factor. A factor is above 0.", "type": "number" }
       }
     }
   }

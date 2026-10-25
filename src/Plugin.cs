@@ -98,6 +98,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: session stats install failed: " + e); }
             try { CharacterShipRoute.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: perk route seat hooks failed: " + e); }
+            try { SessionStatMutators.ApplyPatches(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: mutator patches failed: " + e); }
             try { CharacterStatusLife.ApplyPatch(harmony); }
             catch (Exception e) { Log.LogError("Ectype: character status death hook failed: " + e); }
             SessionData.SessionStarted += CharacterStatusSync.ExpirePendingAtSessionStart;
@@ -130,7 +132,7 @@ namespace Ectype
             GUILayout.Label("Pipeline: " + EctypeAssets.GlobalStatus);
             GUILayout.Label("Stats  : " + SafeStatCount() + " vanilla aliases, " +
                             "framework-owned " + FrameworkStats.Status + ", " + ModStats.Status);
-            GUILayout.Label("Session stats: " + SessionStats.Status);
+            GUILayout.Label("Session stats: " + SessionStats.Status + "; " + SessionStatMutators.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
             GUILayout.Label("Content : " + RuntimeContent.Status);
             GUILayout.Label("Network : event " + EctypeNet.EventCode + ", contract " +
@@ -190,6 +192,7 @@ namespace Ectype
             Step("status self-test", StatusSelfTest.Poll);
             Step("session data self-test", SessionDataSelfTest.Poll);
             Step("mod stats self-test", ModStatsSelfTest.Poll);
+            Step("mutators self-test", SessionStatMutatorsSelfTest.Poll);
             Step("character status self-test", CharacterStatusSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
@@ -197,6 +200,7 @@ namespace Ectype
             Step("interaction gate", InteractionGatePatches.PollLate);
             Step("session data", SessionData.Poll);
             Step("session stats", SessionStats.Poll);
+            Step("mutators", SessionStatMutators.Poll);
             Step("topology", Topology.Poll);
             Step("holder conditions", HolderConditions.Poll);
             Step("characterShip", CharacterShipRoute.Poll);

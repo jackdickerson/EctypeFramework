@@ -33,6 +33,12 @@ Register them from literals that are identical on every client.
 | `StatCollectionKind` | `Character`, `Ship`, `Session`: the collection a declared stat is registered into. |
 | `SessionStats` | The run-wide collection, one per session. `Opening` is raised on the host while it starts a session, with `Collection` already the new collection; `Contribute(statId, modifier, source)` on the host and `Withdraw(source)` are the only way to contribute, since no perk target reaches it. The host publishes the composed values under the session data key `framework/sessionStats`, and every other client sets each stat's base to them. `Collection`, `SessionId`, `Status`, `SessionDataKey`, `HolderObjectName`, `MaxStats` (128). |
 | `SessionStatHolder` | The component on the GameObject `Ectype.SessionStats` that holds the session collection, through the game's `IStatCollectionHolder`. |
+| `SessionStatMutators` | Mutators in the game's Mutators menu whose rule is a set of session-stat modifiers. `Register(MutatorSpec)` returns a `MutatorHandle`; the asset is registered with the Required effect, made selectable, and re-verified. While the host starts a session that will activate one, selected or forced by its quest, the framework contributes its effects before the values are published. `DeriveGuid(owner, key)` (MD5 of `ectype:mutator:<owner>/<key>`), `IsActive(guid)`, `MaxEffects` (16), `GuidSeedPrefix`, `Status`. A role manifest's `mutators` block registers through it. See [reference/mod-stats.md](reference/mod-stats.md#contributions-from-mutators). |
+| `MutatorSpec` | `Owner`, `Key`, optional `Guid`, `DisplayName`, `Description`, `Icon` (a `Sprite`), `IconDonor` (a mutator GUID), `Effects`. |
+| `SessionStatEffect`, `SessionStatModifierKind` | One effect: `Stat` (a session stat, `"owner/Name"` or a framework name), `Kind` (`Flat`, `Percent`: 0.25 is +25%, `Factor`: 1.5 is x1.5), `Amount`. |
+| `MutatorHandle` | `Owner`, `Key`, `Guid`, `State` (`ContentState`: `Pending`, `Registered`, `Failed`), `Reason`, `Asset` (the `Mutator`, once registered). |
+| `SessionStatMutatorEffect`, `SessionStatModifier` | The game-side effect a registered mutator carries: a `MutatorEffectSession` holding `Modifiers` (stat id, `ModifierType`, amount). A mod's own `Mutator` asset may carry one. |
+| `MutatorManifestSpec`, `MutatorEffectManifestSpec` | The manifest form of `MutatorSpec` and its effects. |
 
 ## Runtime ability replication
 
