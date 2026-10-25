@@ -79,6 +79,15 @@ Register them from literals that are identical on every client.
 | `InteractionKind` | `Seat`, `Helm`, `Turret`, `Terminal`, `Periscope`, `CloneTube`, `Minigame`, `EnhancementPanel`, `Door`, `AirlockControl`, `PowerSwitch`, `CarryablePickup`, `SocketInsert`, `SocketRelease`, `ModuleUpgrade`, `Other`. |
 | `GateSide` | `Client` (the acting player's own check) or `Owner` (the part owner's authority check). |
 
+## Session data
+
+| Type | Purpose |
+| --- | --- |
+| `SessionData` | Values the host decides for a whole session, carried inside the game's own session data to every client, late joiners included, and restored on a resumed run from a sidecar file. `Register<T>(key, hostProduce, apply, options)` at `Awake` on every client; the host produces each value once per session and every machine, the host included, gets `apply` at the same point of its session start, before the quest is generated. `T` is plain JSON data. `Current<T>(key)`, `TryGetCurrent<T>`, `Has`, `SessionId` (the host's id), and `Changed`, raised with a key whose value appeared, changed or went away. Values are capped per key (default 4 KB) and in total (16 KB). `HostValue(configEntry, key)` returns a `HostValue<T>`; `HostValuesRoomProperty` names its hub room property. See [reference/session-data.md](reference/session-data.md). |
+| `SessionDataOptions` | `MaxBytes`, the per-key cap; `KeepOnResume`, whether a resumed run sends the value it started with (default true). |
+| `HostValue<T>` | A config entry (bool, number, enum or string) read as the host's value: `Value`, `IsFromHost`, `Source`, `Key`, `Entry`, `Changed`. Live in the hub through a room property the host publishes; frozen for a mission from its start on every client, the host included. |
+| `HostValueSource` | `LocalConfig`, `Room`, `Session`: where a `HostValue<T>`'s value came from. |
+
 ## HUD
 
 | Type | Purpose |

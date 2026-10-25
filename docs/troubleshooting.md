@@ -755,6 +755,58 @@ item that never drops usually has an anchor no table matches.
 | `Ectype: dev check: a refused pick-up left the carry interaction unlocked.` or `Ectype: dev check: FAILED - the carry interaction is still locked 0.5 s after a refused pick-up (or a new pick-up started within that time).` (dev tools build only) | Half a second after the local player's pick-up was refused. A `FAILED` line with no second click means the player cannot carry until that item's owner next changes. |
 | `Ectype: dev check: the refused pick-up check could not run: <message>` (dev tools build only) | The carry ability or its lock field was not found. |
 
+### Session data and host-synced settings
+
+`<id>` is the first 8 characters of a session id.
+
+| Line | Cause and fix |
+| --- | --- |
+| `Ectype: session data: patched.` | The hooks are in. Logged once at start-up. |
+| `Ectype: session data: GameSession.AsJObject / FromJObject or GameSessionManager.PrepareNextSession not found (game update?); session data and host values follow each client's own config.` | A game update renamed a hook. |
+| `Ectype: session data: PhotonService.OnEvent(EventData) not found (game update?); the session data's sender is not checked.` | The envelope's stamp is still checked against the master on receipt. |
+| `Ectype: session data: GameSession.GetPreservedState not found (game update?); a saved run's sidecar is written at mission start instead, under the id the session started with.` | The sidecar holds the values the mission started with. A run saved by a host who took over mid-run loses its values on resume, because its save carries another id. |
+| `Ectype: session data: Register('<key>') refused: <problem>.` | The key is empty, longer than 128 characters, holds a control character or is already registered; no producer was given; or `T` does not survive JSON. |
+| `Ectype: session data: '<key>' not registered: the session-data patches are not applied this session, so no host value reaches this client.` | The framework is inert or a hook is missing. `HostValue` then follows the local config. |
+| `Ectype: session data: sending <n> key(s) with <hub\|mission> session <id> (<bytes> bytes[, <k> restored from the saved run]).` | Host: the values that go out with this session. |
+| `Ectype: session data: received <n> key(s) from the host (actor <a>[, from the room cache]) with <hub\|mission> session <id>.` | Client: a session carrying values arrived. A late joiner's comes from the room cache. |
+| `Ectype: session data: applied <n> key(s) locally.` | Verbose. The values became current at this machine's session start. |
+| `Ectype: session data: key '<key>' is <n> bytes, over its <cap>-byte cap; left out of this session.` | Host: the value is too big. Shrink it or raise `MaxBytes`. |
+| `Ectype: session data: key '<key>' (<n> bytes, the largest) would bring the envelope to <total> bytes, over the 16384-byte cap; left out of this session.` | Host: the keys together are too big; the largest goes first. |
+| `Ectype: session data: producing key '<key>' threw; left out of this session: <exception>` | Host: the producer threw. |
+| `Ectype: session data: applying key '<key>' threw: <exception>` | Any machine: the `apply` callback threw. Other keys still applied. |
+| `Ectype: SessionData.Changed subscriber <Type>.<method> threw: <exception>` | A `Changed` subscriber threw. The others still ran. |
+| `Ectype: session data: key '<key>' from the host does not read as <Type> within <cap> bytes; this client keeps no value for it.` | The host sent a value of another shape, usually another version of the mod. Logged once per key. |
+| `Ectype: session data: ignored the host's envelope: <problem>.` | The envelope is over 16384 bytes, not an object, or in a format this framework does not read. |
+| `Ectype: session data: ignored the session data <live from actor <s>\|from the room cache>: <why> (master is actor <m>).` | The envelope's sender or stamp is not the host (see "Who may send it"). The game still loads that session; the framework keeps no values from it. |
+| `Ectype: session data: reading the envelope from the session JSON failed: <exception>` | Reading threw. The session gets no values. |
+| `Ectype: session data: adding the envelope to the session JSON failed: <exception>` | Host: writing the envelope threw. Clients get no values for this session. |
+| `Ectype: session data: activating the session's values failed: <exception>` | Capturing or applying at the session start threw. |
+| `Ectype: session data: this run is saved under session <id>, not <id> (the host changed); its sidecar follows the saved id.` | Logged once per saved id, on a host who took over mid-run. |
+| `Ectype: session data: the saved run's value for key '<key>' does not read as <Type>; a fresh value is sent.` | Host, on resume: the sidecar holds a value of another shape, usually from another version of the mod. |
+| `Ectype: session data: saved-run sidecar for session <id> unreadable; values are produced fresh: <message>` | The sidecar exists and could not be read. |
+| `Ectype: session data: saved-run sidecar write failed (<path>): <message>` | The config folder is not writable. A resumed run then gets fresh values. |
+| `Ectype: session data: refreshing the saved-run sidecar failed: <exception>` | Writing the sidecar at a save threw. |
+| `Ectype: session data: pruning saved-run sidecars failed: <message>` | Old sidecars stay until the next write. |
+| `Ectype: session data: saved-run sidecar written for session <id>.` and `Ectype: session data: pruned <n> old saved-run sidecar(s).` | Verbose. |
+| `Ectype: host value '<key>' refused: <problem>; it follows the local config only.` | `T` is not a bool, number, enum or string. |
+| `Ectype: host value '<key>' is already bound to another config entry; this one follows the local config only.` | Two `HostValue` calls named one key for different entries. Give one an explicit key. |
+| `Ectype: host value '<key>' could not be serialised; not published in the hub: <message>` | Host: the config value did not convert to JSON. |
+| `Ectype: host value '<key>' is over the 4096-byte cap; not published in the hub.` | Host: the value is too big for the room property. Clients read it from the next session's data. |
+| `Ectype: host value '<key>' (<n> bytes, the largest) left out of the hub room property: it would bring it to <total> bytes, over the 16384-byte cap.` | Host: the values together are too big. |
+| `Ectype: host value '<key>': the host's room value does not read as <Type>: <message>` | The host runs another version of the mod. |
+| `Ectype: host value '<key>' Changed subscriber <Type>.<method> threw: <exception>` | A `HostValue.Changed` subscriber threw. The others still ran. |
+| `Ectype: host values: ignored a room-property write from actor <a>, who is not the master client (<m>).` | Client: another player wrote the host's room property. Logged once per writer. |
+| `Ectype: host values: actor <a> wrote the room property; republishing the host's values.` | Host: the same event, seen from the host. |
+| `Ectype: host values: update failed (reported once): <exception>` and `Ectype: host value writer check failed (reported once): <exception>` | The hub channel threw. Host values then follow the last accepted values or the local config. |
+| `Ectype: host values published to the room[ (the room held another value)].` | Verbose. The host wrote its values. |
+| `Ectype: host values: room property not used (<reason>).` | Verbose. The property was absent, stamped by another actor, over the cap, not JSON or not an object. |
+| `Ectype: dev self-test: session data passed (round trip through GameSession.AsJObject/FromJObject, 5 keys, <n> bytes; size caps; writer rule; sidecar write/read/prune; host-value stamp; type checks).` (dev tools build only) | The envelope survives the game's own session serialisation, the caps refuse by key name, the writer rule decides as documented, sidecars write, replace, read and prune, and the type checks refuse what JSON cannot carry. A `FAILED` line names each difference. Logged once, on the first frame. |
+
+A client that keeps its own config for a `HostValue` (`IsFromHost` false) in the hub has no
+valid room property from the current master; in a mission, the session it is in carries no
+value for the key, usually because the host does not run the mod.
+[reference/session-data.md](reference/session-data.md) has the precedence and the writer rules.
+
 ### Field-backed stats
 
 | Line | Meaning |
