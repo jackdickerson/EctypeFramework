@@ -18,8 +18,9 @@ described here is that of VoidManager 1.2.11.
 - Both join checks run at join. A member already in the room is never re-checked. The
   framework's own contribution is one asset the game's check compares, below.
 - Hosting a room with the framework installed marks the session as modded. The mark cannot be
-  withdrawn from that room. Who keeps the session out of progression depends on whether the
-  player has VoidManager; see "The modded-session flag and progression".
+  withdrawn from that room. The framework keeps the session out of progression and
+  achievements until the game restarts, with or without VoidManager; see "The modded-session
+  flag and progression".
 
 ## Matching mods with the launcher
 
@@ -160,11 +161,34 @@ The game tags a room as modded with the room property `R_Mod`. The tag shows in 
 browser. The game itself reads it for nothing else.
 
 The framework keeps a modded session out of progression, with or without VoidManager. The
-first time the client is in a room that carries the tag, it blocks cloud profile writes, the
-profile save on exit, and Steam stats and achievements, until the game restarts. The profile in
-memory already holds what that session earned, so it is never written again in that process.
+first time the client is in a room that carries the tag, the guard engages and stays engaged
+until the game restarts. The profile in memory already holds what that session earned, so
+progression is never written again in that process. Every room hosted by a process with the
+framework carries the tag (route 1 below), so in practice the guard engages in the player's own
+hub room, before any mission.
+
+The game saves the cloud profile as separate entries, each under its own key, through one write
+method. While the guard is engaged:
+
+| Not saved | Still saved |
+| --- | --- |
+| Profile data: level and experience, tokens, quest progress, the challenge-run seed, and the fields saved with them (seen hints, the awakening flag, accepted EULA and GDPR versions) | The block list |
+| Unlocked items | The cosmetic loadout |
+| Achievements completed and claimed, and achievement metrics | Ship loadout presets |
+| Metaquest completion times and pending rewards | Gene-tree loadouts and which one is active |
+| The preserved (resumable) run | The "new item" badges, saved on exit |
+| The offline profile's save on exit | |
+| Steam stats and achievements | |
+
+A key the game adds in a later version is not saved until the framework lists it. Gene-tree
+loadouts are a choice of perks, not progression: perk points come from the player's level,
+which is not saved. A loadout saved with a framework role's perk loads in a game without that
+role mod with the perk absent and its points unspent, because the game's loadout reader drops
+a perk it cannot resolve. With `[Debug] VerboseLogging` on, each skipped key is logged once.
+
 VoidManager's own progression switch does not react to the tag: it turns off only when a mod
-calls its `ProgressionHandler.DisableProgression`, or the host has done so.
+calls its `ProgressionHandler.DisableProgression`, or the host has done so. When it is off it
+skips every cloud write, settings-like keys included.
 
 A mod sets the tag by any of three routes:
 
