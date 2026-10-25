@@ -168,6 +168,7 @@ namespace Ectype
             Step("layout poll", DevLayout.Poll);
             Step("dev self-test", DevSelfTest.Poll);
             Step("session data self-test", SessionDataSelfTest.Poll);
+            Step("mod stats self-test", ModStatsSelfTest.Poll);
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
