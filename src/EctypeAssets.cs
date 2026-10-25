@@ -52,6 +52,10 @@ namespace Ectype
             { GlobalStatus = "inert: patching did not complete"; return; }
             if (!ReadyToRegister()) { GlobalStatus = "waiting for asset containers"; return; }
 
+            try { ContractMarker.EnsureRegistered(); }
+            catch (Exception e)
+            { Plugin.Log.LogError("Ectype: network contract marker registration failed: " + e); }
+
             // Before any role registers a perk: a perk effect may name one of these, and it
             // resolves while the perk asset is being built. Unconditional on the role set,
             // so the surface exists in an install with no role mods at all.

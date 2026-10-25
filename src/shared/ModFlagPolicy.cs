@@ -1,10 +1,13 @@
 using ResourceAssets;
-using VoidManager;
-using VoidManager.MPModChecks;
 
 // Deliberately in the global namespace: this file is compiled into each mod that
 // opts in from its csproj, and each mod has its own root namespace. `internal`
 // means every assembly gets its own private copy, so there is no collision.
+//
+// A project that loads without VoidManager defines VOIDMANAGER_OPTIONAL, which leaves out
+// the one member typed by VoidManager: no type in such an assembly may name a VoidManager
+// type, because a type that fails to load makes Assembly.GetTypes() throw for the whole
+// assembly.
 
 /// <summary>
 /// Compile-time policy for whether this build flags the session as modded.
@@ -29,10 +32,11 @@ using VoidManager.MPModChecks;
 /// A mod with no runtime assets loses nothing but the version check, since it
 /// had nothing in the required set to begin with.
 ///
-/// The switch only reaches mods that compile this file. The Ectype framework declares
-/// MultiplayerType.All unconditionally, and VoidManager flags the session from that
-/// declaration at load. A no-flag build of any mod that depends on the framework
-/// therefore still produces a flagged session whenever the framework is installed.
+/// The switch only reaches mods that compile this file. The Ectype framework is listed
+/// with VoidManager as MultiplayerType.All unconditionally, and VoidManager flags the
+/// session from that at load. A no-flag build of any mod that depends on the framework
+/// therefore still produces a flagged session whenever the framework and VoidManager are
+/// installed.
 ///
 /// For a mod that does not depend on the framework, a no-flag build means modded runs
 /// write cloud progression and unlock Steam achievements, and an unmodded player gets
@@ -51,13 +55,16 @@ internal static class ModFlagPolicy
     internal const bool FlagsSession = true;
 #endif
 
+#if !VOIDMANAGER_OPTIONAL
     /// <summary>
     /// What the VoidPlugin declares. VoidManager's UpdateHighestLevelOfMPMods sets
     /// SessionModdingType = mod_session for Session or All, and does nothing for
     /// Client - so this alone decides one of the three flag routes.
     /// </summary>
-    internal const MultiplayerType MPType =
-        FlagsSession ? MultiplayerType.Session : MultiplayerType.Client;
+    internal const VoidManager.MPModChecks.MultiplayerType MPType =
+        FlagsSession ? VoidManager.MPModChecks.MultiplayerType.Session
+                     : VoidManager.MPModChecks.MultiplayerType.Client;
+#endif
 
     /// <summary>
     /// Effect to register network-spawned runtime assets with. IsNetworkSpawned is

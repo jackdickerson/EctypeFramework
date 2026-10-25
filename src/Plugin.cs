@@ -7,16 +7,14 @@ using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
 
-using VoidManager;
-using VoidManager.CustomGUI;
-using VoidManager.MPModChecks;
-
 namespace Ectype
 {
     [BepInPlugin(EctypePluginInfo.PLUGIN_GUID, EctypePluginInfo.USERS_PLUGIN_NAME,
                  EctypePluginInfo.PLUGIN_VERSION)]
     [BepInProcess("Void Crew.exe")]
-    [BepInDependency(VoidManager.MyPluginInfo.PLUGIN_GUID)]
+    // Soft: loaded first when present, and the framework runs without it. Everything the
+    // framework does with VoidManager is in VoidManagerBridge.
+    [BepInDependency(VoidManagerBridge.Guid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -40,6 +38,9 @@ namespace Ectype
 #if ECTYPE_DEV
             DevTools.Awake(Config);
 #endif
+
+            try { VoidManagerBridge.Install(new Harmony(EctypePluginInfo.PLUGIN_GUID)); }
+            catch (Exception e) { Log.LogError("Ectype: VoidManager bridge failed: " + e); }
 
             if (!EctypeConfig.Enabled.Value)
             {
@@ -93,33 +94,22 @@ namespace Ectype
     }
 
     /// <summary>
-    /// MultiplayerType.All, not Session: an unmodded peer throws on a framework perk GUID and
-    /// wipes that player's perk set on its own client, so everyone in the room needs this DLL -
-    /// framework and every role mod alike.
+    /// The F5 page's content. VoidManagerBridge hands these two methods to the settings menu
+    /// it builds when VoidManager is loaded; nothing else calls them.
     /// </summary>
-    public class EctypeVoidPlugin : VoidPlugin
+    internal static class SettingsPage
     {
-        public override MultiplayerType MPType { get { return MultiplayerType.All; } }
-        public override string Author { get { return EctypePluginInfo.PLUGIN_AUTHORS; } }
-        public override string Description { get { return EctypePluginInfo.PLUGIN_DESCRIPTION; } }
-        public override string ThunderstoreID { get { return EctypePluginInfo.PLUGIN_THUNDERSTORE_ID; } }
+        internal static string Name() { return EctypePluginInfo.USERS_PLUGIN_NAME; }
 
-        public override SessionChangedReturn OnSessionChange(SessionChangedInput input)
-        {
-            return new SessionChangedReturn { SetMod_Session = ModFlagPolicy.FlagsSession };
-        }
-    }
-
-    public class EctypeSettingsMenu : ModSettingsMenu
-    {
-        public override string Name() { return EctypePluginInfo.USERS_PLUGIN_NAME; }
-
-        public override void Draw()
+        internal static void Draw()
         {
             GUILayout.Label("Pipeline: " + EctypeAssets.GlobalStatus);
             GUILayout.Label("Stats  : " + SafeStatCount() + " vanilla aliases, " +
                             "framework-owned " + FrameworkStats.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
+            GUILayout.Label("Network : event " + EctypeNet.EventCode + ", contract " +
+                            EctypePluginInfo.NET_CONTRACT_VERSION + ", " +
+                            ContractMarker.Status);
             GUILayout.Space(8f);
 
             if (RoleRegistry.Roles.Count == 0)

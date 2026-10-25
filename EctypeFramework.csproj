@@ -5,6 +5,12 @@
     <RootNamespace>Ectype</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- The framework loads without VoidManager: src\shared files leave out their
+         VoidManager-typed members, and no compiled type names a VoidManager type.
+         VoidManager.dll stays a compile reference for the dev build's MenuKit, whose
+         debug-mode read runs only inside VoidManager's own F5 menu. It is never copied:
+         Directory.Build.props sets Private=false on every reference. -->
+    <DefineConstants>$(DefineConstants);VOIDMANAGER_OPTIONAL</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
