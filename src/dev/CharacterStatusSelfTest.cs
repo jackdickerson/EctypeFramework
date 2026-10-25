@@ -194,6 +194,13 @@ namespace Ectype
             CharacterStatusDef friendly = Strict();
             friendly.Stance = StatusStance.Friendly;
             Expect("Friendly from another side", friendly, Clear(), 3f, 1f, CharacterStatusRefusal.Stance, fails);
+            CharacterStatusDef masterOnly = Strict();
+            masterOnly.Stance = StatusStance.MasterOnly;
+            Expect("MasterOnly from a requester that is not the master", masterOnly, Clear(), 3f, 1f,
+                   CharacterStatusRefusal.Stance, fails);
+            f = Clear(); f.SourceIsMaster = true; f.Hostile = false;
+            Expect("MasterOnly from the master on the target's side", masterOnly, f, 3f, 1f,
+                   CharacterStatusRefusal.None, fails);
             f = Clear(); f.Distance = 5.5f;
             Expect("5.5 m on the target's client", d, f, 3f, 1f, CharacterStatusRefusal.OutOfRange, fails);
             Expect("5.5 m from the requester's view", d, f, 3f, 1f, CharacterStatusRefusal.None, fails, true);

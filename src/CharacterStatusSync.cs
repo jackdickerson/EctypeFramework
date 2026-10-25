@@ -151,6 +151,8 @@ namespace Ectype
         internal bool SourceSeated;
         internal bool SourceInTube;
         internal bool Hostile;
+        /// <summary>The requester is the master client (judged for Stance MasterOnly).</summary>
+        internal bool SourceIsMaster;
         internal float Distance;
         internal bool LineClear;
     }
@@ -383,6 +385,7 @@ namespace Ectype
             if (def.RefuseInTube && (f.SourceInTube || f.VictimInTube)) return CharacterStatusRefusal.InCloneTube;
             if (def.Stance == StatusStance.Hostile && !f.Hostile) return CharacterStatusRefusal.Stance;
             if (def.Stance == StatusStance.Friendly && f.Hostile) return CharacterStatusRefusal.Stance;
+            if (def.Stance == StatusStance.MasterOnly && !f.SourceIsMaster) return CharacterStatusRefusal.Stance;
             float limit = RangeLimit(def, requesterView);
             if (limit > 0f && !(f.Distance <= limit)) return CharacterStatusRefusal.OutOfRange;
             if (def.RequiresLineOfSight && !f.LineClear) return CharacterStatusRefusal.NoLineOfSight;
@@ -399,6 +402,7 @@ namespace Ectype
             if (source == null || victim == null) return f;
             f.SourceAlive = Alive(source);
             f.Hostile = Topology.Hostile(source, victim);
+            f.SourceIsMaster = EnemyStatuses.IsMaster(Topology.ActorOf(source));
             f.Distance = Vector3.Distance(source.transform.position, victim.transform.position);
             if (def != null && def.RefuseSeated) f.SourceSeated = Seated(source);
             if (def != null && def.RefuseInTube)
@@ -511,6 +515,8 @@ namespace Ectype
                 case CharacterStatusRefusal.InCloneTube:
                     return (f.SourceInTube ? "the requester" : "the target") + " is in a clone tube";
                 case CharacterStatusRefusal.Stance:
+                    if (def.Stance == StatusStance.MasterOnly)
+                        return "stance MasterOnly and the requester is not the master client";
                     return "stance " + def.Stance + " and the requester is " +
                            (f.Hostile ? "on another side from the target" : "on the target's side");
                 case CharacterStatusRefusal.OutOfRange:

@@ -38,6 +38,7 @@ namespace Ectype
             internal int EndTs;
             internal float Magnitude;
             internal int AttackerView;
+            internal int Tag;
             internal int Applications;
             internal int WindowMs;
             internal float DueAt;
@@ -46,11 +47,14 @@ namespace Ectype
 
             /// <summary>The message fields after the subtype:
             /// [int viewId, string key, int startTs, int durationMs, float magnitude,
-            /// int attackerView, int applications].</summary>
+            /// int attackerView, int applications], and int tag when the Tag is not 0.</summary>
             internal object[] Args()
             {
-                return new object[] { ViewId, Key, StartTs, DurationMs, Magnitude, AttackerView,
-                                      Applications };
+                return Tag == 0
+                           ? new object[] { ViewId, Key, StartTs, DurationMs, Magnitude, AttackerView,
+                                            Applications }
+                           : new object[] { ViewId, Key, StartTs, DurationMs, Magnitude, AttackerView,
+                                            Applications, Tag };
             }
         }
 
@@ -76,10 +80,11 @@ namespace Ectype
         /// <summary>
         /// Records one local application. <paramref name="startTs"/> and <paramref name="endTs"/>
         /// are the local status's timer after the application. <paramref name="now"/> and the
-        /// window are on one monotonic clock, in seconds and milliseconds.
+        /// window are on one monotonic clock, in seconds and milliseconds. The batch carries the
+        /// latest application's <paramref name="tag"/>, as the local status does.
         /// </summary>
         internal void Add(int viewId, string key, string targetName, int startTs, int endTs,
-                          float magnitude, int attackerView, int windowMs, float now)
+                          float magnitude, int attackerView, int windowMs, float now, int tag = 0)
         {
             Id id = new Id { ViewId = viewId, Key = key };
             Batch b;
@@ -103,6 +108,7 @@ namespace Ectype
                 _open[id] = b;
             }
             b.Applications++;
+            b.Tag = tag;
             b.StartTs = startTs;
             b.EndTs = endTs;
         }

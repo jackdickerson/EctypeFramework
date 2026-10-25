@@ -45,13 +45,17 @@ namespace Ectype
         /// object[] startData, object[] extendedStartData, bool lateJoin].</summary>
         internal const byte AbilityActive = 1;
 
-        /// <summary>Enemy status apply and remove: [byte op, int viewId, string key, ...]
-        /// (op 0 adds int startTs, int durationMs, float magnitude, int attackerView).</summary>
+        /// <summary>Enemy status apply and remove: [byte op, int viewId, string key, ...].
+        /// Op 0 applies to a space object, adding int startTs, int durationMs, float magnitude,
+        /// int attackerView, and int tag when the tag is not 0; op 1 removes from one. Op 2
+        /// applies to a part, adding int startTs, int durationMs, int index, int tag; op 3
+        /// removes from one, adding int index.</summary>
         internal const byte EnemyStatus = 2;
 
         /// <summary>Coalesced enemy status applications (ApplyN): [int viewId, string key,
-        /// int startTs, int durationMs, float magnitude, int attackerView, int applications].
-        /// The count is a delta: each receiver adds that many applications.</summary>
+        /// int startTs, int durationMs, float magnitude, int attackerView, int applications],
+        /// and int tag when the tag is not 0. The count is a delta: each receiver adds that many
+        /// applications.</summary>
         internal const byte EnemyStatusStacks = 3;
 
         /// <summary>A request to put a status on the recipient's own character: [int requestId,
@@ -95,11 +99,18 @@ namespace Ectype
                     new[] { typeof(byte), typeof(int), typeof(string) },
                     new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
                             typeof(float), typeof(int) },
+                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
+                            typeof(float), typeof(int), typeof(int) },
+                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
+                            typeof(int), typeof(int) },
+                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int) },
                 } },
             { EnemyStatusStacks, new[]
                 {
                     new[] { typeof(int), typeof(string), typeof(int), typeof(int), typeof(float),
                             typeof(int), typeof(int) },
+                    new[] { typeof(int), typeof(string), typeof(int), typeof(int), typeof(float),
+                            typeof(int), typeof(int), typeof(int) },
                 } },
             { CharacterStatusRequest, new[]
                 {
