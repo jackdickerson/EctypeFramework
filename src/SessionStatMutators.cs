@@ -499,16 +499,19 @@ namespace Ectype
             }
             catch (Refusal r)
             {
-                Fail(rec, r.Message, true);
+                Fail(rec, r.Message, true, null);
             }
             catch (Exception e)
             {
                 bool final = rec.Attempts >= MaxAttempts;
-                Fail(rec, "attempt " + rec.Attempts + " failed at [" + rec.Stage + "]: " + e.Message, final);
+                Fail(rec, "attempt " + rec.Attempts + " failed at [" + rec.Stage + "]: " + e.Message, final,
+                     rec.Stage + "|" + e.Message);
             }
         }
 
-        private static void Fail(MutatorRecord rec, string why, bool final)
+        /// <summary><paramref name="repeatKey"/> identifies a non-final failure without its
+        /// attempt number, so the same failure is logged once.</summary>
+        private static void Fail(MutatorRecord rec, string why, bool final, string repeatKey)
         {
             rec.Verified = false;
             _unlocked.Remove(rec.Guid);
@@ -523,8 +526,8 @@ namespace Ectype
                 Plugin.Log.LogError("Ectype: mutators: '" + rec.Spec.Owner + "/" + rec.Spec.Key + "' refused: " + why + ".");
                 return;
             }
-            if (rec.LastLogged == why) return;
-            rec.LastLogged = why;
+            if (rec.LastLogged == repeatKey) return;
+            rec.LastLogged = repeatKey;
             Plugin.Log.LogWarning("Ectype: mutators: '" + rec.Name + "' registration " + why +
                                   " (retrying; repeats of this message are not logged).");
         }
@@ -653,11 +656,11 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Puts the container's runtime list in the authored list's order, followed by any entry
-        /// registered without being listed. The shared mutator unlocks name an entry by its index
-        /// in the authored list and read it back by index in the runtime list, so the two must
-        /// agree; an insert into the middle of the authored list would otherwise shift one
-        /// against the other.
+        /// Puts the container's runtime list in the authored list's order, as the container's own
+        /// rebuild does, followed by any entry registered without being listed. The shared mutator
+        /// unlocks name an entry by its index in the authored list and read it back by index in
+        /// the runtime list, so the two must agree; an insert into the middle of the authored list
+        /// would otherwise shift one against the other.
         /// </summary>
         internal static void AlignRuntimeList(MutatorContainer container, List<MutatorDef> authored)
         {
@@ -667,14 +670,18 @@ namespace Ectype
             for (int i = 0; aligned && i < authored.Count; i++)
                 if (!ReferenceEquals(runtime[i], authored[i])) aligned = false;
             if (aligned) return;
-            HashSet<MutatorDef> listed = new HashSet<MutatorDef>(authored);
             List<MutatorDef> extra = new List<MutatorDef>();
             foreach (MutatorDef d in runtime)
-                if (d != null && !listed.Contains(d)) extra.Add(d);
-            HashSet<MutatorDef> present = new HashSet<MutatorDef>(runtime);
+            {
+                if (d == null) continue;
+                bool listed = false;
+                foreach (MutatorDef a in authored)
+                    if (ReferenceEquals(a, d)) { listed = true; break; }
+                if (!listed) extra.Add(d);
+            }
             runtime.Clear();
             foreach (MutatorDef d in authored)
-                if (d != null && present.Contains(d)) runtime.Add(d);
+                if (d != null) runtime.Add(d);
             runtime.AddRange(extra);
         }
 
@@ -801,9 +808,9 @@ namespace Ectype
             if (m == null) { why = "null mutator entry"; return null; }
             MutatorSpec spec = new MutatorSpec
             {
-                Owner = roleId, Key = m.key, Guid = m.guid, DisplayName = m.name, Description = m.description,
+                Owner = roleId, Key = m.key, Guid = Blank(m.guid), DisplayName = m.name, Description = m.description,
                 Icon = asm != null && !string.IsNullOrEmpty(m.icon) ? IconStore.Get(asm, m.icon) : null,
-                IconDonor = m.iconDonor,
+                IconDonor = Blank(m.iconDonor),
             };
             if (m.effects == null) { why = "no effects"; return null; }
             for (int i = 0; i < m.effects.Count; i++)
@@ -820,6 +827,12 @@ namespace Ectype
                 spec.Effects.Add(new SessionStatEffect { Stat = e.stat, Kind = kind, Amount = e.amount.Value });
             }
             return spec;
+        }
+
+        /// <summary>An empty or blank manifest GUID reads as absent.</summary>
+        private static string Blank(string s)
+        {
+            return string.IsNullOrEmpty(s) || s.Trim().Length == 0 ? null : s;
         }
 
         internal static bool TryParseKind(string s, out SessionStatModifierKind kind)
