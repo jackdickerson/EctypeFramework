@@ -143,8 +143,10 @@ pays `Recycle.Amount` alloys.
 
 ## Components
 
-`IsComponent = true` marks an inner part of another item, such as a payload inside a battery.
-Only a carryable can be one; Publish refuses a weapon module or module marked as a component,
+`IsComponent = true` marks a carryable that is never offered as a loose item: an inner part of
+another item, such as a payload inside a battery, or an item only the mod's own fabricator
+entry hands out (see [Fabricator-only items](#fabricator-only-items)). Only a carryable can be
+one; Publish refuses a weapon module or module marked as a component,
 naming the GUID. A weapon module missing from its authored list could not spawn its build
 box, because the game finds the weapon's def by scanning that list, and a module has no
 inner-part role.
@@ -160,6 +162,74 @@ ship inside its parent, and the alloy tally reads it there. Publish refuses a co
 without crafting data exactly as it refuses any carryable, and the framework's crafting-data
 audit treats a component like any other carryable. A `Recycle` of 0 alloys is a valid answer
 for a part that should be worth nothing on its own.
+
+## Fabricator-only items
+
+A carryable the crew can print at the fabricator but that no catalog offers, such as a
+player-versus-player tool, publishes with `IsComponent = true`. The fabricator never reads the
+carryable container's authored list, so leaving the item out of it costs the fabricator
+nothing; `IsComponent` also keeps the item out of loot rolls and tells a `ModContent` reader not
+to offer it.
+
+What the fabricator does read, all of it registered by Publish whether or not the item is
+listed:
+
+- **Its shop.** Each fabricator terminal builds a shop (`CraftData`) when it is created and
+  again on every fabricator tier change. The shop starts from the tier's authored craftable
+  list, or, for a tier without one, from the crafting container's authored list, which Publish
+  never writes. An entry is then added per GUID by `CraftData.TryAddItem`, which resolves the
+  crafting def by GUID (runtime entries included) and refuses a GUID without one or with
+  `CraftMethod.None`. A published item is therefore in no fabricator's shop until something
+  adds its entry.
+- **Its tabs.** Each entry takes its tab from the purchase sub-category on the carryable def.
+  The shop sorts entries into six collections, keyed `AnimusCrates_Offensive`,
+  `AnimusCrates_Defensive`, the value 23, `Resources_Materials`, `Mods_Offensive` and
+  `Mods_Relic`, and puts an entry in the first collection whose key contains every bit of the
+  entry's category (`key & category == category`). `Resources_Ammo` and `Resources_Support` fall
+  in the materials collection. `Other_Basic` (Publish's default), `Special_Quest` and
+  `Special_Unique` fall in none: the entry exists but no tab shows it. Set `ItemCategory`.
+- **The print.** Printing needs `CraftMethod.Resource` and enough alloys. The request goes to
+  every client; the fabricator's controller resolves the carryable def by GUID, looks the GUID
+  up in its own terminal's shop, does nothing when the entry is missing or its method is
+  `None`, and otherwise spawns the item through the object factory's spawn by GUID, which the
+  runtime asset register and spawnable-object container answer.
+
+So the mod adds the entry itself, on every client. Two routes put it there:
+
+1. **The shared unlock pool.** On the host, `FabricatorModule.InitializeSharedUnlockPool`
+   with the item's GUID, on each ship's fabricator module that should offer it. The game sends
+   it to every client in a buffered call, and every terminal of that fabricator adds the entry
+   through `TryAddItem`, now and each time it rebuilds its shop; a player who joins later
+   receives the buffered call. The entry is flagged `SharedSessionUnlocked`, as a blueprint
+   learned by recycling is. The pool is copied into the ship state the game carries from one
+   session of a run to the next and re-sent from there, so the entry lasts the run. `TryAddItem` refuses every GUID on a tier whose list sets
+   `OnlyOfferDataListItems`.
+2. **A postfix on the `FabricatorData` constructor**, the object that owns a terminal's shop,
+   on every client. Call `CraftingData.TryAddItem(guid)`. On a tier whose list sets
+   `OnlyOfferDataListItems`, add the entry through the shop's private `AddCraftableAsPrintable`
+   instead, add the GUID to the shop's `SessionUnlockedItems`, set the entry's `IsUnlocked`, and
+   call the private `SetupCategories` and then `OnShopUpdated`. Nothing is carried into the
+   next session; the patch decides per shop whether to offer the item, so it suits an item
+   offered only in some matches.
+
+Things that look like they should work and do not:
+
+- **Listing the item to make it craftable.** No fabricator path reads the carryable
+  container's authored list. Clearing `IsComponent` changes nothing at the fabricator and puts
+  the item in every catalog that reads the list, including ship loadout editors that can then
+  stock it for free.
+- **Adding the entry only on the client that presses print.** The controller checks its own
+  shop and drops the request without a message.
+- **Setting `IsUnlocked` on an entry without adding its GUID to `SessionUnlockedItems`.** The
+  terminal re-reads every entry's unlock state each time its panel activates, and an item
+  outside `SessionUnlockedItems` takes it from the unlock container, which reads `Session`
+  criteria as locked. The entry turns grey and cannot be selected the first time a player
+  walks up to the terminal.
+- **`Unlock = Always` to make the entry show unlocked.** It writes the GUID into every
+  player's persistent unlocks, where it stays after the mod is removed, and the shop still
+  needs the entry added.
+- **Leaving `ItemCategory` null.** The entry is in the shop under `Other_Basic`, which no tab
+  shows.
 
 ## Timing and the handle
 
@@ -205,7 +275,7 @@ Every item that reached `Registered` has an entry in `ModContent`:
 | `Owner` | The publishing plugin's GUID. Required. |
 | `Category` | A tab hint. Empty becomes the game's category name: the purchase sub-category for a carryable, the module category for a module, `"Weapons"` for a weapon module. |
 | `Tier` | 1 to 3 for Mk I to Mk III, independent of the display language. 0 is unranked. |
-| `IsComponent` | An inner part: never listed, never in a loot roll on its own. |
+| `IsComponent` | Never offered as a loose item: never listed, never in a loot roll on its own. An inner part, or an item only its mod's fabricator entry hands out. |
 | `PvpLegal` | False keeps the item out of player-versus-player matches for a mod that runs them. Default true. |
 | `AvailableInRoom` | `Func<bool>`, the same answer on every client of a room. Null at publish is stored as always-true. A role-owned item passes `() => RoleRegistry.IsAvailableInRoom(roleId)`. |
 | `IconHint` | Free text for a catalog that draws its own icons. |

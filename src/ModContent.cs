@@ -41,9 +41,11 @@ namespace Ectype
         public int Tier;
 
         /// <summary>
-        /// True for an inner part of another item, such as a payload inside a battery: it is
-        /// registered in every container so it spawns, but it is never listed as a loose item
-        /// and never added to a loot roll on its own. A component still needs crafting data.
+        /// True for an item never offered as a loose item: an inner part of another item, such as
+        /// a payload inside a battery, or an item only its mod's fabricator entry hands out. It is
+        /// registered in every container so it spawns and prints, but it is never listed in its
+        /// container's authored list and never added to a loot roll on its own. A component still
+        /// needs crafting data.
         /// </summary>
         public bool IsComponent;
 
