@@ -261,13 +261,16 @@ What it adds:
   expected.
 - A perk scope self-test at load, offline: a synthetic two-side room (side 0 with two living
   ships and a dying one, side 1 with one) and a one-ship room are installed through
-  `TopologyView.UseTestView` for the call. Each ship set must name the expected ships for seven
+  `TopologyView.UseTestView` for the call. Each ship set must name the expected ships for eight
   actors (crew, boarder, floater, no character, ally visitor, seated on the other side, crew of
-  the dying ship), every set must collapse to the room's ship in the one-ship room, split factors
+  the dying ship, visitor on the dying ship), `characterAboard` resolved from the answer each
+  holder's own client would send and from answers naming no ship, another side's ship and a
+  dying one; every set must collapse to the room's ship in the one-ship room, split factors
   and scaled copies must sum to the authored amount, validation must accept and refuse each
   documented case, each actor's condition mask must match, the debounce must adopt on the
-  second read, every mask 0-127 must survive the condition-mask message's Protocol18 round trip
-  and the receive record, and `RoleContext` must answer for a synthetic owner. It logs
+  second read, every mask 0-127 with an aboard ship number must survive the condition-mask
+  message's Protocol18 round trip and the receive record, and `RoleContext` must answer for a
+  synthetic owner. It logs
   `dev self-test: perk scopes passed` or `FAILED` with each wrong answer.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
@@ -372,10 +375,13 @@ added to the list, and a renamed key logs `no entry '<key>'`.
   scope, never a new game-visible value. After a game update, check that the loader's switch
   still skips 4 and that no new reader of `PerkBuff.Target` appeared.
 - A condition is owner-evaluated: only the holder's client reads its own character, and
-  every client gates on the mask it received. A new condition is a new bit in
-  `HolderCondition`, which changes what the condition-mask message carries: raise
-  `NET_CONTRACT_VERSION`. A condition on another ship's state is not owner-evaluated and does
-  not belong in that mask.
+  every client gates on the answer it received, `[int mask, int aboardShip]`. Anything decided
+  from where a character stands belongs in that answer, because each client samples another
+  player's character against an inertia bubble at its own moment: `characterAboard` resolves
+  from `aboardShip`, never from `TopologyView.AboardShip`, which is the owner's reading only. A
+  new condition is a new bit in `HolderCondition`, which changes what the condition-mask message
+  carries: raise `NET_CONTRACT_VERSION`. A condition on another ship's state is not
+  owner-evaluated and does not belong in that mask.
 - `TopologyView` is the only input the scope resolution, the condition evaluation and
   `RoleContext` read, so a rule added there is testable with a synthetic view. Never read
   `ClientGame.PlayerShip` in them except through the live view's one-ship branch.
