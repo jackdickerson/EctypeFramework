@@ -97,6 +97,57 @@ namespace Ectype
         }
 
         /// <summary>
+        /// True while a team match is running: while Void Crew Fleet's API is bound and reports
+        /// one (in the hub as well as in a mission), else while player ships of more than one
+        /// faction have been seen this mission. False in a vanilla or co-op room.
+        /// </summary>
+        public static bool TeamMatch
+        {
+            get
+            {
+                int fleet = Fleet.IsTeamMatch();
+                if (fleet >= 0) return fleet == 1;
+                Prune();
+                return _all.Count > 0 && _shipFactions.Count > 1;
+            }
+        }
+
+        /// <summary>The facts perk scopes, holder conditions and RoleContext read. The live
+        /// view in every shipped code path; a dev build's self-tests swap in a synthetic one for
+        /// the duration of one synchronous call.</summary>
+        internal static TopologyView View
+        {
+            get
+            {
+#if ECTYPE_DEV
+                if (_testView != null) return _testView;
+#endif
+                return LiveTopologyView.Instance;
+            }
+        }
+
+#if ECTYPE_DEV
+        private static TopologyView _testView;
+
+        /// <summary>Dev build only: answers <see cref="View"/> from <paramref name="view"/> until
+        /// the returned scope is disposed. The caller sets and restores it inside one call, so
+        /// no driver step ever sees the synthetic view.</summary>
+        internal static IDisposable UseTestView(TopologyView view)
+        {
+            TopologyView before = _testView;
+            _testView = view;
+            return new Restore(before);
+        }
+
+        private sealed class Restore : IDisposable
+        {
+            private readonly TopologyView _before;
+            internal Restore(TopologyView before) { _before = before; }
+            public void Dispose() { _testView = _before; }
+        }
+#endif
+
+        /// <summary>
         /// The ship a player crews, identical on every client, or null while none can be named (a
         /// spectator, a player Fleet has not placed or whose ship was lost, a crew whose ship is
         /// dying).
@@ -327,6 +378,40 @@ namespace Ectype
         {
             try { return character != null ? character.ActorId : 0; }
             catch (Exception) { return 0; }
+        }
+
+        /// <summary>While the character is seated (a chair, the helm, a turret; the seat ability's
+        /// state reaches every client), the player ship the seat belongs to; else null.</summary>
+        internal static PlayerControlledShip SeatShipOf(CG.Game.Player.Player character)
+        {
+            try
+            {
+                if (character == null || character.Locomotion == null) return null;
+                SittingInChair seat = character.Locomotion.GetAbility<SittingInChair>();
+                if (seat == null || !seat.IsActive || seat.Chair == null) return null;
+                return ShipOfPart(seat.Chair);
+            }
+            catch (Exception) { return null; }
+        }
+
+        /// <summary>Two ships are on one side: under a Fleet team match their teams are equal,
+        /// otherwise their factions are.</summary>
+        internal static bool SameSide(PlayerControlledShip a, PlayerControlledShip b)
+        {
+            if (a == null || b == null) return false;
+            if (ReferenceEquals(a, b)) return true;
+            int ta = Fleet.TeamOfShip(ShipNumberOf(a)), tb = Fleet.TeamOfShip(ShipNumberOf(b));
+            if (ta >= 0 && tb >= 0) return ta == tb;
+            return a.Faction == b.Faction;
+        }
+
+        /// <summary>Fleet is active, living ships exist, and Fleet places the player on none of
+        /// them: its 0 for a spectator, a player waiting to be placed, or the crew of a lost
+        /// ship. Always false without Fleet.</summary>
+        internal static bool PlacedOnNoShip(int actor)
+        {
+            if (!Fleet.Active || Ships.Count == 0) return false;
+            return Fleet.ShipOfPlayer(actor) <= 0;
         }
 
         /// <summary>The live character of an actor, or null. Skips destroyed entries the game's
@@ -609,6 +694,7 @@ namespace Ectype
             private static Func<int, int> _shipOfPlayer;
             private static Func<int, int> _teamOf;
             private static Func<int, int> _teamOfShip;
+            private static Func<bool> _isTeamMatch;
             private static BepInEx.BaseUnityPlugin _instance;
             private static BepInEx.Configuration.ConfigEntry<bool> _enabled;
 
@@ -633,6 +719,14 @@ namespace Ectype
             internal static int ShipOfPlayer(int actor) { return Call(_shipOfPlayer, actor, 0); }
             internal static int TeamOf(int actor) { return Call(_teamOf, actor, -1); }
             internal static int TeamOfShip(int ship) { return ship < 1 ? -1 : Call(_teamOfShip, ship, -1); }
+
+            /// <summary>1 or 0 while Fleet is active and has the member, else -1.</summary>
+            internal static int IsTeamMatch()
+            {
+                if (_isTeamMatch == null || !Active) return -1;
+                try { return _isTeamMatch() ? 1 : 0; }
+                catch (Exception) { return -1; }
+            }
 
             private static int Call(Func<int, int> f, int arg, int fallback)
             {
@@ -710,6 +804,7 @@ namespace Ectype
                 _shipOfPlayer = IntToInt(api, "ShipOfPlayer", missing);
                 _teamOf = IntToInt(api, "TeamOf", missing);
                 _teamOfShip = IntToInt(api, "TeamOfShip", missing);
+                _isTeamMatch = BoolProperty(api, "IsTeamMatch", missing);
                 Subscribe(api, "ShipsChanged", missing);
                 Subscribe(api, "TeamsChanged", missing);
 
@@ -731,6 +826,19 @@ namespace Ectype
                 }
                 try { return (Func<int, int>)Delegate.CreateDelegate(typeof(Func<int, int>), m); }
                 catch (Exception) { missing.Add("int " + name + "(int)"); return null; }
+            }
+
+            private static Func<bool> BoolProperty(Type api, string name, List<string> missing)
+            {
+                PropertyInfo p = api.GetProperty(name, BindingFlags.Public | BindingFlags.Static);
+                MethodInfo get = p != null && p.PropertyType == typeof(bool) ? p.GetGetMethod() : null;
+                if (get == null)
+                {
+                    missing.Add("bool " + name);
+                    return null;
+                }
+                try { return (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), get); }
+                catch (Exception) { missing.Add("bool " + name); return null; }
             }
 
             private static void Subscribe(Type api, string name, List<string> missing)
