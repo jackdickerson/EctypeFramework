@@ -81,6 +81,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
             try { SessionData.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
+            try { SessionStats.Install(); }
+            catch (Exception e) { Log.LogError("Ectype: session stats install failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }
@@ -109,7 +111,8 @@ namespace Ectype
         {
             GUILayout.Label("Pipeline: " + EctypeAssets.GlobalStatus);
             GUILayout.Label("Stats  : " + SafeStatCount() + " vanilla aliases, " +
-                            "framework-owned " + FrameworkStats.Status);
+                            "framework-owned " + FrameworkStats.Status + ", " + ModStats.Status);
+            GUILayout.Label("Session stats: " + SessionStats.Status);
             GUILayout.Label("Suppress: " + Suppression.Status);
             GUILayout.Label("Network : event " + EctypeNet.EventCode + ", contract " +
                             EctypePluginInfo.NET_CONTRACT_VERSION + ", " +
@@ -170,6 +173,7 @@ namespace Ectype
             Step("presence", PeerPresence.Publish);
             Step("progression guard", ProgressionGuard.Poll);
             Step("session data", SessionData.Poll);
+            Step("session stats", SessionStats.Poll);
             Step("topology", Topology.Poll);
             Step("characterShip", CharacterShipRoute.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);

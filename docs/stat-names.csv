@@ -124,3 +124,8 @@ HandAttractorCooldown,670551379,character,float,framework
 HandAttractorBeams,701901862,character,float,framework
 SystemModuleConstructionSpeed,761402164,character,float,framework
 ShipDrag,554310235,ship movement,float,framework
+MeleeDamage,544200806,character,float,framework
+MeleeCooldown,578599244,character,float,framework
+MeleeReach,650876603,character,float,framework
+AntiPersonnelDamage,568581206,ship defense,float,framework
+HostileSpawnScale,696758852,session,float,framework

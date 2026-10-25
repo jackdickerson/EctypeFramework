@@ -317,6 +317,91 @@
         "ShipSpeedSurge (src/ShipSpeedSurge.cs): ExponentialMultiplier of (1/s^2 - 1), s = 1 + magnitude * (1 - progress), through TimedStatContributions on every machine"
       ],
       "authoredVerified": false
+    },
+    {
+      "name": "MeleeDamage",
+      "id": 544200806,
+      "displayName": "Melee Damage",
+      "wraps": "no field: a plain ModifiableFloat of base 1 that no game code reads",
+      "collection": "the player's own StatTagCollection (Player.Stats)",
+      "wiredBy": "src/ModStats.cs, called from the Player.Awake postfix in src/CharacterStats.cs on the local player and every replica",
+      "authored": 1,
+      "units": "factor on the reader's own melee damage",
+      "lowerIsBetter": false,
+      "mechanism": "The framework registers it and reads nothing. A mod with a melee attack multiplies its own damage constant by the attacker's composed value, read by id from the attacker's collection. Perks are applied to every character on every client, so a victim's client reads the attacker's replica and gets the same factor the attacker sent with.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "mods that read it by id (a punch: damage per hit)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "MeleeCooldown",
+      "id": 578599244,
+      "displayName": "Melee Cooldown",
+      "wraps": "no field: a plain ModifiableFloat of base 1 that no game code reads",
+      "collection": "the player's own StatTagCollection (Player.Stats)",
+      "wiredBy": "src/ModStats.cs, called from the Player.Awake postfix in src/CharacterStats.cs on the local player and every replica",
+      "authored": 1,
+      "units": "factor on the reader's own melee cooldown",
+      "lowerIsBetter": true,
+      "mechanism": "As MeleeDamage, on the time between melee attacks. A receiver that rate-limits incoming hits divides its budget by the attacker's composed value rather than its constant.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "mods that read it by id (a punch: seconds between hits)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "MeleeReach",
+      "id": 650876603,
+      "displayName": "Melee Reach",
+      "wraps": "no field: a plain ModifiableFloat of base 1 that no game code reads",
+      "collection": "the player's own StatTagCollection (Player.Stats)",
+      "wiredBy": "src/ModStats.cs, called from the Player.Awake postfix in src/CharacterStats.cs on the local player and every replica",
+      "authored": 1,
+      "units": "factor on the reader's own melee reach",
+      "lowerIsBetter": false,
+      "mechanism": "As MeleeDamage, on the distance a melee attack reaches. A receiver that validates range scales its tolerance by the attacker's composed value.",
+      "consumers": [
+        "perk StatMods targeting character",
+        "mods that read it by id (a punch: reach in metres)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "AntiPersonnelDamage",
+      "id": 568581206,
+      "displayName": "Anti-Personnel Damage",
+      "wraps": "no field: a plain ModifiableFloat of base 1 that no game code reads",
+      "collection": "the player ship's own StatTagCollection (PlayerControlledShip.Stats)",
+      "wiredBy": "src/ModStats.cs, called from the PlayerControlledShip.RegisterStats postfix in src/ShipStats.cs on every replica",
+      "authored": 1,
+      "units": "factor on the reader's own ship-weapon damage to characters",
+      "lowerIsBetter": false,
+      "mechanism": "The framework registers it and reads nothing. A mod whose ship weapons hurt characters multiplies its own per-hit or per-second constant by the firing ship's composed value, read by id from that ship's collection.",
+      "consumers": [
+        "perk StatMods targeting seatShip or characterShip",
+        "mods that read it by id (turret and point-defence damage to players)"
+      ],
+      "authoredVerified": true
+    },
+    {
+      "name": "HostileSpawnScale",
+      "id": 696758852,
+      "displayName": "Hostile Spawn Scale",
+      "wraps": "no field: a plain ModifiableFloat of base 1 that no game code reads",
+      "collection": "the framework's session StatTagCollection (SessionStats.Collection), one per session",
+      "wiredBy": "src/SessionStats.cs: built by the host as it starts each session and published through session data; every other client rebuilds it from the host's values",
+      "authored": 1,
+      "units": "factor on the reader's own hostile spawn amounts",
+      "lowerIsBetter": true,
+      "mechanism": "The framework registers it and reads nothing. Only the host contributes (SessionStats.Contribute, inside SessionStats.Opening for the value to reach clients); every other client holds one modifier reproducing the host's composed value. A mod that scales hostile spawns multiplies its group size by the composed value on the host.",
+      "consumers": [
+        "SessionStats.Contribute on the host",
+        "mods that read it by id (spawn group amounts)"
+      ],
+      "authoredVerified": true
     }
   ]
 }

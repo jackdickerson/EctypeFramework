@@ -243,6 +243,7 @@ namespace Ectype
             if (!Plugin.PatchesApplied || !EctypeConfig.Enabled.Value) return;
             ShipStats.Wire(__instance);
             ShipPlatformStats.Wire(__instance);
+            ModStats.WireShip(__instance);
         }
     }
 
