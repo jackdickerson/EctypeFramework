@@ -51,7 +51,7 @@ namespace Ectype
         /// Show (or, on refresh, restart) the countdown marker for one live status. Markers
         /// are live UI entities the viewer repositions every frame, so the guards live here:
         ///  * a global cap ([EnemyStatuses] MarkerCap) - past it a newcomer takes the slot
-        ///    of the marker farthest from the view ship when it is nearer, else it runs
+        ///    of the marker farthest from the view ship when it is clearly nearer, else it runs
         ///    markerless until a slot frees and the backfill offers it one;
         ///  * the template's visibility rule, judged for this viewer;
         ///  * lock-gated markers exist only WHILE locked - a hidden marker entity
@@ -192,9 +192,10 @@ namespace Ectype
 
         /// <summary>
         /// Past the cap, a newcomer takes the slot of the marker farthest from the view ship
-        /// when it is nearer than that one; otherwise the newcomer goes without. The ranking
-        /// runs only when a status asks for a slot at the cap, so markers already shown never
-        /// trade places on their own.
+        /// when it is clearly nearer (<see cref="EnemyStatusRank.Displaces"/>); otherwise the
+        /// newcomer goes without. The ranking runs only when a status asks for a slot at the
+        /// cap, and the margin keeps two statuses at about the same distance from trading the
+        /// slot on every re-application.
         /// </summary>
         private static bool EvictFarthestFor(EnemyStatusEffect fx)
         {
@@ -206,7 +207,7 @@ namespace Ectype
                 float d = EnemyStatusRank.DistanceFromView(kv.Key.Target);
                 if (d > far) { far = d; farthest = kv.Key; }
             }
-            if (farthest == null || far <= mine) return false;
+            if (farthest == null || !EnemyStatusRank.Displaces(mine, far)) return false;
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: status marker for '" + farthest.Def.Key + "' on " +
                                    EnemyStatusRank.NameOf(farthest.Target) + " evicted at " +
@@ -395,6 +396,19 @@ namespace Ectype
             return Vector3.Distance(from, target.transform.position);
         }
 
+        /// <summary>The fixed part of the eviction margin, in metres.</summary>
+        internal const float MarginMetres = 25f;
+        /// <summary>The proportional part of the eviction margin: a share of the farther distance.</summary>
+        internal const float MarginShare = 0.1f;
+
+        /// <summary>Whether a newcomer at <paramref name="nearer"/> metres takes the slot of a
+        /// decorated status at <paramref name="farther"/>: only when nearer by 10% of the
+        /// farther distance or 25 m, whichever is larger.</summary>
+        internal static bool Displaces(float nearer, float farther)
+        {
+            return nearer < farther - Math.Max(farther * MarginShare, MarginMetres);
+        }
+
         internal static void SortNearestFirst(List<EnemyStatusEffect> list)
         {
             if (list.Count < 2) return;
@@ -412,8 +426,8 @@ namespace Ectype
     /// <summary>
     /// Who draws a status (EnemyStatusDef.Visibility), judged on this client from three
     /// sides: the viewer's (this client's player through Topology.ForceOf: the character's
-    /// faction, else the crew ship's or, under Void Crew Fleet, the team's), the applier's
-    /// (recorded when the status was created here) and the target's faction. A viewer whose
+    /// faction, else the crew ship's or, under Void Crew Fleet, the team's), the appliers'
+    /// (every side an accepted application came from) and the target's faction. A viewer whose
     /// side is unknown sees only statuses ruled All. Presentation only: the status runs on
     /// every client whatever this answers.
     /// </summary>
@@ -435,7 +449,7 @@ namespace Ectype
             switch (rule)
             {
                 case StatusVisibility.OwnForce:
-                    visible = viewer >= 0 && viewer == fx.ApplierForce;
+                    visible = viewer >= 0 && fx.ApplierSides.Contains(viewer);
                     break;
                 case StatusVisibility.TargetForce:
                     visible = viewer >= 0 && viewer == fx.Target.Faction;
@@ -454,7 +468,9 @@ namespace Ectype
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: status " + fx.Def.Key + " on " + fx.Target.name +
                                        " hidden by visibility " + rule + " (viewer side " + viewer +
-                                       ", applier side " + fx.ApplierForce + ", target side " +
+                                       ", applier sides " +
+                                       (fx.ApplierSides.Count > 0 ? string.Join(",", fx.ApplierSides) : "-1") +
+                                       ", target side " +
                                        fx.Target.Faction + ").");
             }
             return visible;
@@ -550,7 +566,7 @@ namespace Ectype
         private static readonly List<EnemyStatusEffect> Scratch = new List<EnemyStatusEffect>();
 
         /// <summary>The marker layer's rule: a newcomer past the cap replaces the visual farthest
-        /// from the view ship when it is nearer than that one.</summary>
+        /// from the view ship when it is clearly nearer than that one.</summary>
         private static bool EvictFarthestFor(EnemyStatusEffect fx)
         {
             float mine = EnemyStatusRank.DistanceFromView(fx.Target);
@@ -561,7 +577,7 @@ namespace Ectype
                 float d = EnemyStatusRank.DistanceFromView(kv.Key.Target);
                 if (d > far) { far = d; farthest = kv.Key; }
             }
-            if (farthest == null || far <= mine) return false;
+            if (farthest == null || !EnemyStatusRank.Displaces(mine, far)) return false;
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: status visual for '" + farthest.Def.Key + "' on " +
                                    EnemyStatusRank.NameOf(farthest.Target) + " evicted at " +

@@ -51,9 +51,9 @@ namespace Ectype
     /// Authority and peers: any client may Apply - the stat mods land everywhere via the
     /// broadcast; only the target's owner ticks damage. Every receiver judges the sender of
     /// an apply against the template's Stance and drops one that fails it, and accepts a
-    /// Remove only from the client that applied the status, the target's owner or the
-    /// master; the sending client runs the same checks first, so a refused change happens
-    /// nowhere. The template must be registered
+    /// Remove from the master and from any sender the Stance would let apply the status;
+    /// the sending client runs the same checks first, so a refused change happens nowhere.
+    /// The template must be registered
     /// under the same key on every client that should see it (register at plugin Awake
     /// from a literal); a peer without the key logs once and ignores the message, so a
     /// non-MPType.All mod degrades to "status invisible on that peer's sim" - fine for
@@ -112,12 +112,14 @@ namespace Ectype
         /// on the applying client only.</summary>
         public bool SkipsInvulnerableTargets;
 
-        /// <summary>Which sender-to-target relation the status accepts. The sender is the
-        /// client that applies it, judged by its character's side (its crew ship's when it
-        /// has no character), never by the attacker argument. Any (the default) accepts
-        /// every sender; Hostile only a sender on another side from the target; Friendly
-        /// only one on the target's side. Every receiver judges its copy of the
-        /// application, and a status with damage over time should be Hostile.</summary>
+        /// <summary>Which sender-to-target relation the status accepts, for an application
+        /// and for a removal. The sender is the client that sends it, judged by its
+        /// character's side (its crew ship's when it has no character). The attacker argument
+        /// counts in one case only: the master applying with an NPC attacker is judged by
+        /// that NPC's side. Any (the default) accepts every sender; Hostile only a sender on
+        /// another side from the target; Friendly only one on the target's side. The master
+        /// may always remove. Every receiver judges its copy of the message, and a status
+        /// with damage over time should be Hostile.</summary>
         public StatusStance Stance = StatusStance.Any;
 
         /// <summary>Milliseconds over which this client's applications of the status to one
@@ -239,23 +241,33 @@ namespace Ectype
         /// Apply (or re-apply: refresh/stack per the template) a status to a target for
         /// a duration, and broadcast the same application to every peer running the
         /// framework. Magnitude scales every stat amount and the DoT; attacker is
-        /// optional and only feeds damage events and callbacks. Fire and forget:
-        /// <see cref="TryApply"/> says why nothing happened.
+        /// optional and feeds damage events and callbacks; on the master it also stands in
+        /// for the sender's side when it is an NPC (see EnemyStatusDef.Stance). Fire and
+        /// forget: a refusal for the stance is logged once per key, and
+        /// <see cref="TryApply"/> returns why nothing happened.
         /// </summary>
         public static void Apply(OrbitObject target, string key, float seconds,
                                  float magnitude = 1f, OrbitObject attacker = null)
         {
-            TryApply(target, key, seconds, magnitude, attacker);
+            ApplyCore(target, key, seconds, magnitude, attacker, true);
         }
 
         /// <summary>
         /// <see cref="Apply"/>, returning <see cref="StatusRefusal.None"/> when the status
-        /// was applied here and sent to the peers, else the reason it was not. The stance
-        /// check runs here first with this client as the sender, the same check every
-        /// receiver runs, so a refused application is applied nowhere.
+        /// was applied here and its application sent to the peers (or queued for them, when
+        /// the template sets CoalesceMs), else the reason it was not. The stance check runs
+        /// here first with this client as the sender, the same check every receiver runs, so
+        /// a refused application is applied nowhere.
         /// </summary>
         public static StatusRefusal TryApply(OrbitObject target, string key, float seconds,
                                              float magnitude = 1f, OrbitObject attacker = null)
+        {
+            return ApplyCore(target, key, seconds, magnitude, attacker, false);
+        }
+
+        private static StatusRefusal ApplyCore(OrbitObject target, string key, float seconds,
+                                               float magnitude, OrbitObject attacker,
+                                               bool fireAndForget)
         {
             try
             {
@@ -278,13 +290,12 @@ namespace Ectype
 
                 int me = LocalActor();
                 int myForce;
-                StatusSide side = SideOf(me, target, out myForce);
+                bool byAttacker;
+                StatusSide side = SenderSide(me, target, attacker, out myForce, out byAttacker);
                 StatusRefusal stance = JudgeStance(def, side);
                 if (stance != StatusRefusal.None)
                 {
-                    if (Plugin.Verbose)
-                        Plugin.Log.LogInfo("Ectype: Apply('" + key + "') on " + target.name +
-                                           " refused: " + Reason(stance, def, side, 0) + ".");
+                    ReportOwnRefusal("Apply", key, target, Reason(stance, def, side), fireAndForget);
                     return stance;
                 }
 
@@ -292,11 +303,23 @@ namespace Ectype
                 int durationMs = (int)(seconds * 1000f);
                 int attackerView = attacker != null && attacker.photonView != null
                                        ? attacker.photonView.ViewID : 0;
-                ApplyLocal(target, def, startTs, durationMs, magnitude, attacker, me, myForce, 1);
+                if (def.CoalesceMs > 0 && durationMs <= def.CoalesceMs &&
+                    WarnedOnce.Add("coalesce-short:" + key))
+                    Plugin.Log.LogWarning("Ectype: status '" + key + "' applied for " + durationMs +
+                                          " ms with CoalesceMs " + def.CoalesceMs + "; it can end " +
+                                          "before its batch is sent, and the peers then never see it.");
+                bool created;
+                EnemyStatusEffect fx = ApplyLocal(target, def, startTs, durationMs, magnitude, attacker,
+                                                  me, myForce, byAttacker, 1, out created);
                 if (def.CoalesceMs > 0)
-                    Outbox.Add(target.photonView.ViewID, key, target.name, startTs, durationMs,
-                               magnitude, attackerView, def.RefreshOnReapply, def.CoalesceMs,
-                               Time.unscaledTime);
+                {
+                    int view = target.photonView.ViewID;
+                    // A batch belongs to one life of the local status, so a new life closes
+                    // whatever is still open for the old one.
+                    if (created) Outbox.Close(view, key);
+                    Outbox.Add(view, key, target.name, fx.ActivationTs, fx.EndTs, magnitude,
+                               attackerView, def.CoalesceMs, Time.unscaledTime);
+                }
                 else
                     Broadcast(new object[] { (byte)0, target.photonView.ViewID, key,
                                              startTs, durationMs, magnitude, attackerView });
@@ -309,36 +332,38 @@ namespace Ectype
             }
         }
 
-        /// <summary>Remove a status early, everywhere. No-op when not active. Only the client
-        /// that applied it, the target's owner or the master may remove it; see
-        /// <see cref="TryRemove"/>.</summary>
+        /// <summary>Remove a status early, everywhere. No-op when not active. Accepted from a
+        /// client the template's Stance would let apply it, and from the master; a refusal is
+        /// logged once per key, and <see cref="TryRemove"/> returns it.</summary>
         public static void Remove(OrbitObject target, string key)
         {
-            TryRemove(target, key);
+            RemoveCore(target, key, true);
         }
 
         /// <summary>
-        /// <see cref="Remove"/>, returning why nothing was sent. A status active here is
-        /// removed only when this client applied it, owns the target or is the master
-        /// (<see cref="StatusRefusal.Authority"/> otherwise), because every receiver holds
-        /// the same rule and would ignore the removal. A status not active here is still
-        /// sent: the receivers that have it judge the request.
+        /// <see cref="Remove"/>, returning why nothing was sent. A removal is accepted from a
+        /// sender the template's Stance would let apply the status (anyone for Any) and from
+        /// the master; anything else is <see cref="StatusRefusal.Authority"/>, judged here
+        /// first because every receiver holds the same rule and would ignore the removal.
         /// </summary>
         public static StatusRefusal TryRemove(OrbitObject target, string key)
+        {
+            return RemoveCore(target, key, false);
+        }
+
+        private static StatusRefusal RemoveCore(OrbitObject target, string key, bool fireAndForget)
         {
             try
             {
                 EnemyStatusDef def;
                 StatusRefusal pre = Preflight(target, key, out def);
                 if (pre != StatusRefusal.None) return pre;
-                EnemyStatusEffect fx = Find(target, key);
-                if (fx != null && !MayRemoveLocally(target, fx))
+                StatusSide side;
+                StatusRefusal verdict = JudgeRemoval(def, LocalActor(), target, out side);
+                if (verdict != StatusRefusal.None)
                 {
-                    if (Plugin.Verbose)
-                        Plugin.Log.LogInfo("Ectype: Remove('" + key + "') on " + target.name +
-                                           " refused: " + Reason(StatusRefusal.Authority, def,
-                                                                 StatusSide.Unknown, fx.ApplierActor) + ".");
-                    return StatusRefusal.Authority;
+                    ReportOwnRefusal("Remove", key, target, Reason(verdict, def, side), fireAndForget);
+                    return verdict;
                 }
                 RemoveLocal(target, key);
                 // Applications still queued would re-add the status on the peers after the removal.
@@ -404,28 +429,36 @@ namespace Ectype
         }
 
         /// <summary>Applies one application, or <paramref name="stacks"/> applications at once
-        /// with the timer moved once, on this client. The applier's actor and side are kept
-        /// from the creating application: they decide who may remove the status, the tick
-        /// recheck and the visibility rules.</summary>
-        internal static void ApplyLocal(OrbitObject target, EnemyStatusDef def, int startTs,
-                                        int durationMs, float magnitude, OrbitObject attacker,
-                                        int applierActor, int applierForce, int stacks)
+        /// with the timer moved once, on this client, and returns the live status. The creating
+        /// application's actor and side are kept for logging and the damage-over-time recheck;
+        /// every accepted applier's side is added to the set the OwnForce visibility rule
+        /// reads, so that set is the same on every client whatever order applications arrive
+        /// in.</summary>
+        internal static EnemyStatusEffect ApplyLocal(OrbitObject target, EnemyStatusDef def, int startTs,
+                                                     int durationMs, float magnitude, OrbitObject attacker,
+                                                     int applierActor, int applierForce, bool byAttacker,
+                                                     int stacks, out bool created)
         {
             if (stacks < 1) stacks = 1;
-            string mapKey = MapKey(target.photonView.ViewID, def.Key);
+            int viewId = target.photonView.ViewID;
+            string mapKey = MapKey(viewId, def.Key);
             EnemyStatusEffect fx;
             if (Active.TryGetValue(mapKey, out fx))
             {
+                created = false;
+                fx.NoteApplierSide(applierForce);
                 fx.Reapply(startTs, durationMs, stacks);
-                return;
+                return fx;
             }
-            fx = new EnemyStatusEffect(def, magnitude, attacker, mapKey, startTs, durationMs,
-                                       applierActor, applierForce);
+            created = true;
+            fx = new EnemyStatusEffect(def, magnitude, attacker, viewId, mapKey, startTs, durationMs,
+                                       applierActor, applierForce, byAttacker);
             Active[mapKey] = fx;
             // The game's own registration: joins the target's _effects list and calls
             // Activate -> our OnActivated applies the StatMods (the first stack).
             target.ApplyEffect(attacker, fx, startTs);
             if (stacks > 1) fx.AddStacks(stacks - 1);
+            return fx;
         }
 
         // ---------------------------------------------------------------- authority
@@ -471,6 +504,40 @@ namespace Ectype
             return Topology.Hostile(player, target) ? StatusSide.Other : StatusSide.Same;
         }
 
+        /// <summary>
+        /// The sender's side for an application. One case judges by the attacker instead: the
+        /// sender is the master and the attacker is an NPC (a space object that is neither a
+        /// player ship, a part of one, nor a character). NPCs are simulated on the master, so
+        /// only the master applies a status on an NPC's behalf, and the master is trusted with
+        /// any removal already. Every other attacker argument is ignored here, because any
+        /// client could fill it in. <paramref name="byAttacker"/> says which case applied.
+        /// </summary>
+        internal static StatusSide SenderSide(int actor, OrbitObject target, OrbitObject attacker,
+                                              out int force, out bool byAttacker)
+        {
+            byAttacker = false;
+            if (target != null && attacker != null && IsMaster(actor) && IsNpc(attacker))
+            {
+                byAttacker = true;
+                force = attacker.Faction;
+                return Topology.Hostile(attacker, target) ? StatusSide.Other : StatusSide.Same;
+            }
+            return SideOf(actor, target, out force);
+        }
+
+        private static bool IsNpc(OrbitObject o)
+        {
+            if (o is PlayerControlledShip || o is CG.Game.Player.Player) return false;
+            return Topology.ShipOfPart(o) == null;
+        }
+
+        internal static bool IsMaster(int actor)
+        {
+            if (actor == LocalActor() && PhotonNetwork.IsMasterClient) return true;
+            Player master = PhotonNetwork.MasterClient;
+            return master != null && master.ActorNumber == actor;
+        }
+
         internal static StatusRefusal JudgeStance(EnemyStatusDef def, StatusSide side)
         {
             if (def.Stance == StatusStance.Any) return StatusRefusal.None;
@@ -480,42 +547,60 @@ namespace Ectype
             return StatusRefusal.None;
         }
 
-        /// <summary>The applier, the target's owner or the master, as seen from this client.</summary>
-        private static bool MayRemoveLocally(OrbitObject target, EnemyStatusEffect fx)
+        /// <summary>
+        /// Who may remove a status, the same answer on every client and in any order: the
+        /// master, and any sender the template's Stance would let apply it (so anyone for
+        /// Any). Stateless, so two clients that applied concurrently can each remove it, and a
+        /// player who rejoins under a new actor number keeps the right their side gives them.
+        /// </summary>
+        internal static StatusRefusal JudgeRemoval(EnemyStatusDef def, int actor, OrbitObject target,
+                                                   out StatusSide side)
         {
-            if (fx.ApplierActor == LocalActor()) return true;
-            if (target.photonView != null && target.photonView.IsMine) return true;
-            return PhotonNetwork.IsMasterClient;
+            side = StatusSide.Unknown;
+            if (def.Stance == StatusStance.Any || IsMaster(actor)) return StatusRefusal.None;
+            int force;
+            side = SideOf(actor, target, out force);
+            return JudgeStance(def, side) == StatusRefusal.None ? StatusRefusal.None : StatusRefusal.Authority;
         }
 
-        /// <summary>The applier, the target's owner or the master, for a received removal.
-        /// A target no player owns (a room object) is the master's.</summary>
-        private static bool MayRemove(int actor, OrbitObject target, EnemyStatusEffect fx)
-        {
-            if (fx.ApplierActor == actor) return true;
-            PhotonView view = target.photonView;
-            Player owner = view != null ? view.Owner : null;
-            if (owner != null && owner.ActorNumber == actor) return true;
-            Player master = PhotonNetwork.MasterClient;
-            return master != null && master.ActorNumber == actor;
-        }
-
-        private static string Reason(StatusRefusal r, EnemyStatusDef def, StatusSide side, int applier)
+        private static string Reason(StatusRefusal r, EnemyStatusDef def, StatusSide side)
         {
             switch (r)
             {
                 case StatusRefusal.Stance:
-                    return "stance " + def.Stance + " and the sender is " +
-                           (side == StatusSide.Same ? "on the target's side" : "on another side from the target");
+                    return "stance " + def.Stance + " and the sender is " + SideText(side);
                 case StatusRefusal.UnknownSide:
                     return "stance " + def.Stance + " and the sender's side is unknown " +
                            "(no character and no crew ship)";
                 case StatusRefusal.Authority:
-                    return "only the applier (actor " + applier + "), the target's owner or " +
-                           "the master may remove it";
+                    return "stance " + def.Stance + " and the sender is " + SideText(side) +
+                           "; only a sender the stance lets apply it, or the master, may remove it";
                 default:
                     return r.ToString();
             }
+        }
+
+        private static string SideText(StatusSide side)
+        {
+            switch (side)
+            {
+                case StatusSide.Same: return "on the target's side";
+                case StatusSide.Other: return "on another side from the target";
+                default: return "of unknown side";
+            }
+        }
+
+        /// <summary>A refusal of this client's own call: once per operation and key as a
+        /// warning when it came through the fire-and-forget method, which returns nothing;
+        /// otherwise only with VerboseLogging, since the Try method returned it.</summary>
+        private static void ReportOwnRefusal(string op, string key, OrbitObject target, string reason,
+                                             bool fireAndForget)
+        {
+            string line = "Ectype: " + op + "('" + key + "') on " + target.name + " refused: " + reason + ".";
+            if (fireAndForget && WarnedOnce.Add("own-refusal:" + op + ":" + key))
+                Plugin.Log.LogWarning(line + " Logged once per status; Try" + op + " returns the reason.");
+            else if (Plugin.Verbose)
+                Plugin.Log.LogInfo(line);
         }
 
         internal static void RemoveLocal(OrbitObject target, string key)
@@ -534,7 +619,15 @@ namespace Ectype
         /// </summary>
         internal static void Poll()
         {
-            FlushOutbox(false);
+            try { FlushOutbox(false); }
+            catch (Exception e)
+            {
+                // Isolated so a failed send never skips this frame's expiry pump; the batches
+                // were taken out before sending, so a fault cannot repeat on the same one.
+                if (WarnedOnce.Add("flush"))
+                    Plugin.Log.LogError("Ectype: sending coalesced status applications failed " +
+                                        "(reported once): " + e);
+            }
             EnemyStatusMarkers.Poll(Active.Count > 0);
             if (Active.Count == 0) return;
             DriveScratch.Clear();
@@ -552,6 +645,9 @@ namespace Ectype
         internal static void Unregister(EnemyStatusEffect fx)
         {
             Active.Remove(fx.MapKey);
+            // The life this batch belonged to is over: close it so a later application opens
+            // a new one. A removal drops it right after.
+            Outbox.Close(fx.ViewId, fx.Def.Key);
         }
 
         internal static bool WarnOnce(string tag) { return WarnedOnce.Add(tag); }
@@ -569,8 +665,9 @@ namespace Ectype
             if (live < Math.Max(0, cap)) return false;
             if (WarnOnce(kind + "cap"))
                 Plugin.Log.LogWarning("Ectype: status-" + kind + " cap (" + cap + ") reached; " +
-                                      "further statuses run without " + omitted + " until one " +
-                                      "frees up ([EnemyStatuses] " + configKey + ").");
+                                      "a further status takes the slot of the farthest one only " +
+                                      "when clearly nearer, else it runs without " + omitted +
+                                      " until one frees up ([EnemyStatuses] " + configKey + ").");
             return true;
         }
 
@@ -623,15 +720,21 @@ namespace Ectype
             Outbox.TakeDue(Time.unscaledTime, all, FlushScratch);
             if (FlushScratch.Count == 0) return;
             Player[] to = RuntimeAbilities.Recipients();
+            int now = PhotonNetwork.ServerTimestamp;
             for (int i = 0; i < FlushScratch.Count; i++)
             {
                 EnemyStatusOutbox.Batch b = FlushScratch[i];
-                if (to.Length > 0)
+                // A batch whose status has already ended adds nothing anywhere: the peers'
+                // copies end on the same clock.
+                bool ended = unchecked(b.EndTs - now) <= 0;
+                bool send = to.Length > 0 && !ended;
+                if (send)
                     EctypeNet.Send(EctypeNet.EnemyStatusStacks, to, b.Args(), reliable: true);
                 if (Plugin.Verbose)
                     Plugin.Log.LogInfo("Ectype: status '" + b.Key + "' on " + b.TargetName + ": " +
                                        b.Applications + " application(s) in one " + b.WindowMs +
-                                       " ms window, " + (to.Length > 0 ? "1 send" : "0 sends (no peers)") +
+                                       " ms window, " +
+                                       (send ? "1 send" : ended ? "0 sends (the status ended)" : "0 sends (no peers)") +
                                        ".");
             }
             FlushScratch.Clear();
@@ -683,7 +786,18 @@ namespace Ectype
             if (target == null) return StatusRefusal.InvalidTarget;
             EnemyStatusDef def = ReceivedDef(key);
             if (def == null) return StatusRefusal.NotRegistered;
-            return ReceiveApply(sender, target, def, (int)args[2], (int)args[3], (float)args[4],
+            int startTs = (int)args[2], durationMs = (int)args[3];
+            if (unchecked(startTs + durationMs - PhotonNetwork.ServerTimestamp) <= 0)
+            {
+                // The applier's status ended before this batch arrived, and this copy ends on
+                // the same clock: the applications have nothing left to add to.
+                if (Plugin.Verbose)
+                    Plugin.Log.LogInfo("Ectype: status '" + key + "' on " + target.name + ": a batch of " +
+                                       applications + " application(s) from actor " + sender +
+                                       " arrived after the status ended; ignored.");
+                return StatusRefusal.InvalidDuration;
+            }
+            return ReceiveApply(sender, target, def, startTs, durationMs, (float)args[4],
                                 (int)args[5], applications);
         }
 
@@ -708,35 +822,43 @@ namespace Ectype
                                                   int startTs, int durationMs, float magnitude,
                                                   int attackerView, int stacks)
         {
+            PhotonView av = attackerView != 0 ? PhotonView.Find(attackerView) : null;
+            OrbitObject attacker = av != null ? av.GetComponent<OrbitObject>() : null;
             int senderForce;
-            StatusSide side = SideOf(sender, target, out senderForce);
+            bool byAttacker;
+            StatusSide side = SenderSide(sender, target, attacker, out senderForce, out byAttacker);
             StatusRefusal stance = JudgeStance(def, side);
             if (stance != StatusRefusal.None)
             {
-                StatusRefusalLog.Report(sender, def.Key, "Ectype: refused enemy status '" + def.Key +
+                StatusRefusalLog.Report(sender, "apply", def.Key, "Ectype: refused enemy status '" + def.Key +
                                         "' apply from actor " + sender + " on " + target.name + ": " +
-                                        Reason(stance, def, side, 0) + ".");
+                                        Reason(stance, def, side) + ".");
                 return stance;
             }
-            PhotonView av = attackerView != 0 ? PhotonView.Find(attackerView) : null;
-            OrbitObject attacker = av != null ? av.GetComponent<OrbitObject>() : null;
-            ApplyLocal(target, def, startTs, durationMs, magnitude, attacker, sender, senderForce, stacks);
+            bool created;
+            ApplyLocal(target, def, startTs, durationMs, magnitude, attacker, sender, senderForce,
+                       byAttacker, stacks, out created);
             return StatusRefusal.None;
         }
 
         private static StatusRefusal ReceiveRemove(int sender, OrbitObject target, string key)
         {
-            EnemyStatusEffect fx = Find(target, key);
-            if (fx == null) return StatusRefusal.None;   // not active here: nothing to remove
-            if (!MayRemove(sender, target, fx))
+            EnemyStatusDef def;
+            if (!Defs.TryGetValue(key, out def)) return StatusRefusal.NotRegistered;
+            StatusSide side;
+            StatusRefusal verdict = JudgeRemoval(def, sender, target, out side);
+            if (verdict != StatusRefusal.None)
             {
-                StatusRefusalLog.Report(sender, key, "Ectype: refused enemy status '" + key +
-                                        "' remove from actor " + sender + " on " + target.name + ": " +
-                                        Reason(StatusRefusal.Authority, fx.Def, StatusSide.Unknown,
-                                               fx.ApplierActor) + ".");
-                return StatusRefusal.Authority;
+                if (Find(target, key) != null)
+                    StatusRefusalLog.Report(sender, "remove", key, "Ectype: refused enemy status '" + key +
+                                            "' remove from actor " + sender + " on " + target.name + ": " +
+                                            Reason(verdict, def, side) + ".");
+                return verdict;
             }
             RemoveLocal(target, key);
+            // This client's own queued applications would re-create the status on every
+            // other peer after the removal.
+            Outbox.Drop(target.photonView.ViewID, key);
             return StatusRefusal.None;
         }
     }
@@ -790,8 +912,8 @@ namespace Ectype
         /// <summary>The template has a Stance other than Any and the sender's side is unknown:
         /// no character and no crew ship.</summary>
         UnknownSide = 7,
-        /// <summary>A removal from a client that neither applied the status, owns the target
-        /// nor is the master.</summary>
+        /// <summary>A removal from a client that is not the master and that the template's
+        /// Stance would not let apply the status.</summary>
         Authority = 8,
         /// <summary>The call threw; the exception is logged.</summary>
         Failed = 9,
@@ -802,8 +924,8 @@ namespace Ectype
 
     /// <summary>
     /// Refusals of received status messages, logged as warnings at most once per
-    /// <see cref="WindowSeconds"/> per (sender, status key); the next line carries the
-    /// count of refusals left unreported in between.
+    /// <see cref="WindowSeconds"/> per (sender, operation, status key); the next line carries
+    /// the count of refusals left unreported in between.
     /// </summary>
     internal static class StatusRefusalLog
     {
@@ -820,11 +942,11 @@ namespace Ectype
         /// <summary>Lines written since load (read by the dev self-test).</summary>
         internal static int Lines;
 
-        /// <summary>Logs the line unless one for this sender and key was logged within the
-        /// window. True when it logged.</summary>
-        internal static bool Report(int sender, string key, string line)
+        /// <summary>Logs the line unless one for this sender, operation and key was logged
+        /// within the window. True when it logged.</summary>
+        internal static bool Report(int sender, string op, string key, string line)
         {
-            string id = sender + "/" + key;
+            string id = sender + "/" + op + "/" + key;
             float now = Time.unscaledTime;
             Slot slot;
             if (!Slots.TryGetValue(id, out slot))
@@ -838,7 +960,7 @@ namespace Ectype
                 return false;
             }
             string tail = slot.Unreported > 0
-                              ? " " + slot.Unreported + " more from this sender for this status since the last report."
+                              ? " " + slot.Unreported + " more like it from this sender since the last report."
                               : "";
             slot.Unreported = 0;
             slot.NextAt = now + WindowSeconds;
@@ -878,13 +1000,27 @@ namespace Ectype
             }
         }
 
-        /// <summary>The actor whose application created this status: the sender of the message
-        /// on a receiver, this client on the applier.</summary>
+        /// <summary>The target's view id.</summary>
+        internal readonly int ViewId;
+
+        /// <summary>The actor whose application created this status on this client: the sender
+        /// of the message on a receiver, this client on the applier. Two clients that applied
+        /// concurrently can disagree on it, so it serves logging and the damage-over-time
+        /// recheck on the target's owner, never authority.</summary>
         internal readonly int ApplierActor;
 
-        /// <summary>The applier's faction when the status was created, -1 when unknown. Stands
-        /// in for the applier's side once that can no longer be resolved (the applier left).</summary>
+        /// <summary>The creating applier's faction, -1 when unknown. Stands in for the applier's
+        /// side in the tick recheck once that can no longer be resolved (the applier left).</summary>
         internal readonly int ApplierForce;
+
+        /// <summary>The creating application was judged by its NPC attacker's side (the master
+        /// applying on an NPC's behalf); the tick recheck then follows the attacker.</summary>
+        internal readonly bool JudgedByAttacker;
+
+        /// <summary>The sides of every applier accepted here, for the OwnForce visibility rule.
+        /// Every client accepts the same reliable applications, so the set converges whatever
+        /// order they arrive in.</summary>
+        internal readonly List<int> ApplierSides = new List<int>(2);
 
         /// <summary>The hidden-by-visibility line was logged for the current hidden spell.</summary>
         internal bool HiddenLogged;
@@ -892,18 +1028,29 @@ namespace Ectype
         private bool _tickSkipLogged;
 
         internal EnemyStatusEffect(EnemyStatusDef def, float magnitude, OrbitObject attacker,
-                                   string mapKey, int startTs, int durationMs,
-                                   int applierActor, int applierForce)
+                                   int viewId, string mapKey, int startTs, int durationMs,
+                                   int applierActor, int applierForce, bool judgedByAttacker)
         {
             _def = def;
             _magnitude = magnitude;
             _attacker = attacker;
+            ViewId = viewId;
             ApplierActor = applierActor;
             ApplierForce = applierForce;
+            JudgedByAttacker = judgedByAttacker;
+            NoteApplierSide(applierForce);
             MapKey = mapKey;
             _activationTs = startTs;
             _endTs = unchecked(startTs + durationMs);
             ArmBaseTimer();
+        }
+
+        /// <summary>Server timestamp the status started at; the ticks are indexed from it.</summary>
+        internal int ActivationTs { get { return _activationTs; } }
+
+        internal void NoteApplierSide(int side)
+        {
+            if (side >= 0 && !ApplierSides.Contains(side)) ApplierSides.Add(side);
         }
 
         /// <summary>Base Effect expires at startTime + Duration*1000 (whole seconds). Keep
@@ -918,12 +1065,14 @@ namespace Ectype
 
         /// <summary><paramref name="applications"/> re-applications at once: the timer moves
         /// once, then each application stacks or, at MaxStacks, reports through OnApplied,
-        /// exactly as that many single re-applications would.</summary>
+        /// exactly as that many single re-applications would. A refresh only ever moves the end
+        /// later, so applications from several clients leave the same end in any arrival order.</summary>
         internal void Reapply(int startTs, int durationMs, int applications)
         {
-            if (_def.RefreshOnReapply)
+            int end = unchecked(startTs + durationMs);
+            if (_def.RefreshOnReapply && unchecked(end - _endTs) > 0)
             {
-                _endTs = unchecked(startTs + durationMs);
+                _endTs = end;
                 ArmBaseTimer();
             }
             AddStacks(applications);
@@ -1100,11 +1249,18 @@ namespace Ectype
         }
 
 
-        /// <summary>The applier's side now, else the side recorded when the status was created.</summary>
+        /// <summary>The applier's side now (its NPC attacker's, when the status was applied on an
+        /// NPC's behalf), else the side recorded when the status was created.</summary>
         private bool ApplierStillHostile(OrbitObject target)
         {
             int force;
-            StatusSide side = EnemyStatuses.SideOf(ApplierActor, target, out force);
+            StatusSide side;
+            if (JudgedByAttacker)
+                side = _attacker != null
+                           ? (Topology.Hostile(_attacker, target) ? StatusSide.Other : StatusSide.Same)
+                           : StatusSide.Unknown;
+            else
+                side = EnemyStatuses.SideOf(ApplierActor, target, out force);
             bool hostile = side == StatusSide.Other ||
                            (side == StatusSide.Unknown && ApplierForce >= 0 && ApplierForce != target.Faction);
             if (hostile) _tickSkipLogged = false;
@@ -1145,8 +1301,7 @@ namespace Ectype
     /// Not owner-gated: any crew member's client may apply a status to an NPC (the applier
     /// is not the view owner - the master is), and the payload can only reference templates
     /// this client itself registered. The sender's actor is judged against the template's
-    /// Stance and, for a removal, against the status's applier, the target's owner and the
-    /// master.
+    /// Stance, for an application and for a removal alike; the master may always remove.
     /// </summary>
     internal static class EnemyStatusMessage
     {
