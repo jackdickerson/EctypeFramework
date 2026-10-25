@@ -1,3 +1,7 @@
+## 0.28.0
+
+Mods can put timed effects on other players, such as a slow from a crewmate or an enemy. The affected player's own game checks each one first against the mod's rules (who sent it, how close they are, whether they can see each other, how often they send), so a modified client cannot apply them from afar, through walls or in a flood. Other players can see these effects. Effects on a player now end when that player dies. Players need this version to join a host running it.
+
 ## 0.23.0
 
 Status effects that mods put on ships can be limited to enemies or to allies, and for those every player's game checks who applied or removed one, so a modified client cannot place or strip them on the wrong side. Effects a mod leaves open to everyone stay open. Rapid-fire weapons that apply a status on every hit send far fewer network messages in large rooms. When too many status markers are on screen, the ones nearest your ship are kept. Players need this version to join a host running it.

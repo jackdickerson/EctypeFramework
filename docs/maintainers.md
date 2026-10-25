@@ -56,8 +56,9 @@ column.
 | `PlayerControlledShip.Awake` postfix, `OnDestroy` prefix, `NetPublishShipDeathBegan` postfix | the `Topology` ship registry. `Awake` runs on every client for every ship and is where the ship assigns itself as the game's player ship; the death-began method is an RPC sent to all and sets `StartedDeath` |
 | `ClientGame.PlayerShip` (read) | presentation only (the status-marker lock gate, and the distance ranking of status markers and visuals past their caps), and simulation only while `Topology.Multi` is false. A multi-ship mod can postfix the getter to return the viewing client's ship |
 | `EventData.Sender` (through the framework's channel), `Room.GetPlayer(int)`, `PhotonNetwork.MasterClient` / `IsMasterClient` (read); `OrbitObject.IsObjectFromDifferentFaction` (through `Topology.Hostile`) | enemy-status authority: the sender's side against the template's stance for an application and a removal, the master's removal exemption, and the master-with-NPC-attacker case. The game's different-faction check is a plain faction comparison, so neutral objects (faction 0) are on another side from every player |
-| `Player.State` (`LifeState`, read) | character-status requests: the requester's and the target's character alive. The `NetworkNotifyDeath` RPC (sent to all) sets it to `Dead` on every client and the clone-tube respawn sets it back; `CustomCharacterHealth.IsDead` is set only on the owning client and is not read |
-| `LayerMask.GetMask("StaticPlatform", "MovingPlatform")`, `Physics.Linecast` with `QueryTriggerInteraction.Ignore` (called) | character-status line of sight. The layer pair is the interaction ray's mask (`RaycastHandler`: `StaticPlatform`, `InteractiveObjects`, `MovingPlatform`) without `InteractiveObjects`, and `FlyJetpack`'s environment mask. A renamed layer leaves the mask 0 and every line-of-sight request refused, with one error |
+| `Player.State` (`LifeState`) setter postfix, and read | character statuses end on death, and requests need both characters alive. The `NetworkNotifyDeath` RPC (sent to all) sets it to `Dead` on every client, `CustomCharacterHealth.SimulateRemoteDeath` sets it on a client that learns of the death from a health update, and the clone-tube respawn sets the same object back to `Alive`; the game keeps the character object through death and respawn, so the setter is the only place a death shows. `CustomCharacterHealth.IsDead` is set only on the owning client and is not read |
+| `LayerMask.GetMask("StaticPlatform", "MovingPlatform", "SpaceObjects")`, `Physics.Linecast` with `QueryTriggerInteraction.Ignore` (called) | character-status line of sight: hull and level geometry plus asteroids, NPC hulls and wrecks. Each ship's colliders stay in the main physics scene (the per-ship simulation scene holds copies), so the cast hits another ship's walls. A renamed layer leaves the mask 0 and every line-of-sight request refused, with one error |
+| `SittingInChair` ability (`IsActive`, synchronised), `SpawnSystem.clonetubes` (private, read by reflection), `CloneTube.GetOccupant()`, `InClonetube` ability on the owning client (read) | the `RefuseSeated` and `RefuseInTube` request checks. A missing field reads as not in a tube |
 | `Player.ActorId` (`photonView.CreatorActorNr`) through `Topology.CharacterOf`, `PhotonView.IsMine` (read) | character-status requests: the requester's character by the event's sender actor, the target's own character, and who may announce a status on a character |
 | `ClientGame.Players`, `Player.ActorId`, `Player.ZonedPlatform` / `Platform`, `OrbitObject.Faction`, `ShipHull.Ship`, `CarryableObject.ParentPlatform` (read) | `Topology`'s answers: a character by actor, the ship a character is aboard, a part's ship, sides |
 | Plugin `com.captainchunck.voidcrew.fleet`: `VoidCrewFleet.FleetApi.ApiVersion`, `ShipOfPlayer(int)`, `TeamOf(int)`, `TeamOfShip(int)`, events `ShipsChanged` / `TeamsChanged` (bound by reflection); room property `VCF_Ships` (read, shape-checked) | `Topology`'s crew-ship and team answers and ship numbering under Void Crew Fleet. Bound only for `ApiVersion` 1; answers used only while the plugin component and its `[General] Enabled` entry are on. A missing member is logged once and answered from game data |
@@ -162,21 +163,25 @@ What it adds:
   master; a received removal must drop this client's queued batch; and, on the master with a
   hostile NPC in the sector, a `Hostile` apply with that NPC as attacker must land. Its two
   refusal warnings are expected.
-- A character status request self-test at load: the request, announcement and end messages
-  as their builders make them must match their layouts and survive a Protocol18 round trip;
-  the judge, fed synthetic views of the two characters, must return each refusal reason on its
-  own input (a non-replicated key, out of range, a blocked line, each stance, dead and missing
-  characters, bad duration and magnitude) and cut over-cap values; the rate bucket must hold
-  `Burst` 2 per 1 s; each `Visibility` rule must choose its viewers; and four bad templates
-  must fail validation.
+- A character status request self-test at load: the request, answer, announcement and end
+  messages as their builders make them must match their layouts and survive a Protocol18 round
+  trip; the judge, fed synthetic views of the two characters, must return each refusal reason
+  on its own input (a key without `AcceptsRequests`, a short duration, a zero magnitude, out of
+  range on the target's view but in range on the requester's, a blocked line, a seat, a tube,
+  each stance, dead and missing characters) and cut over-cap values; the rate buckets must hold
+  `Burst` 2 per 1 s, accept jittered arrivals with the target's extra token, and cap a requester
+  at 20 at once; a completed handle must run a late callback once; each `Visibility` rule must
+  choose its viewers; and six bad templates must fail validation.
 - A character status authority self-test once this client's character exists: requests are
-  driven through the receive path against that character. Actor 9999 must be refused
-  `SenderMissing`, a non-replicated key `NotReplicated`, a request naming another actor
-  `InvalidTarget`; this client's own actor must land the status and move
-  `MotorAcceleration`, and a second request inside `MinInterval` must be `RateLimited`; a
-  forged announcement must be refused `Authority`; and a presentation copy on the character
-  must leave `MotorAcceleration` and the `OnApplied` count unchanged. Its four refusal
-  warnings are expected.
+  driven through the receive path against that character, with templates that accept requests
+  only from 0.01 m. Actor 9999 must be refused `SenderMissing`, a key without
+  `AcceptsRequests` `NotAccepted`, a request naming another actor `InvalidTarget`; this client's
+  own actor must land the status and move `MotorAcceleration`, and a third request inside
+  `MinInterval` must be `RateLimited`; a shorter, stronger request must keep the end and lower
+  `MotorAcceleration` further; the death hook must end a status and a copy; a forged
+  announcement must be refused `Authority`; and a presentation copy on the character must leave
+  `MotorAcceleration` and the `OnApplied` count unchanged. Its five refusal warnings are
+  expected.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
   ability disabled while still selected, a channel stopped with time left (with a short

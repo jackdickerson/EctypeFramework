@@ -3,7 +3,7 @@
 `CharacterStatuses` is the counterpart to [enemy statuses](enemy-statuses.md) for a
 `CG.Game.Player.Player` target. Register a template once at plugin `Awake` on every client, then
 apply it for a duration. The framework drives the timer and removes everything the status added
-on expiry, death or despawn.
+on expiry, on death, and when the character is destroyed.
 
 ```csharp
 CharacterStatuses.Register(new CharacterStatusDef("mymod.dash-guard")
@@ -23,15 +23,16 @@ A status on another player's character is a request to that player's client:
 ```csharp
 CharacterStatuses.Register(new CharacterStatusDef("mymod.slow")
 {
-    Replicated = true,               // accept requests from other clients
+    AcceptsRequests = true,          // other clients may request it
     Stance = StatusStance.Hostile,
-    MaxRange = 6f, RequiresLineOfSight = true,
+    MaxRange = 5f, RequiresLineOfSight = true, RefuseSeated = true,
     MinInterval = 2f, Burst = 1,
     MaxSeconds = 4f, MaxMagnitude = 1f,
     Presented = true,                // other players see a copy
 }.AddStat("MotorAcceleration", "percent", -0.4f));
 
-CharacterStatusRefusal r = CharacterStatuses.Request(enemyPlayer, "mymod.slow", seconds: 3f);
+CharacterStatuses.Request(enemyPlayer, "mymod.slow", seconds: 3f)
+    .OnCompleted(r => { if (!r.Applied) RefundCooldown(r.Refusal); });
 ```
 
 ## Where a status lives
@@ -53,38 +54,59 @@ of the character the game reads for the things a status changes:
 client's copy, which changes nothing for that player, and the framework logs one warning per key
 naming the character. `Request` is the call for another player's character.
 
+`Replicated` changes nothing. It declares that a status should be visible everywhere; a template
+that sets it logs one warning per key on `Apply`, naming `AcceptsRequests` and `Presented`, the
+two fields that do the work.
+
 ## Requests
 
 `CharacterStatuses.Request(target, key, seconds, magnitude = 1, attacker = null)` returns a
-`CharacterStatusRefusal`. On this client's own character it is `Apply`. On another player's
+`CharacterStatusRequest`. On this client's own character it is `Apply`. On another player's
 character:
 
-1. The requesting client runs every check below from its own view. A request any check refuses
-   is not sent, and `Request` returns the reason.
-2. The request goes to the target's client alone: the target's actor number, the key, the
-   duration in milliseconds, the magnitude, and the attacker's view id (0 for none). Nothing
-   about either character's position or state travels with it.
+1. The requesting client runs every check below from its own view, with a looser range (see
+   **Range**). A request any check refuses is not sent.
+2. The request goes to the target's client alone: a request id, the target's actor number, the
+   key, the duration in milliseconds, the magnitude, and the attacker's view id (0 for none).
+   Nothing about either character's position or state travels with it.
 3. The target's client judges the request against its own view of both characters, in this
    order, and stops at the first refusal:
 
    | Order | Check | Refusal |
    | --- | --- | --- |
-   | 1 | A template is registered under the key | `NotRegistered` |
-   | 2 | The template sets `Replicated` | `NotReplicated` |
-   | 3 | Duration above 0 and finite; magnitude 0 or more and finite. Values above `MaxSeconds` and `MaxMagnitude` are cut to them | `InvalidDuration`, `InvalidMagnitude` |
-   | 4 | The target character is alive | `TargetDead` |
-   | 5 | The requester has a character on this client | `SenderMissing` |
-   | 6 | That character is alive | `SenderDead` |
-   | 7 | `Stance`: `Hostile` needs the two characters on different sides, `Friendly` on the same side, `Any` accepts both | `Stance` |
-   | 8 | `MaxRange`: the distance between the two characters, when above 0 | `OutOfRange` |
-   | 9 | `RequiresLineOfSight`: no level geometry between the two characters' chests | `NoLineOfSight` |
-   | 10 | Rate: a token bucket per requester and key, `Burst` tokens, one more every `MinInterval` seconds | `RateLimited` |
+   | 1 | The requester sent at most 20 requests in the last second, across all keys. Past that, requests are dropped unanswered | `RateLimited` |
+   | 2 | The key is at most 128 characters | `Failed` |
+   | 3 | The request names this client's actor, and this client has a character | `InvalidTarget` |
+   | 4 | The framework's patches applied this session | `Inert` |
+   | 5 | A template is registered under the key | `NotRegistered` |
+   | 6 | The template sets `AcceptsRequests` | `NotAccepted` |
+   | 7 | Duration finite and at least `MinSeconds`; magnitude above 0 and finite. Values above `MaxSeconds` and `MaxMagnitude` are cut to them | `InvalidDuration`, `InvalidMagnitude` |
+   | 8 | The target character is alive | `TargetDead` |
+   | 9 | The requester has a character on this client | `SenderMissing` |
+   | 10 | That character is alive | `SenderDead` |
+   | 11 | `RefuseSeated`: the requester is not seated | `SenderSeated` |
+   | 12 | `RefuseInTube`: neither character is in a clone tube | `InCloneTube` |
+   | 13 | `Stance`: `Hostile` needs the two characters on different sides, `Friendly` on the same side, `Any` accepts both | `Stance` |
+   | 14 | `MaxRange`: the distance between the two characters, when above 0 | `OutOfRange` |
+   | 15 | `RequiresLineOfSight`: nothing between the two characters' chests | `NoLineOfSight` |
+   | 16 | Rate: a token bucket per requester and key, `Burst + 1` tokens, one more every `MinInterval` seconds | `RateLimited` |
 
-4. An accepted request applies the status exactly as a local `Apply` with the cut duration and
-   magnitude: same stacking, same refresh, same callbacks, on the target's own client.
-5. A refusal is logged on the target's client as a warning naming the key, the requester's actor
-   number and the reason; at most one line per requester, operation and key per 30 s. The
-   requester learns nothing of it.
+4. An accepted request applies the status as a local `Apply` would, with the cut duration and
+   magnitude and the same stacking and callbacks, with one difference: **a request never
+   shortens or weakens a running status.** Its end moves only later, and a larger magnitude
+   re-applies every stack at the larger value. Without that rule, a 0.25 s request would end
+   another player's 30 s status, a remote removal under another name.
+5. The target's client answers the requester with the verdict: `None` for applied, else the
+   refusal. A refusal is also logged there as a warning naming the key, the requester's actor
+   number and the reason; at most one line per requester, operation and key per 30 s.
+
+**The handle.** `CharacterStatusRequest` carries `Target`, `Key`, `Sent` (the request left this
+client), `Done`, `Refusal` and `Applied` (done with `None`). `OnCompleted(callback)` runs the
+callback once when the verdict is in, at once if it already is, and returns the handle. A request
+applied here or refused by this client's own checks is done before `Request` returns. A sent one
+is done when the answer arrives, or with `NoAnswer` after 10 s (the target left, or its client
+dropped the request at the per-requester cap). A role ability that spends a cooldown on a
+request can refund it from the callback.
 
 **Why the target's client judges.** Any client can be modified, and a request is a claim by the
 requester. The two facts a check could not do without are the requester's identity and both
@@ -103,19 +125,32 @@ saw it, so a hit that looked close to the requester but far to the target is ref
   always refused.
 - **Alive** is the character's replicated life state: the game's death notification sets it on
   every client and the respawn clears it. The health component's own dead flag is set only on
-  the owning client and is not read.
-- **Distance** is between the two characters' positions (their feet). Give `MaxRange` a metre or
-  two of slack: the target's client sees the requester one network update late.
+  the owning client and is not read. A client that joined after a player died learns of it from
+  that character's first health update, which marks a character at 0 health dead.
+- **Seated** is the seat ability (chairs, the helm, turrets) being active; its state is
+  synchronised to every client. A seat can be a legitimate source, so the check is opt-in.
+- **In a clone tube** is a clone tube holding the character as its occupant, or, on the client
+  that owns the character, its in-tube ability being active. The game keeps a respawning
+  character alive while it sits in the tube.
+- **Range** is the distance between the two characters' positions (their feet). The target's
+  client checks `MaxRange` exactly. The requesting client checks the larger of `MaxRange` × 1.15
+  and `MaxRange` + 1 m. Each client sees the other's character one network update late, so a
+  request near the edge looks in range on one client and out of range on the other; the looser
+  check on the requesting side lets such a request reach the target's client, whose view is the
+  one that counts, and the answer reports its verdict.
 - **Line of sight** is a line cast between points 1.2 m above each character's feet along its up
-  axis, against the `StaticPlatform` and `MovingPlatform` layers, triggers ignored. Those are
-  the game's interaction ray mask without `InteractiveObjects`, and the pair its jetpack treats
-  as environment. Interactive objects are left out so a console or a carried item does not hide
-  a player standing behind it. Characters sit on their own layer, so neither end of the line hits
+  axis, against the `StaticPlatform`, `MovingPlatform` and `SpaceObjects` layers, triggers
+  ignored: hull and level geometry, and asteroids, NPC hulls and wrecks between two players in
+  space. Each ship's colliders stay in the main physics scene, so the cast also hits another
+  ship's walls. Interactive objects are left out so a console or a carried item does not hide a
+  player standing behind it. Characters sit on their own layer, so neither end of the line hits
   its own body. A game without those layers refuses every line-of-sight check and logs one
   error.
-- **Rate** counts accepted requests only. The requesting client keeps the same budget per target
-  and key, so a requester that keeps to it is never refused for rate; `Burst` absorbs requests
-  the network delivers bunched up.
+- **Rate** counts accepted requests only. The requesting client keeps `Burst` tokens per target
+  and key; the target's client keeps one more. Two requests sent exactly `MinInterval` apart can
+  arrive closer together when the first is delayed more than the second, and the extra token
+  absorbs that. A modified client gains at most one extra request at once, never a higher
+  sustained rate.
 
 **The attacker argument is informational.** It travels as a view id, and the target's client
 reports it through `AttackerOf(target, key)`, with the requester's actor through
@@ -131,26 +166,28 @@ the target's own client with `Apply`. NPC damage abilities already run there.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `Replicated` | `false` | Accept requests. Off, every request is refused `NotReplicated`. |
+| `AcceptsRequests` | `false` | Accept requests. Off, every request is refused `NotAccepted`. |
 | `Stance` | `Any` | `Any`, `Hostile` (another side from the target) or `Friendly` (the target's side). |
 | `MaxRange` | `0` | Metres, measured on the target's client. 0 checks no range. |
-| `RequiresLineOfSight` | `false` | Refuse when level geometry blocks the line between the two characters. |
+| `RequiresLineOfSight` | `false` | Refuse when something blocks the line between the two characters. |
+| `RefuseSeated` | `false` | Refuse a seated requester. |
+| `RefuseInTube` | `false` | Refuse when the requester or the target is in a clone tube. |
 | `MinInterval` | `0` | Seconds per request from one requester for this key. 0 checks no rate. |
-| `Burst` | `1` | Requests accepted back to back before `MinInterval` applies. |
+| `Burst` | `1` | Requests sent back to back before `MinInterval` applies. |
+| `MinSeconds` | `0.25` | A shorter requested duration is refused. |
 | `MaxSeconds` | `30` | A longer requested duration is cut to this. |
-| `MaxMagnitude` | `1` | A larger requested magnitude is cut to this. A negative magnitude is refused: it would turn a debuff into a buff. |
+| `MaxMagnitude` | `1` | A larger requested magnitude is cut to this. A magnitude of 0 or below is refused: it would turn a debuff into a buff, or pin the status at no effect. |
 
-`Register` refuses a template with `Burst` below 1, a negative or non-finite `MinInterval`,
-`MaxRange` or `MaxMagnitude`, or a `MaxSeconds` that is not above 0, and logs one error naming the
-field. A template that sets request checks without `Replicated`, or presentation fields without
-`Presented`, registers with one warning.
+`Register` refuses a template with `Burst` below 1; a negative or non-finite `MinInterval` or
+`MaxRange`; a `MaxSeconds` that is not above 0; a `MinSeconds` outside 0 to `MaxSeconds`; or a
+`MaxMagnitude` that is not above 0. It logs one error naming the field. A template that sets
+request checks without `AcceptsRequests`, or presentation fields without `Presented`, registers
+with one warning.
 
-**`Request` refusals from the requesting client's view** are the reasons above plus
-`InvalidTarget` (null, no stat collection or no `PhotonView`), `Inert` (the framework's patches
-did not apply) and `NoPeer` (the target's client does not run this framework on this network
-contract). `None` means the status was applied here or the request was sent; the target's client
-can still refuse it. A requester that needs the verdict reads it where it shows: the presentation
-copy, when the template is `Presented`.
+**Refusals from the requesting client's own checks** are the reasons above plus
+`InvalidTarget` (null, no stat collection or no `PhotonView`), `NoPeer` (the target's client does
+not run this framework on this network contract) and `RateLimited` when 256 requests are already
+waiting for an answer.
 
 ## Removal
 
@@ -159,9 +196,19 @@ network. `Remove` on another player's character removes only a copy this client'
 left there; otherwise it logs one warning per key, and `TryRemove` returns `Authority`.
 `TryRemove` returns `None` when it removed the status or there was none.
 
+## Death
+
+The game keeps the character object through death and respawn: it marks the character dead, and
+the clone-tube respawn marks the same object alive again. Every death passes through the
+character's life-state setter on every client, and the framework hooks it. When a character's
+state leaves alive, each client ends every status it runs on that character, with `OnRemoved`,
+and every presentation copy shown on it. On the owning client that ending also tells the peers'
+copies. A respawned character starts with no status. A character that is destroyed outright
+(leaving the room, a scene change) ends its statuses on the next poll.
+
 ## Presentation copies
 
-A template with `Presented = true` is shown to other players. After every application on a
+A template with `Presented = true` is shown to other players. After an application on a
 character it owns, the owning client sends the target's actor number, the key, the end as a
 Photon server timestamp, and the magnitude to the peers the template's `Visibility` allows. Each
 runs a presentation copy: `CreateVfx` builds a visual the framework parents to the character at
@@ -181,13 +228,13 @@ callback; `IsActive` stays false on every client but the owner's.
   an `All` status.
 - **The end travels with the copy.** A copy ends on the server time it was told, with no further
   message, so every viewer's copy ends together whatever its frame rate. An end before that
-  (removal, death, despawn, a role switch's `RemoveAll`) is sent to every peer that received the
-  copy.
+  (removal, death, a role switch's `RemoveAll`) is sent to every peer that received the copy.
 - **A re-application** is sent again when it moves the end by 250 ms or more, and otherwise only
-  to audience peers that have not received the copy yet.
+  to audience peers that have not received the copy yet. One status is announced at most every
+  0.5 s; a re-application inside that gap is sent when it ends.
 - **Only a character's own client may announce a status on it.** A receiver refuses an
-  announcement naming any other actor's character, and one for a key whose template is not
-  `Presented` on the receiver.
+  announcement naming any other actor's character, one for a key whose template is not
+  `Presented` on the receiver, and one for a dead character. A copy lasts at most an hour.
 - **Late joiners** receive no copy of a status already running.
 - `CreateVfx` does not run on the owning client: its player sees through the character's eyes.
   Use `OnApplied` and `OnRemoved` for that player's own feedback.
@@ -204,13 +251,10 @@ callback; `IsActive` stays false on every client but the owner's.
   framework logs one warning per (status, target type). `AddAllVulnerabilities` covers every
   damage type plus the aggregate. That is the right default: vanilla character perks modify the
   per-type stats, and the aggregate's read path on characters is unverified.
-- **A respawned character is a different target.** Statuses and copies are keyed on the
-  character instance, so a new body never inherits the old one's entries, and a status whose
-  target was destroyed ends itself on the next poll.
 - **Every client that should take or see a status registers its template** under the same
-  literal key. A client without it ignores requests and announcements for the key and logs once.
-  A mod that requests statuses on other players therefore runs on every client: declare it
-  `MultiplayerType.All`.
+  literal key. A client without it ignores requests and announcements for the key, logs a
+  throttled warning, and answers a request `NotRegistered`. A mod that requests statuses on
+  other players therefore runs on every client: declare it `MultiplayerType.All`.
 
 ## Checking it
 
@@ -218,10 +262,12 @@ Turn on `[Debug] VerboseLogging` on both clients.
 
 | Line | Check |
 | --- | --- |
-| `Ectype: character status '<key>' requested on <name> (actor <a>, <s> s, magnitude <m>).` | On the requester: the request left. |
+| `Ectype: character status '<key>' requested on <name> (actor <a>, request <id>, <s> s, magnitude <m>).` | On the requester: the request left. |
 | `Ectype: character status '<key>' applied on request from actor <a> (<s> s, magnitude <m>, <d> m).` | On the target: accepted, with the distance it measured. |
 | `Ectype: refused character status '<key>' request from actor <a> on <name>: <reason>.` | On the target: refused, and why. |
+| `Ectype: character status '<key>' request <id> to actor <a> answered <refusal>.` | On the requester: the verdict arrived. |
 | `Ectype: presenting character status '<key>' on <name> for <s> s.` | On a third client: a copy started. |
+| `Ectype: <name> died: ended <n> character status(es) and <m> presentation copy(ies).` | On each client: a death ended what it ran on that character. |
 
 [troubleshooting.md](../troubleshooting.md) lists every line with its cause.
 

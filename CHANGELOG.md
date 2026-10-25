@@ -7,31 +7,43 @@ build.
 ## 0.28.0
 
 - `CharacterStatuses.Request(player, key, seconds, magnitude, attacker)` puts a status on another
-  player's character and returns a `CharacterStatusRefusal`. On this client's own character it
-  is `Apply`. Otherwise it sends a request to the target's client alone, which judges it against
-  its own view of both characters and applies it there, as a local `Apply`, or refuses it with a
-  throttled warning. The checks, in order: template registered and `Replicated`; duration and
-  magnitude valid (cut to `MaxSeconds` and `MaxMagnitude`, default 30 s and 1; a negative
-  magnitude is refused); target alive; requester has a character and it is alive; `Stance`;
-  `MaxRange` (metres, 0 = none); `RequiresLineOfSight`; rate per requester and key
-  (`MinInterval`, `Burst`). The requesting client runs the same checks first and sends nothing
-  they refuse.
-- `CharacterStatusDef.Replicated` now means "accepts requests"; it defaults to off, so every
-  existing template behaves as before and refuses requests. The warning it used to log is gone.
+  player's character. On this client's own character it is `Apply`. Otherwise it sends a request
+  to the target's client alone, which judges it against its own view of both characters,
+  applies it there as a local `Apply` would or refuses it with a throttled warning, and answers.
+  The checks, in order: template registered and `AcceptsRequests`; duration at least
+  `MinSeconds` (default 0.25 s) and magnitude above 0, cut to `MaxSeconds` and `MaxMagnitude`
+  (default 30 s and 1); target alive; requester has a character and it is alive; optionally not
+  seated (`RefuseSeated`) and neither in a clone tube (`RefuseInTube`); `Stance`; `MaxRange`
+  (metres, 0 = none); `RequiresLineOfSight`; rate per requester and key (`MinInterval`, `Burst`,
+  with one extra token on the target for network jitter). Each requester is also capped at 20
+  requests a second across keys. The requesting client runs the same checks first, with a range
+  15% or 1 m looser, and sends nothing they refuse.
+- `Request` returns a `CharacterStatusRequest`: `Sent`, `Done`, `Refusal`, `Applied` and
+  `OnCompleted(callback)`. It completes at once when this client applied or refused the request,
+  else on the target's answer, or with `NoAnswer` after 10 s.
+- A requested application never shortens or weakens a running status: its end moves only later
+  and a larger magnitude re-applies every stack at that value.
+- `CharacterStatusDef.AcceptsRequests` (default off) opts a template into requests.
+  `Replicated` keeps its meaning: it changes nothing, and `Apply` with it set logs one warning
+  per key, which now names `AcceptsRequests` and `Presented`.
 - `CharacterStatusDef.Presented`: the owning client announces each application to the peers
   `Visibility` allows, and each runs a presentation copy with `CreateVfx` and
   `CharacterStatuses.IsPresented` / `PresentedRemainingSeconds`, but no stats and no callbacks.
   A copy ends on the announced server time; an earlier end is announced.
+- Every character status now ends when its character dies, with `OnRemoved`. The game keeps the
+  character object through death and respawn, so a status used to run on through the respawn
+  until it expired.
 - Only the client that owns a character can remove a status on it. `CharacterStatuses.TryRemove`
   returns `Authority` for another player's character, and `Remove` logs it once per key.
 - `CharacterStatuses.RequesterOf` and `AttackerOf` report the request that last applied a status.
-- `Register` refuses a character status template with `Burst` below 1 or a negative or
-  non-finite range, interval or cap, and warns about request or presentation fields set without
-  `Replicated` or `Presented`.
+- `Register` refuses a character status template with `Burst` below 1, a negative or non-finite
+  range or interval, `MinSeconds` outside 0 to `MaxSeconds`, or a cap not above 0, and warns
+  about request or presentation fields set without `AcceptsRequests` or `Presented`.
 - `CharacterStatuses.Apply` on a character this client does not own still lands only on this
   client's copy; its once-per-key warning now points at `Request`.
-- Network contract 3: two new message subtypes carry character status requests and
-  presentation announcements. A framework on contract 2 is refused at join.
+- Network contract 4: three new message subtypes carry character status requests, the target's
+  answers and presentation announcements. A framework on contract 3 or earlier is refused at
+  join.
 
 ## 0.23.0
 
