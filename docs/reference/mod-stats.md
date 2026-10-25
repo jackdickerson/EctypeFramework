@@ -181,7 +181,9 @@ How a reader uses them, with the attacker's replica as the source of truth:
   The victim's client clamps what it accepts to `damage × MeleeDamage` read from the attacker's
   replica, not to the constant, because every client applies every character's perks to that
   character's replica. A rate limit on the victim divides its budget by the attacker's
-  `MeleeCooldown`; a range check scales its tolerance by the attacker's `MeleeReach`.
+  `MeleeCooldown`; a range check scales its tolerance by the attacker's `MeleeReach`. A punch
+  sent as a [character status request](character-statuses.md#limits-that-follow-the-requester)
+  does all three through `MaxRangeFor`, `MinIntervalFor` and `MaxMagnitudeFor`.
 - **Turret damage to players.** The host multiplies its per-hit or per-second constant by the
   firing ship's `AntiPersonnelDamage`.
 - **Spawn scaling.** The host multiplies its spawn group amount by `HostileSpawnScale` from the

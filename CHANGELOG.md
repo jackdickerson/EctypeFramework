@@ -6,6 +6,16 @@ build.
 
 ## 0.31.0
 
+- Character status requests judge range, rate and magnitude against the requester.
+  `CharacterStatusDef.MaxRangeFor`, `MinIntervalFor` and `MaxMagnitudeFor` (`Func<Player, float>`)
+  compute those limits from the requester's character, which on the target's client is its
+  replica there; perks apply to that replica on every client, so a perk-raised reach, cooldown
+  or damage is judged at its upgraded value. Unset, the constants stand; an unusable result or a
+  throw falls back to the constant with one log line per status and field.
+  `CharacterStatusDef.OnRequestApplied(target, requester, magnitude, stacks)` runs on the
+  target's client for every accepted request from another client, with the requester's
+  character and the magnitude the request was accepted at. Every existing member keeps its
+  signature; nothing new crosses the network.
 - One identifier rule across every API, stated in `docs/identifiers.md`: an owner is the
   registering plugin's BepInEx GUID, and a single-string id is `"<plugin GUID>/<name>"`. The
   framework checks that the owner, or the part of an id before its first `/`, is the GUID of a
