@@ -145,6 +145,7 @@ namespace Ectype
                 Probe(failures, skipped, root, "repair", InteractionKind.Minigame, go => go.AddComponent<CG.Ship.Repair.RepairObject>());
                 Probe(failures, skipped, root, "defect", InteractionKind.Minigame, go => go.AddComponent<Gameplay.Defects.Defect>());
                 SwitchConverges(failures, skipped, root);
+                RpcContextCases(failures);
                 PowerKinds(failures, skipped, root);
                 SameFromEveryEntry(failures, skipped, root);
             }
@@ -180,6 +181,7 @@ namespace Ectype
             }
             InteractionKind first = InteractionClassifier.Classify(sw, false);
             InteractionKind again = InteractionClassifier.Classify(sw, false);
+            Expect(failures, "a provisional switch answer is not cached for good", InteractionClassifier.IsCached(sw), false);
             if (first != InteractionKind.OtherPowerSwitch || again != first)
                 failures.Add("a switch outside any module classified " + first + " then " + again +
                              ", expected OtherPowerSwitch both times");
@@ -213,6 +215,14 @@ namespace Ectype
             });
             Probe(failures, skipped, root, "a module's power switch", InteractionKind.ModulePowerSwitch, go =>
                 MediatorSwitch(go, go.AddComponent<CG.Client.Ship.Modules.Mediators.LifeSupportModuleMediator>()));
+            Probe(failures, skipped, root, "a module-named switch holding the power system", InteractionKind.ShipPowerSwitch, go =>
+            {
+                var sw = (CG.Client.Ship.Interactions.SwitchClicker)MediatorSwitch(go,
+                    go.AddComponent<CG.Client.Ship.Modules.Mediators.LifeSupportModuleMediator>());
+                sw.ControlledValue = new MemberReference<ChangeResponsiveBool>
+                    { Component = go.AddComponent<Gameplay.Power.PowerSystem>(), Member = "IsOn" };
+                return sw;
+            });
             Probe(failures, skipped, root, "the central computer's power switch", InteractionKind.ShipPowerSwitch, go =>
                 MediatorSwitch(go, go.AddComponent<CG.Client.Ship.Modules.Mediators.CentralShipComputerMediator>()));
 
@@ -226,6 +236,33 @@ namespace Ectype
             Expect(failures, "IsAirlockControl covers the two airlock kinds", airlock == 2, true);
             Expect(failures, "a breaker is a power switch", InteractionKind.Breaker.IsPowerSwitch(), true);
             Expect(failures, "a door is not an airlock control", InteractionKind.Door.IsAirlockControl(), false);
+        }
+
+        /// <summary>The sender test: a frame whose sender left but whose actor is known is absent; a
+        /// server-sent message (actor 0), a live sender and another view are not. A finalizer whose
+        /// prefix did not run leaves the current frame alone.</summary>
+        internal static void RpcContextCases(List<string> failures)
+        {
+            RpcContext.Frame left = new RpcContext.Frame { Source = RpcSource.Rpc, Actor = 3, View = 7 };
+            RpcContext.Frame server = new RpcContext.Frame { Source = RpcSource.Rpc, Actor = 0, View = 7 };
+            Expect(failures, "an RPC from a player who left is from an absent player", RpcContext.IsAbsent(left, 7), true);
+            Expect(failures, "an RPC with actor 0 is not from an absent player", RpcContext.IsAbsent(server, 7), false);
+            Expect(failures, "an RPC on another view is not", RpcContext.IsAbsent(left, 8), false);
+            Expect(failures, "an event is not", RpcContext.IsAbsent(new RpcContext.Frame
+                { Source = RpcSource.Event, Actor = 3, View = 7 }, 7), false);
+
+            RpcContext.Saved outer = RpcContext.Push(left);
+            try
+            {
+                RpcContext.Restore(default(RpcContext.Saved));
+                Expect(failures, "a finalizer whose prefix did not run keeps the frame",
+                       RpcContext.CurrentFrame.Actor == 3, true);
+                RpcContext.Saved inner = RpcContext.Push(server);
+                RpcContext.Restore(inner);
+                Expect(failures, "a finalizer restores the frame its prefix saved",
+                       RpcContext.CurrentFrame.Actor == 3, true);
+            }
+            finally { RpcContext.Restore(outer); }
         }
 
         private static void ExpectType(List<string> failures, Type type, InteractionKind expected)
