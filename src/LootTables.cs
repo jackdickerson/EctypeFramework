@@ -583,6 +583,7 @@ namespace Ectype
             }
             game.OnPlayerShipSet += OnShipSetForWarmUp;
             _warmGame = game;
+            // Presence only: any ship having been set counts, whichever ship the getter names.
             if (game.PlayerShip != null) OnShipSetForWarmUp();
         }
 

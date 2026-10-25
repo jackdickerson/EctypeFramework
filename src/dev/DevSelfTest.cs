@@ -49,6 +49,7 @@ namespace Ectype
         {
             ClientGame game = ClientGame.Current;
             if (game == null) return null;
+            // Any collection serves; the test needs a live target, not a particular player's ship.
             if (game.PlayerShip != null && game.PlayerShip.Stats != null) return game.PlayerShip.Stats;
             if (game.Players != null)
                 foreach (CG.Game.Player.Player p in game.Players)

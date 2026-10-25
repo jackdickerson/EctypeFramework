@@ -134,6 +134,7 @@ namespace Ectype
         internal static void OnStateChanged(VoidJumpSystem system, VoidJumpState old, VoidJumpState now)
         {
             if (system == null || old == null || now == null || ReferenceEquals(old, now)) return;
+            // The jump system's own ship field, set per system: not the game's player-ship getter.
             PlayerControlledShip ship = system.PlayerShip;
             if (ship != null)
             {
