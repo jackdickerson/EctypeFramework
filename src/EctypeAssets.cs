@@ -84,6 +84,9 @@ namespace Ectype
                 ? "no role manifests found"
                 : done + "/" + RoleRegistry.Roles.Count + " roles registered" +
                   (failed > 0 ? " (" + failed + " failed)" : "");
+
+            if (RoleRegistry.Discovered && done + failed == RoleRegistry.Roles.Count)
+                CraftingAudit.Run();
         }
 
         private static int Stage()
