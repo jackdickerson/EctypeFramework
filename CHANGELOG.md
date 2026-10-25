@@ -4,6 +4,22 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.20.1
+
+- Removed `SelectionGate`, `GateResult`, `GateVerdict`, `MemberModResult` and
+  `MemberModState`. A dependent that calls any of them fails at the first call with a
+  `TypeLoadException` raised in its own code. Mod matching for a room now happens before
+  launch, in the Void Crew Mod Launcher, and VoidManager's join check still refuses a joiner
+  whose versions or DLL bytes differ from the host's. The framework no longer re-sends a
+  client's mod list to a new host after a host migration.
+- Removed the host's per-role suppress toggle: the `[RoleSuppression]` config section, the
+  checkboxes and `Host suppress:` line on the F5 page, and the room property that carried the
+  choice. Suppression comes only from role manifests (`suppress` and `suppressRoles`) and no
+  longer changes during a session. `Suppress_<roleId>` keys in an existing `.cfg` are orphaned
+  harmlessly.
+- `RoleRegistry.IsAvailableInRoom(roleId)` keeps its signature. It is true while the role is
+  registered and no other active role lists it in `suppressRoles`.
+
 ## 0.20.0
 
 - First Thunderstore release. Carries the changes of 0.19.16 to 0.19.20 below; nothing else.
