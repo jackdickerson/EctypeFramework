@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 
 using ResourceAssets;
 
@@ -88,24 +87,19 @@ namespace Ectype
         private static readonly Dictionary<GUIDUnion, ModContentEntry> _byGuid =
             new Dictionary<GUIDUnion, ModContentEntry>();
         private static readonly List<ModContentEntry> _ordered = new List<ModContentEntry>();
-        private static ReadOnlyCollection<ModContentEntry> _snapshot;
 
         /// <summary>Raised on the main thread after an entry is added. Each handler runs in its
         /// own try block; one that throws is logged and the rest still run.</summary>
         public static event Action Changed;
 
-        /// <summary>Copies of every entry, ordered by GUID.</summary>
+        /// <summary>Fresh copies of every entry, ordered by GUID, built on each read.</summary>
         public static IReadOnlyList<ModContentEntry> All
         {
             get
             {
-                if (_snapshot == null)
-                {
-                    List<ModContentEntry> copies = new List<ModContentEntry>(_ordered.Count);
-                    foreach (ModContentEntry e in _ordered) copies.Add(e.Clone());
-                    _snapshot = copies.AsReadOnly();
-                }
-                return _snapshot;
+                List<ModContentEntry> copies = new List<ModContentEntry>(_ordered.Count);
+                foreach (ModContentEntry e in _ordered) copies.Add(e.Clone());
+                return copies.AsReadOnly();
             }
         }
 
@@ -155,7 +149,6 @@ namespace Ectype
             for (int i = 0; i < _ordered.Count; i++)
                 if (string.CompareOrdinal(_ordered[i].Guid.AsHex(), key) > 0) { at = i; break; }
             _ordered.Insert(at, e);
-            _snapshot = null;
             Raise();
         }
 
@@ -167,7 +160,6 @@ namespace Ectype
             if (!_byGuid.TryGetValue(guid, out e)) return false;
             _byGuid.Remove(guid);
             _ordered.Remove(e);
-            _snapshot = null;
             Raise();
             return true;
         }

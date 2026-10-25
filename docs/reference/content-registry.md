@@ -65,10 +65,10 @@ Every kind:
 
 - writes the item's GUID into the asset's container GUID, which a cloned asset otherwise
   inherits from its donor;
-- registers the asset with the runtime asset register under `ModFlag`
-  (`IsNetworkSpawned` by default), with `DisplayName` as its display name. That register is
-  what a spawn by GUID resolves through, and what the game's join check compares between
-  host and joiner;
+- registers the asset with the runtime asset register under `ModFlag`, with `DisplayName` as
+  its display name. The default is `IsNetworkSpawned`, or `None` in a framework build that
+  does not flag the session. That register is what a spawn by GUID resolves through, and what
+  the game's join check compares between host and joiner;
 - writes an unlock def with criteria `Unlock` (`Session` by default) and rarity `Rarity`.
   Every item a vanilla screen can reach needs one: the loadout terminal's item constructor
   reads the unlock def's options without a null check, and the rank panel walks every
@@ -81,9 +81,10 @@ Every kind:
   `Registered`, so a write that did not stick fails the attempt by name and is retried.
 
 Publish owns every container entry for its GUID. If any of the kind's containers already
-holds the GUID before the first attempt, something else registered it, and the publication
-is refused rather than adopting data it did not write. A runtime asset already in the
-runtime asset register is accepted as is.
+holds the GUID before the first attempt, or the kind's authored list already lists a def
+under it, something else put it there, and the publication is refused rather than adopting
+data it did not write. A runtime asset already in the runtime asset register is accepted as
+is, and `ModFlag` is then ignored: the asset keeps the effect it was registered with.
 
 Publish does not do the parts that are not registration: building the weapon's element and
 stat graph and registering its stat descriptors, the deserialization patch that restores the
@@ -93,10 +94,10 @@ tiers, and loot placement (`LootTables`). Those stay with the mod.
 ## The ordering rule
 
 The game keeps two lists per container: the authored list, filled from the shipped data, and
-the runtime list, filled by runtime registration. Item catalogs, the debug spawn menus and
-the game's asset-to-def lookup (`GetAssetDefBySelfRef`, which a composite weapon calls to
+the runtime list, filled by runtime registration. Item catalogs, the debug menu's weapon list
+and the game's asset-to-def lookup (`GetAssetDefBySelfRef`, which a composite weapon calls to
 spawn its build box) read only the authored list, so a runtime item that is not in it is
-invisible to them. `GetAssetIndex` and `GetFullAssetRefList` also read only the authored list,
+invisible to them. The debug menu's carryable list reads the runtime list. `GetAssetIndex` and `GetFullAssetRefList` also read only the authored list,
 so an item's position there is its index.
 
 Publish therefore lists the item in its kind's authored list, and it inserts rather than
@@ -107,10 +108,19 @@ publications ran in, so two clients that load mods in a different order, or that
 retry at a different moment, hold identical lists. Appending would make each client's list
 follow its own registration order.
 
-The game sends a container index over the network for mutators only. The rule makes the same
-safe for any reader that does it with these lists, and gives every client the same catalog
-order to show. A mod that appends to these lists itself breaks the guarantee for the entries
-after its own; the migration recipe below moves it onto Publish.
+The game sends an index into an authored list over the network in three places: the
+mutators of a session and a player's shared mutator unlocks, the ping a player places (an
+index into the ping definitions), and a player's emote and multi-slot cosmetic choices. None
+of those is a container Publish writes. The rule makes an index into the weapon, module and
+carryable lists equally safe for any reader that sends one, and gives every client the same
+catalog order to show.
+
+The guarantee holds only while every runtime entry in the list arrives through the ordered
+insert, which means every mod that adds to these lists publishes through the registry. A mod
+that appends to a list itself puts an entry in the tail whose position depends on when it
+ran, and from then on the position of every runtime entry in that list depends on timing: one
+client can hold the self-appended entry before a published one and another after it. The
+migration recipe below moves such a mod onto Publish.
 
 ## Crafting data
 
@@ -134,9 +144,16 @@ pays `Recycle.Amount` alloys.
 ## Components
 
 `IsComponent = true` marks an inner part of another item, such as a payload inside a battery.
+Only a carryable can be one; Publish refuses a weapon module or module marked as a component,
+naming the GUID. A weapon module missing from its authored list could not spawn its build
+box, because the game finds the weapon's def by scanning that list, and a module has no
+inner-part role.
+
 A component is registered in every container, so it spawns and resolves like any carryable,
 but it is not listed in its container's authored list, so catalogs never offer it as a loose
-item, and `LootTables` never adds it to a roll.
+item. It never reaches a loot roll: Publish refuses a component whose GUID is already
+registered with `LootTables`, and `LootTables.Register` refuses a component from the moment
+its publication is accepted, before registration completes.
 
 A component still needs crafting data. It is not listed, but it is still a carryable on the
 ship inside its parent, and the alloy tally reads it there. Publish refuses a component
@@ -154,9 +171,13 @@ first attempt and every tenth, and given up as `Failed` after 200. A refusal is 
 once and never retried. `Reason` holds the refusal, or the last attempt's error while
 `Pending`.
 
-Publishing the same GUID again from the same owner returns the first handle, so a mod's own
-registration loop may call Publish on every pass. The same GUID from another owner is
-refused.
+Publishing the same GUID again from the same owner, as the same kind, returns the first
+handle, whether that publication was accepted or refused, and a refusal is logged once. A
+mod's own registration loop may therefore call Publish on every pass. The same GUID from
+another owner is refused.
+
+Call Publish from the main thread, as Unity requires for the objects it registers. Nothing
+guards a call from another thread.
 
 Publish before the player first opens a terminal. A catalog that builds its item lists once
 per session only sees what was registered by then. A catalog that binds `ModContent.Changed`
@@ -172,7 +193,7 @@ Every item that reached `Registered` has an entry in `ModContent`:
 | --- | --- |
 | `ApiVersion` | `1`. Raised only when a member is removed or changes meaning. |
 | `TryGet(GUIDUnion, out ModContentEntry)` | A copy of one item's entry. |
-| `All` | Copies of every entry, ordered by GUID. |
+| `All` | Fresh copies of every entry on each read, ordered by GUID. |
 | `IsAvailable(GUIDUnion)` | False only when the GUID has an entry whose `AvailableInRoom` returns false or throws. A GUID with no entry is not restricted. |
 | `Changed` | Raised on the main thread after an entry is added. |
 
@@ -210,21 +231,26 @@ if (t != null && (int)t.GetField("ApiVersion").GetValue(null) == 1)
 
 Read members one by one and treat a missing one as absent: later versions only add fields.
 
-`LootTables` reads the registry too. `Register` refuses an item published as a component, and
-a roll leaves out an item whose entry is a component or not available in the room.
+`LootTables` reads the registry too. `Register` refuses an item accepted for publication as a
+component, and a roll leaves out an item whose entry is a component or not available in the
+room.
 
 ## Migrating a weapon mod that registers its own containers
 
 For a mod that registers a composite weapon by hand and appends its def to the authored list
-itself. Per tier:
+itself. The migrated mod requires framework 0.27 or later: raise its dependency on the
+framework to that minimum, `[BepInDependency("jack.voidcrew.ectype", "0.27.0")]`. On an older framework, the method that calls Publish
+fails to compile at its first call with a `MissingMethodException`, which takes the mod's
+whole registration with it. Per tier:
 
 1. Keep everything up to and including the finished `CompositeWeaponData`: the cloned stat
    descriptors, their runtime-asset and descriptor-container registrations, and the weapon's
    element and stat graph.
 2. Delete the mod's registration of the weapon's crafting def, weapon def, unlock def and
    runtime asset, and the append to the weapon container's authored list. Publish refuses a
-   GUID one of those containers already holds, so these must go, not merely be skipped on
-   retry.
+   GUID one of those containers already holds or the authored list already lists, so these
+   must go, not merely be skipped on retry. A runtime asset left registered is accepted, but
+   then keeps the effect the mod gave it.
 3. Call Publish with `ContentKind.WeaponModule`:
    - `Asset`: the `CompositeWeaponData`;
    - `Description`, `Icon` and `BuildBoxIcon`: what the mod put into its context info and

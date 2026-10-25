@@ -716,14 +716,17 @@ means the item's published entry kept it out of a roll.
 
 ### Content registry
 
-Each line starts `Ectype: content: `. `<item>` is `<kind> <guid> from <owner>`.
+Each line starts `Ectype: content: `. `<item>` is `<kind> <guid> from <owner>`. A refusal is logged once per owner, kind and GUID; publishing again returns the refused handle.
 
 | Line | Cause and fix |
 | --- | --- |
 | `<item> '<name>' registered (<containers>; listed).` | Registered and listed. `component, not listed` for a component. |
 | `refused <item>: carryable <guid> has no crafting data (ContentAssets.Crafting). The game's end-of-run alloy tally reads ...` | Set `ContentAssets.Crafting`. The `component carryable` form adds that a component is kept out of item lists, not out of the tally. |
 | `refused <item>: weapon module <guid> has no crafting data (ContentAssets.Crafting). ...` | Set `ContentAssets.Crafting` to the weapon's inscription and recycle rules. |
-| `refused <item>: GUID <guid> is already in the <container>, registered by something other than this publication. Publish registers every container itself; remove the mod's own registration.` | The mod, or another mod, registered the GUID in a container before publishing. Delete that registration, or pick an unused GUID. |
+| `refused <item>: GUID <guid> is already in the <container>, put there by something other than this publication. Publish registers every container itself; remove the mod's own registration.` | The mod, or another mod, registered the GUID in a container, or listed a def under it in the kind's authored list, before publishing. Delete that registration, or pick an unused GUID. |
+| `refused <item>: GUID <guid> is already listed by another def in the container's authored list. Publish lists the item itself; remove the mod's own listing.` | Another def under the same GUID was listed while the publication was registering. Remove the mod's own append. |
+| `refused <item>: <weapon module or module> <guid> is marked IsComponent, which only a carryable can be. ...` | Only a carryable can be a component. Clear `IsComponent`. |
+| `refused <item>: component <guid> is already registered for loot, and a component never drops on its own. Remove its LootTables registration.` | Drop the `LootTables.Register` call for the component. |
 | `refused <item>: GUID <guid> is already published by <owner> as <kind>.` | Two publications of one GUID with a different owner or kind. The first stands. |
 | `refused <item>: a <kind>'s asset must be ...` and `ContentAssets.Asset is null.` | The asset is not what the kind takes: a `CompositeWeaponData`, a prefab with a `CellModule`, or a prefab with a `CarryableObject`. |
 | `refused <item>: the entry has no Owner (the publishing plugin's GUID).`, `the entry has no DisplayName.`, `the GUID is null.`, `no ModContentEntry.`, `no ContentAssets.`, `unknown content kind <n>.` | A required argument is missing. |

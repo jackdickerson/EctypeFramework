@@ -11,7 +11,7 @@ Shows:
 - `LootTables.Register` for the new GUID.
 - `MultiplayerType.All`: the item is a network-spawned asset that every client in the room must have.
 
-The copy keeps the donor's model, icon and stat mods. A real item changes its stat mods, or builds its prefab some other way. The publication is the same either way.
+The copy keeps the donor's model, icon, stat mods and tooltip type chips. A real item changes its stat mods, or builds its prefab some other way. The publication is the same either way.
 
 Rules:
 

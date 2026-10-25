@@ -119,8 +119,9 @@ namespace Ectype
                     return false;
                 }
                 string owner = string.IsNullOrEmpty(drop.Owner) ? "unnamed" : drop.Owner;
-                ModContentEntry content = ModContent.Find(drop.Item);
-                if (content != null && content.IsComponent)
+                // Publications still pending count too: a mod may publish and register loot in
+                // the same Awake, before the containers exist.
+                if (RuntimeContent.IsComponent(drop.Item))
                 {
                     Plugin.Log.LogError("Ectype: loot: " + Describe(drop) + " is published as a " +
                                         "component, which never drops on its own; ignored.");
@@ -488,9 +489,8 @@ namespace Ectype
         private static bool HeldByContent(LootDrop d)
         {
             ModContentEntry e = ModContent.Find(d.Item);
-            if (e == null) return false;
-            string why = e.IsComponent ? "it is published as a component"
-                       : !ModContent.Available(e) ? "its content entry is not available in this room"
+            string why = RuntimeContent.IsComponent(d.Item) ? "it is published as a component"
+                       : e != null && !ModContent.Available(e) ? "its content entry is not available in this room"
                        : null;
             if (why == null) return false;
             if (_loggedContentHolds.Add(d.Item.AsHex() + "|" + why))

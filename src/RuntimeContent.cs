@@ -128,10 +128,11 @@ namespace Ectype
         /// save, where it outlives the mod.</summary>
         public UnlockCriteriaType Unlock = UnlockCriteriaType.Session;
 
-        /// <summary>The asset's effect in the game's runtime asset register. Default
-        /// <c>IsNetworkSpawned</c>, which every client of a room must share; a build that must
-        /// not flag the session passes <c>None</c>.</summary>
-        public SessionModificationEffect ModFlag = SessionModificationEffect.IsNetworkSpawned;
+        /// <summary>The asset's effect in the game's runtime asset register. Default: the
+        /// framework build's network-spawned effect, <c>IsNetworkSpawned</c> (which every client
+        /// of a room must share), or <c>None</c> in a framework build that does not flag the
+        /// session. Ignored when the asset is already in the register.</summary>
+        public SessionModificationEffect ModFlag = ModFlagPolicy.NetworkSpawnedEffect;
 
         /// <summary>Carryable and weapon module: the purchase sub-category. Null gives a
         /// carryable <c>Other_Basic</c>, as the game's own converter does, and leaves a weapon
@@ -163,6 +164,9 @@ namespace Ectype
         private static readonly Dictionary<GUIDUnion, ContentHandle> _byGuid =
             new Dictionary<GUIDUnion, ContentHandle>();
         private static readonly List<ContentHandle> _pending = new List<ContentHandle>();
+        // owner|kind|guid -> a publication refused before it was accepted.
+        private static readonly Dictionary<string, ContentHandle> _refused =
+            new Dictionary<string, ContentHandle>(StringComparer.Ordinal);
 
         /// <summary>Every accepted publication, in no particular order.</summary>
         public static IEnumerable<ContentHandle> Handles { get { return _byGuid.Values; } }
@@ -201,20 +205,31 @@ namespace Ectype
             try
             {
                 ContentHandle existing;
+                if (!guid.IsNull && _byGuid.TryGetValue(guid, out existing) &&
+                    existing.Owner == owner && existing.Kind == kind)
+                    return existing;
+
+                // A refusal is final for the session, so a caller retrying in a loop gets the
+                // same handle back and the error is logged once.
+                string key = RefusalKey(kind, guid, owner);
+                if (_refused.TryGetValue(key, out existing)) return existing;
+
                 if (!guid.IsNull && _byGuid.TryGetValue(guid, out existing))
-                {
-                    if (existing.Owner == owner && existing.Kind == kind) return existing;
-                    return Refuse(h, "GUID " + guid.AsHex() + " is already published by " +
-                                     existing.Owner + " as " + existing.Kind + ".");
-                }
+                    return RefuseRemembered(h, key, "GUID " + guid.AsHex() +
+                                            " is already published by " + existing.Owner +
+                                            " as " + existing.Kind + ".");
 
                 string why = Validate(kind, guid, assets, entry);
-                if (why != null) return Refuse(h, why);
+                if (why != null) return RefuseRemembered(h, key, why);
+                if (entry.IsComponent && LootTables.IsRegistered(guid))
+                    return RefuseRemembered(h, key, "component " + guid.AsHex() + " is already " +
+                                            "registered for loot, and a component never drops on " +
+                                            "its own. Remove its LootTables registration.");
 
                 if (EctypeConfig.Enabled != null && !EctypeConfig.Enabled.Value)
-                    return Refuse(h, "the framework is disabled ([General] Enabled = false).");
+                    return RefuseRemembered(h, key, "the framework is disabled ([General] Enabled = false).");
                 if (EctypeConfig.Enabled != null && !Plugin.PatchesApplied)
-                    return Refuse(h, "the framework is inert this session (patching did not complete).");
+                    return RefuseRemembered(h, key, "the framework is inert this session (patching did not complete).");
 
                 // Copies, so a caller changing its objects afterwards cannot change a retry.
                 h.Assets = assets.Clone();
@@ -231,8 +246,25 @@ namespace Ectype
             }
             catch (Exception e)
             {
-                return Refuse(h, "Publish threw: " + e);
+                return RefuseRemembered(h, RefusalKey(kind, guid, owner), "Publish threw: " + e);
             }
+        }
+
+        private static string KindName(ContentKind kind)
+        {
+            return kind == ContentKind.WeaponModule ? "weapon module"
+                 : kind == ContentKind.Module ? "module" : "carryable";
+        }
+
+        private static string RefusalKey(ContentKind kind, GUIDUnion guid, string owner)
+        {
+            return owner + "|" + (int)kind + "|" + (guid.IsNull ? "null" : guid.AsHex());
+        }
+
+        private static ContentHandle RefuseRemembered(ContentHandle h, string key, string why)
+        {
+            _refused[key] = h;
+            return Refuse(h, why);
         }
 
         /// <summary>
@@ -251,6 +283,11 @@ namespace Ectype
                 return "the entry has no Owner (the publishing plugin's GUID).";
             if (string.IsNullOrEmpty(entry.DisplayName)) return "the entry has no DisplayName.";
             if (assets == null) return "no ContentAssets.";
+            if (entry.IsComponent && kind != ContentKind.Carryable)
+                return KindName(kind) + " " + guid.AsHex() + " is marked IsComponent, which only " +
+                       "a carryable can be. A component is left out of its container's authored " +
+                       "list, and a weapon module missing from that list cannot spawn its build " +
+                       "box: the game finds the weapon's def by scanning the list.";
 
             if (!assets.Crafting.HasValue)
             {
@@ -314,6 +351,14 @@ namespace Ectype
             return _byGuid.TryGetValue(guid, out h) ? h : null;
         }
 
+        /// <summary>True when <paramref name="guid"/> was accepted for publication as a
+        /// component, whether or not its registration has completed.</summary>
+        internal static bool IsComponent(GUIDUnion guid)
+        {
+            ContentHandle h;
+            return _byGuid.TryGetValue(guid, out h) && h.Entry != null && h.Entry.IsComponent;
+        }
+
         // ------------------------------------------------------------------ attempts
 
         /// <summary>A refusal that a retry cannot fix.</summary>
@@ -348,7 +393,7 @@ namespace Ectype
                 h.Reason = null;
                 h.Stage = "registered";
                 Log(0, "Ectype: content: " + h.Describe() + " '" + h.Entry.DisplayName +
-                       "' registered (" + Containers(h.Kind) + "; " +
+                       "' registered (" + Containers(h) + "; " +
                        (h.Entry.IsComponent ? "component, not listed" : "listed") + ").");
                 ModContent.Add(h.Entry);
             }
@@ -370,14 +415,16 @@ namespace Ectype
         }
 
         /// <summary>The containers each kind registers in, for the registered line.</summary>
-        private static string Containers(ContentKind kind)
+        private static string Containers(ContentHandle h)
         {
-            switch (kind)
+            switch (h.Kind)
             {
                 case ContentKind.WeaponModule:
                     return "weapon, crafting and unlock containers";
                 case ContentKind.Module:
-                    return "module, spawnable-object and unlock containers";
+                    return h.Assets.Crafting.HasValue
+                        ? "module, spawnable-object, crafting and unlock containers"
+                        : "module, spawnable-object and unlock containers";
                 default:
                     return "carryable, spawnable-object, crafting and unlock containers";
             }
@@ -420,7 +467,7 @@ namespace Ectype
             foreach (KeyValuePair<string, bool> kv in held)
                 if (kv.Value)
                     throw new Refusal("GUID " + h.Guid.AsHex() + " is already in the " + kv.Key +
-                                      ", registered by something other than this publication. " +
+                                      ", put there by something other than this publication. " +
                                       "Publish registers every container itself; remove the " +
                                       "mod's own registration.");
         }
@@ -428,6 +475,29 @@ namespace Ectype
         private static KeyValuePair<string, bool> Held(string name, bool has)
         {
             return new KeyValuePair<string, bool>(name, has);
+        }
+
+        /// <summary>True when a def with this GUID is already in the authored list. A mod can
+        /// list a def without registering it in the container, and the ordered insert never
+        /// lists two defs with one GUID.</summary>
+        private static bool Listed<T>(List<T> list, GUIDUnion guid) where T : class, IResourceAsset
+        {
+            if (list == null) return false;
+            foreach (T d in list)
+                if (d != null && d.AssetGuid.Equals(guid)) return true;
+            return false;
+        }
+
+        /// <summary>Lists the def in GUID order. A def already listed under the same GUID is
+        /// refused here rather than failing verification on every retry.</summary>
+        private static void List<T>(ContentHandle h, List<T> list, T def, Func<T, ResourceAssetRef> refOf)
+            where T : class, IResourceAsset
+        {
+            if (list == null) throw new Exception("the container has no authored list");
+            if (AssetDescriptionOrder.InsertDef(list, def, refOf) >= 0 || list.Contains(def)) return;
+            throw new Refusal("GUID " + h.Guid.AsHex() + " is already listed by another def in " +
+                              "the container's authored list. Publish lists the item itself; " +
+                              "remove the mod's own listing.");
         }
 
         private static void RegisterAsset(ContentHandle h, UnityEngine.Object asset)
@@ -492,6 +562,7 @@ namespace Ectype
             h.Stage = "claim";
             ClaimContainers(h,
                 Held("weapon container", weapons.HasItem(h.Guid)),
+                Held("weapon container's authored list", Listed(weapons.AssetDescriptions, h.Guid)),
                 Held("crafting container", CraftingDataContainer.Instance.HasItem(h.Guid)),
                 Held("unlock container", UnlockContainer.Instance.HasItem(h.Guid)));
             h.ContainersDone = true;
@@ -521,7 +592,7 @@ namespace Ectype
             RegisterUnlock(h, new CompositeWeaponDataRef(h.Guid, "") { IsRuntime = true });
 
             h.Stage = "listing";
-            if (!h.Entry.IsComponent) AssetDescriptionOrder.InsertDef(weapons.AssetDescriptions, def, d => d.Ref);
+            if (!h.Entry.IsComponent) List(h, weapons.AssetDescriptions, def, d => d.Ref);
         }
 
         private static void RegisterModule(ContentHandle h)
@@ -531,6 +602,7 @@ namespace Ectype
             h.Stage = "claim";
             ClaimContainers(h,
                 Held("module container", modules.HasItem(h.Guid)),
+                Held("module container's authored list", Listed(modules.AssetDescriptions, h.Guid)),
                 Held("spawnable-object container", spawnable.HasItem(h.Guid)),
                 Held("crafting container", h.Assets.Crafting.HasValue &&
                                            CraftingDataContainer.Instance.HasItem(h.Guid)),
@@ -566,7 +638,7 @@ namespace Ectype
             RegisterUnlock(h, new ModuleRef(h.Guid, "") { IsRuntime = true });
 
             h.Stage = "listing";
-            if (!h.Entry.IsComponent) AssetDescriptionOrder.InsertDef(modules.AssetDescriptions, def, d => d.Ref);
+            if (!h.Entry.IsComponent) List(h, modules.AssetDescriptions, def, d => d.Ref);
         }
 
         private static void RegisterCarryable(ContentHandle h)
@@ -579,6 +651,7 @@ namespace Ectype
             h.Stage = "claim";
             ClaimContainers(h,
                 Held("carryable container", carryables.HasItem(h.Guid)),
+                Held("carryable container's authored list", Listed(carryables.AssetDescriptions, h.Guid)),
                 Held("spawnable-object container", spawnable.HasItem(h.Guid)),
                 Held("crafting container", crafting.HasItem(h.Guid)),
                 Held("unlock container", unlocks.HasItem(h.Guid)));
@@ -624,7 +697,7 @@ namespace Ectype
             RegisterUnlock(h, null);
 
             h.Stage = "listing";
-            if (!h.Entry.IsComponent) AssetDescriptionOrder.InsertDef(carryables.AssetDescriptions, def, d => d.Ref);
+            if (!h.Entry.IsComponent) List(h, carryables.AssetDescriptions, def, d => d.Ref);
         }
 
         /// <summary>Resolves back out of every container what the attempt registered, so a

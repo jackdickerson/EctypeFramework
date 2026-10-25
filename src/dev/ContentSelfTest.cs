@@ -14,7 +14,8 @@ namespace Ectype
     ///   keep the authored entries in place, and hold the runtime tail in ordinal key order; a
     ///   repeated insert must be refused.
     /// - Refusal: a carryable, and a component carryable, without crafting data must be
-    ///   refused before anything else is checked, with a reason that names the GUID.
+    ///   refused before anything else is checked, with a reason that names the GUID; a weapon
+    ///   module or module marked as a component must be refused, naming the GUID.
     /// - Registry: an entry added under a GUID reserved for this test must be readable through
     ///   TryGet and All as a copy, raise Changed once, and be gone after removal.
     /// </summary>
@@ -41,7 +42,7 @@ namespace Ectype
 
             if (failures.Count == 0)
                 Plugin.Log.LogInfo("Ectype: dev self-test: content registry passed (ordered " +
-                                   "insert over 4 publish orders, crafting-data refusal, " +
+                                   "insert over 4 publish orders, crafting-data and component refusals, " +
                                    "TryGet/All/Changed).");
             else
                 Plugin.Log.LogError("Ectype: dev self-test: content registry FAILED: " +
@@ -115,6 +116,23 @@ namespace Ectype
                 else if (why.IndexOf(TestGuid, StringComparison.OrdinalIgnoreCase) < 0 ||
                          why.IndexOf("crafting", StringComparison.Ordinal) < 0)
                     failures.Add(label + " refusal does not name the GUID and crafting: " + why);
+            }
+
+            foreach (ContentKind kind in new[] { ContentKind.WeaponModule, ContentKind.Module })
+            {
+                string why = RuntimeContent.Validate(kind, guid,
+                    new ContentAssets { Crafting = new CraftingRules() },
+                    new ModContentEntry
+                    {
+                        Owner = "ectype.dev.selftest",
+                        DisplayName = "Self-test item",
+                        IsComponent = true,
+                    });
+                if (why == null)
+                    failures.Add(kind + " marked IsComponent was accepted");
+                else if (why.IndexOf(TestGuid, StringComparison.OrdinalIgnoreCase) < 0 ||
+                         why.IndexOf("IsComponent", StringComparison.Ordinal) < 0)
+                    failures.Add(kind + " component refusal does not name the GUID: " + why);
             }
         }
 
