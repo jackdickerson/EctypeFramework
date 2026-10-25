@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ExampleInteractionGate</AssemblyName>
+    <RootNamespace>ExampleInteractionGate</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="EctypeFramework" HintPath="$(PluginsDir)\EctypeFramework.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="PhotonRealtime" HintPath="$(ManagedDir)\PhotonRealtime.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\*.cs" />
+  </ItemGroup>
+
+</Project>

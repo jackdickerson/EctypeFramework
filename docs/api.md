@@ -69,6 +69,16 @@ Register them from literals that are identical on every client.
 | `TimedStatContribution` | The handle `Start` returns: `Key`, `Label`, `Target`, `StatId`, `StartServerMs`, `DurationSeconds`, `Active`, `Progress`, `Amount`, `EndReason`. |
 | `ShipSpeedSurge` | A top-speed boost on the player ship that decays linearly to nothing, built on `ShipDrag`. `Start(arrival, magnitude, durationSeconds)` or `Start(ship, magnitude, durationSeconds, startServerMs)`, `End(ship)`, `IsActive(ship)`. Magnitude 1 doubles top speed at the start. `TopSpeedFactor(magnitude, progress)` and `DragFactor(magnitude, progress)` give the curve. Start it on every machine from `ShipArrivals.Arrived`. |
 
+## Interactions
+
+| Type | Purpose |
+| --- | --- |
+| `InteractionGate` | Refuses players the use of seats, terminals, doors, switches, items and other interactables by registered rules, on the acting player's game (no prompt, a throttled warning) and on the part owner's game (the request is dropped). `Register(id, Func<GateQuery, Refusal>)`, `Unregister(id)`, `SuppressWarningsFor(id)`, `Evaluate(query)`, `Classify(component)`, `Registered`, `AnyRegistered`. Gates only refuse; the first refusal in registration order decides; a gate that throws counts as allowing. See [reference/interaction-gate.md](reference/interaction-gate.md). |
+| `GateQuery` | One interaction: `Actor`, `ActorNumber`, `ActorIsHost`, `Character`, `Interactable`, `Ship`, `Kind`, `Side`. |
+| `Refusal` | `Allowed`, or `Because(reason, text)` / `Silently(reason)`: `Reason` for the log, `Text` for the player, `Silent`, `IsAllowed`. |
+| `InteractionKind` | `Seat`, `Helm`, `Turret`, `Terminal`, `Periscope`, `CloneTube`, `Minigame`, `EnhancementPanel`, `Door`, `AirlockControl`, `PowerSwitch`, `CarryablePickup`, `SocketInsert`, `SocketRelease`, `ModuleUpgrade`, `Other`. |
+| `GateSide` | `Client` (the acting player's own check) or `Owner` (the part owner's authority check). |
+
 ## HUD
 
 | Type | Purpose |

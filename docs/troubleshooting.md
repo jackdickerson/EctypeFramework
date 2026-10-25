@@ -733,6 +733,28 @@ item that never drops usually has an anchor no table matches.
 | `Ectype: reading <State>.enterTimestamp failed; arrivals are stamped with this machine's clock: <message>` | The replicated exit timestamp could not be read. Arrival times on different machines can differ. |
 | `Ectype: ShipArrivals.<event> subscriber <Type>.<method> threw: <exception>` | A subscriber threw. Each subscriber runs in its own `try` block, so the others still ran. |
 
+### Interaction gate
+
+| Line | Meaning |
+| --- | --- |
+| `Ectype: interaction gate '<id>' registered (<n> gate[s]).` and `Ectype: interaction gate '<id>' unregistered (<n> left).` | A gate was added or removed. |
+| `Ectype: interaction gate '<id>' is already registered; unregister it first. This registration is ignored.` | `Register` with a taken id returned false. Two mods chose the same id, or one registered twice. |
+| `Ectype: interaction gate: Register needs an id and a gate; ignored.` | An empty id or a null gate. |
+| `Ectype: interaction gate '<id>' threw and counts as allowing (logged once per gate): <exception>` | The gate threw. It is still asked on every interaction; later throws are silent and allow. |
+| `Ectype: interaction gate '<id>' refused <Kind> <object> by player <n> (Owner)[: <reason>] (further refusals of this kind to this player are logged in verbose mode only).` | The part owner's game dropped a request, or the owner of an object refused a change of its owner and handed the object back. Logged once per gate, player and kind. With no matching client-side line on that player's game, the player's game did not run the gate: install the gating mod on every client. |
+| `Ectype: interaction gate '<id>' refused <Kind> <object> by player <n> (<Client or Owner>)[: <reason>].` (verbose) | A client-side refusal, logged when it differs from the last one logged (so looking at a refused part logs it once), and each repeated owner-side one. |
+| `Ectype: interaction gate: <n> of <m> hooks patched; the Photon hooks wait for the game to load.` | At load. Fewer than all means a line below names each missing hook. |
+| `Ectype: interaction gate: <n> of <m> Photon hooks patched after the game loaded.` | Once per launch, once a gate is registered and the game has left its loading screen. Before it, owner-side power, panel, synced-switch and socket checks and ownership changes let everything through. With no gate ever registered the line never appears. |
+| `Ectype: interaction gate: <Type>.<method> not found (game update?); <what is left unchecked>.`, the same with `(Photon update?)`, and `Ectype: interaction gate: <Type>.<method> could not be patched; <what is left unchecked>: <message>` | One chokepoint is missing; the others work. |
+| `Ectype: interaction gate: <Type>.<member> not found (game update?).` and `Ectype: interaction gate: <Type>.<method> not usable (game update?); <consequence>.` | A classifier registration seam is missing. Those controls classify by their type and parents alone, so some show a prompt and are refused only on use. |
+| `Ectype: interaction gate: <hook> hook failed (logged once): <exception>` | A hook threw and let the interaction through. |
+| `Ectype: interaction gate: the quick-warning channel failed (logged once); warnings are not shown: <message>` | Refusals still refuse; the player sees no text. |
+| `Ectype: interaction gate: the ownership failure listener could not be added; a grab that loses a race stays locked as in the game: <message>` | Refusals still work; only the race settle is missing. |
+| `Ectype: interaction gate patches failed: <exception>` | Installing the gate threw; no chokepoint is checked this session. |
+| `Ectype: dev self-test: interaction gate passed (throttle, evaluation order, classifier)[; not run: <probes>].` or `... FAILED: <failures>` (dev tools build only) | At load: the warning throttle on a test clock, registration order, null and silent answers, unregistering, and the classifier on game components added to an inactive object, including a switch outside any module reading `PowerSwitch` twice, and an item, a socket and a switch reaching gates as one component with one kind from every entry. `not run` names a probe whose component could not be added. |
+| `Ectype: dev check: a refused pick-up left the carry interaction unlocked.` or `Ectype: dev check: FAILED - the carry interaction is still locked 0.5 s after a refused pick-up (or a new pick-up started within that time).` (dev tools build only) | Half a second after the local player's pick-up was refused. A `FAILED` line with no second click means the player cannot carry until that item's owner next changes. |
+| `Ectype: dev check: the refused pick-up check could not run: <message>` (dev tools build only) | The carry ability or its lock field was not found. |
+
 ### Field-backed stats
 
 | Line | Meaning |

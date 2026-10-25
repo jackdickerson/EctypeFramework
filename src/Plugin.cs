@@ -79,6 +79,8 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
+            try { InteractionClassifier.ApplyPatches(harmony); InteractionGatePatches.ApplyPatches(harmony); }
+            catch (Exception e) { Log.LogError("Ectype: interaction gate patches failed: " + e); }
             // Not a Harmony patch: Unity Localization's own table-load hook. Retried by the
             // driver when the localization settings are not loaded yet.
             try { RoleWording.Install(); }
@@ -166,6 +168,7 @@ namespace Ectype
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
+            Step("interaction gate", InteractionGatePatches.PollLate);
             Step("topology", Topology.Poll);
             Step("characterShip", CharacterShipRoute.Poll);
             Step("enemy statuses", EnemyStatuses.Poll);

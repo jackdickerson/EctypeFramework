@@ -32,6 +32,8 @@ namespace Ectype
             DevLayout.Reload();
             NetSelfTest.Run();
             StatusSelfTest.RunOutbox();
+            InteractionGateDev.SelfTest();
+            InteractionGateDev.Bind(cfg);
         }
 
         private static void Bind(ConfigFile cfg)
