@@ -133,20 +133,32 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Splits a received payload into subtype and arguments and calls the subtype's
-        /// handler. The receive path and the dev build's serializer self-test both enter here.
+        /// Splits a received payload into subtype and arguments, the inverse of
+        /// <see cref="Pack"/>. False when the payload has no leading subtype byte.
         /// </summary>
-        internal static void Dispatch(int senderActor, object customData)
+        internal static bool TryUnpack(object customData, out byte subtype, out object[] args)
         {
+            subtype = 0;
+            args = null;
             object[] payload = customData as object[];
-            if (payload == null || payload.Length == 0 || !(payload[0] is byte))
+            if (payload == null || payload.Length == 0 || !(payload[0] is byte)) return false;
+            subtype = (byte)payload[0];
+            args = new object[payload.Length - 1];
+            Array.Copy(payload, 1, args, 0, args.Length);
+            return true;
+        }
+
+        private static void Dispatch(int senderActor, object customData)
+        {
+            byte subtype;
+            object[] args;
+            if (!TryUnpack(customData, out subtype, out args))
             {
                 if (Warned.Add("malformed"))
                     Plugin.Log.LogWarning("Ectype: ignored a malformed net event from actor " +
                                           senderActor + " (no subtype byte).");
                 return;
             }
-            byte subtype = (byte)payload[0];
             Channel channel;
             if (!Channels.TryGetValue(subtype, out channel))
             {
@@ -156,8 +168,6 @@ namespace Ectype
                                           "(a different network contract?).");
                 return;
             }
-            object[] args = new object[payload.Length - 1];
-            Array.Copy(payload, 1, args, 0, args.Length);
             if (Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: net recv " + channel.Name + " (subtype " + subtype +
                                    ") from actor " + senderActor + ".");
