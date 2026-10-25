@@ -403,11 +403,17 @@ namespace Ectype
                     ReportOwnRefusal("Remove", key, target.name, Reason(verdict, def, side, me), fireAndForget);
                     return verdict;
                 }
-                RemoveLocal(target, key);
+                int viewId = target.photonView.ViewID;
+                int removedTs = PhotonNetwork.ServerTimestamp;
                 // Applications still queued would re-add the status on the peers after the removal.
-                Outbox.Drop(target.photonView.ViewID, key);
-                RecordRemoval(target.photonView.ViewID, def);
-                Broadcast(new object[] { (byte)1, target.photonView.ViewID, key });
+                Outbox.Drop(viewId, key);
+                // Sent and remembered before the local removal runs its callbacks: an OnRemoved or
+                // OnInstanceRemoved that applies the same key again queues or sends that
+                // application after the removal, starting at or after removedTs, so every receiver
+                // keeps the new life.
+                RecordRemoval(viewId, def, removedTs);
+                Broadcast(new object[] { (byte)1, viewId, key, removedTs });
+                RemoveLocal(target, key);
                 return StatusRefusal.None;
             }
             catch (Exception e)
@@ -718,8 +724,14 @@ namespace Ectype
                     Plugin.Log.LogError("Ectype: sending coalesced status applications failed " +
                                         "(reported once): " + e);
             }
+            // Before the markers and in its own try, so a fault in either cannot stop part expiry.
+            try { PollParts(); }
+            catch (Exception e)
+            {
+                if (WarnedOnce.Add("pollparts"))
+                    Plugin.Log.LogError("Ectype: ending part statuses failed (reported once): " + e);
+            }
             EnemyStatusMarkers.Poll(Active.Count > 0);
-            PollParts();
             if (Active.Count == 0) return;
             DriveScratch.Clear();
             foreach (KeyValuePair<string, EnemyStatusEffect> kv in Active)
@@ -846,13 +858,15 @@ namespace Ectype
         /// One received apply or remove (subtype <see cref="EctypeNet.EnemyStatus"/>):
         /// <c>[byte op, int viewId, string key]</c>, op 0 adding
         /// <c>int startTs, int durationMs, float magnitude, int attackerView</c> and, when
-        /// tagged, <c>int tag</c>; ops 2 and 3 are the part target's apply and remove
-        /// (<see cref="HandlePart"/>). <paramref name="sender"/> is the actor the event came
-        /// from. Returns what was refused, for the dev self-test; a refusal is logged here.
+        /// tagged, <c>int tag</c>; op 1 adding <c>int removedTs</c>; ops 2 and 3 are the part
+        /// target's apply and remove (<see cref="HandlePart"/>). Fields that do not fit a layout
+        /// of the op they name are refused before any is read. <paramref name="sender"/> is the
+        /// actor the event came from. Returns what was refused, for the dev self-test; a refusal
+        /// is logged here.
         /// </summary>
         internal static StatusRefusal HandleMessage(int sender, object[] args)
         {
-            if (args == null || args.Length < 3) return StatusRefusal.Failed;
+            if (!EctypeNet.FitsEnemyStatusOp(args)) return StatusRefusal.Failed;
             byte op = (byte)args[0];
             int viewId = (int)args[1];
             string key = args[2] as string;
@@ -862,8 +876,7 @@ namespace Ectype
             OrbitObject target = ResolveTarget(viewId);
             if (target == null) return StatusRefusal.InvalidTarget;   // not here yet, or gone
 
-            if (op == 1) return ReceiveRemove(sender, target, key);
-            if (op != 0 || args.Length < 7) return StatusRefusal.Failed;
+            if (op == 1) return ReceiveRemove(sender, target, key, (int)args[3]);
 
             EnemyStatusDef def = ReceivedDef(key);
             if (def == null) return StatusRefusal.NotRegistered;
@@ -976,7 +989,7 @@ namespace Ectype
             return StatusRefusal.None;
         }
 
-        private static StatusRefusal ReceiveRemove(int sender, OrbitObject target, string key)
+        private static StatusRefusal ReceiveRemove(int sender, OrbitObject target, string key, int removedTs)
         {
             EnemyStatusDef def;
             if (!Defs.TryGetValue(key, out def)) return StatusRefusal.NotRegistered;
@@ -988,12 +1001,26 @@ namespace Ectype
                     ReportReceivedRefusal(sender, "remove", key, target.name, verdict, def, side);
                 return verdict;
             }
-            RemoveLocal(target, key);
+            int viewId = target.photonView.ViewID;
             // This client's own queued applications would re-create the status on every
-            // other peer after the removal.
-            Outbox.Drop(target.photonView.ViewID, key);
-            RecordRemoval(target.photonView.ViewID, def);
+            // other peer after the removal. Dropped and remembered before the local removal runs
+            // its callbacks, so an application a callback makes is neither dropped nor covered.
+            Outbox.Drop(viewId, key);
+            RecordRemoval(viewId, def, RemovalTime(removedTs));
+            RemoveLocal(target, key);
             return StatusRefusal.None;
+        }
+
+        /// <summary>
+        /// The server time a received removal is remembered from: the remover's, so an
+        /// application the remover makes after it is new on every client however long the
+        /// removal took to arrive. One later than this client's clock is taken as now, so a
+        /// sender cannot hold off applications past the removal memory.
+        /// </summary>
+        internal static int RemovalTime(int removedTs)
+        {
+            int now = PhotonNetwork.ServerTimestamp;
+            return unchecked(removedTs - now) > 0 ? now : removedTs;
         }
 
         /// <summary>Recent removals: an application started before one is ignored while it lasts.</summary>
@@ -1010,9 +1037,9 @@ namespace Ectype
         /// reaches a peer: the frame the flush waits for plus delivery.</summary>
         internal const int ShortDurationMarginMs = 500;
 
-        private static void RecordRemoval(int viewId, EnemyStatusDef def)
+        private static void RecordRemoval(int viewId, EnemyStatusDef def, int removedTs)
         {
-            Tombstones.Record(viewId, def.Key, PhotonNetwork.ServerTimestamp, RemovalMemoryMs(def));
+            Tombstones.Record(viewId, def.Key, removedTs, RemovalMemoryMs(def));
         }
     }
 

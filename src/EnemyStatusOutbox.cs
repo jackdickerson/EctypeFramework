@@ -80,15 +80,17 @@ namespace Ectype
         /// <summary>
         /// Records one local application. <paramref name="startTs"/> and <paramref name="endTs"/>
         /// are the local status's timer after the application. <paramref name="now"/> and the
-        /// window are on one monotonic clock, in seconds and milliseconds. The batch carries the
-        /// latest application's <paramref name="tag"/>, as the local status does.
+        /// window are on one monotonic clock, in seconds and milliseconds. A batch carries one
+        /// <paramref name="tag"/>: an application with another Tag closes the open batch and opens
+        /// a new one, so every receiver runs each application's callbacks with the Tag the
+        /// applier's ran with.
         /// </summary>
         internal void Add(int viewId, string key, string targetName, int startTs, int endTs,
                           float magnitude, int attackerView, int windowMs, float now, int tag = 0)
         {
             Id id = new Id { ViewId = viewId, Key = key };
             Batch b;
-            if (_open.TryGetValue(id, out b) && b.Applications >= MaxApplications)
+            if (_open.TryGetValue(id, out b) && (b.Applications >= MaxApplications || b.Tag != tag))
             {
                 Close(viewId, key);
                 b = null;
@@ -102,13 +104,13 @@ namespace Ectype
                     TargetName = targetName,
                     Magnitude = magnitude,
                     AttackerView = attackerView,
+                    Tag = tag,
                     WindowMs = windowMs,
                     DueAt = now + windowMs / 1000f,
                 };
                 _open[id] = b;
             }
             b.Applications++;
-            b.Tag = tag;
             b.StartTs = startTs;
             b.EndTs = endTs;
         }

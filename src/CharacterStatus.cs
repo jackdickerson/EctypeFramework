@@ -119,7 +119,10 @@ namespace Ectype
         /// <summary>Which relation between the requester's character and the target the
         /// status accepts: Any (the default), Hostile (another side) or Friendly (the same
         /// side), by the game's own different-faction check; MasterOnly accepts a request only
-        /// from the master client.</summary>
+        /// from the master client, judged by its actor whether or not it has a character, with
+        /// none of the checks on the requester's character (alive, seat, clone tube, range, line
+        /// of sight). A request on a client's own character with MasterOnly is refused Stance
+        /// unless that client is the master.</summary>
         public StatusStance Stance = StatusStance.Any;
 
         /// <summary>Metres between the requester's character and the target, measured on the

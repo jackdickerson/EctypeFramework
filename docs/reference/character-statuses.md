@@ -69,8 +69,9 @@ two fields that do the work.
 ## Requests
 
 `CharacterStatuses.Request(target, key, seconds, magnitude = 1, attacker = null)` returns a
-`CharacterStatusRequest`. On this client's own character it is `Apply`. On another player's
-character:
+`CharacterStatusRequest`. On this client's own character it is `Apply`, except that a
+`Stance = MasterOnly` template is refused `Stance` on a client that is not the master, as every
+other client would refuse it. On another player's character:
 
 1. The requesting client runs every check below from its own view, with a looser range (see
    **Range**). A request any check refuses is not sent.
@@ -89,15 +90,22 @@ character:
    | 5 | A template is registered under the key | `NotRegistered` |
    | 6 | The template sets `AcceptsRequests` | `NotAccepted` |
    | 7 | Duration finite and at least `MinSeconds`; magnitude above 0 and finite. Values above `MaxSeconds` and the magnitude limit (`MaxMagnitude`, or `MaxMagnitudeFor` of the requester) are cut to them | `InvalidDuration`, `InvalidMagnitude` |
-   | 8 | The target character is alive | `TargetDead` |
-   | 9 | The requester has a character on this client | `SenderMissing` |
-   | 10 | That character is alive | `SenderDead` |
-   | 11 | `RefuseSeated`: the requester is not seated | `SenderSeated` |
-   | 12 | `RefuseInTube`: neither character is in a clone tube | `InCloneTube` |
-   | 13 | `Stance`: `Hostile` needs the two characters on different sides, `Friendly` on the same side, `Any` accepts both | `Stance` |
-   | 14 | Range: the distance between the two characters, when the range limit (`MaxRange`, or `MaxRangeFor` of the requester) is above 0 | `OutOfRange` |
-   | 15 | `RequiresLineOfSight`: nothing between the two characters' chests | `NoLineOfSight` |
-   | 16 | Rate: a token bucket per requester and key, `Burst + 1` tokens, one more every `MinInterval` (or `MinIntervalFor` of the requester) seconds | `RateLimited` |
+   | 8 | `Stance = MasterOnly`: the requesting actor is the room's master client, whether or not it has a character | `Stance` |
+   | 9 | The target character is alive | `TargetDead` |
+   | 10 | The requester has a character on this client | `SenderMissing` |
+   | 11 | That character is alive | `SenderDead` |
+   | 12 | `RefuseSeated`: the requester is not seated | `SenderSeated` |
+   | 13 | `RefuseInTube`: neither character is in a clone tube | `InCloneTube` |
+   | 14 | `Stance`: `Hostile` needs the two characters on different sides, `Friendly` on the same side, `Any` accepts both | `Stance` |
+   | 15 | Range: the distance between the two characters, when the range limit (`MaxRange`, or `MaxRangeFor` of the requester) is above 0 | `OutOfRange` |
+   | 16 | `RequiresLineOfSight`: nothing between the two characters' chests | `NoLineOfSight` |
+   | 17 | Rate: a token bucket per requester and key, `Burst + 1` tokens, one more every `MinInterval` (or `MinIntervalFor` of the requester) seconds | `RateLimited` |
+
+   A `MasterOnly` request from the master skips checks 10 to 16 except the target's clone tube:
+   the master's actor number is what the stance judges, and the master may have no character,
+   or a dead or distant one, when a host-run rule grants the status. Its limit functions then
+   receive the master's character, or the constants stand when it has none, and
+   `OnRequestApplied` receives a null requester when it has none.
 
 4. An accepted request applies the status as a local `Apply` would, with the cut duration and
    magnitude and the same stacking and callbacks, with one difference: **a request never
@@ -175,14 +183,16 @@ client's own character. A request sent for another party, such as the master for
 NPC's effect or a client relaying another player's hit, is judged by the forwarder's character,
 not the party it acts for, and a limit function receives the forwarder's character. Declare
 such a status `Stance = Any` with no `MaxRange` or `MaxRangeFor`, or apply it on
-the target's own client with `Apply`. NPC damage abilities already run there.
+the target's own client with `Apply`. NPC damage abilities already run there. A status only
+the host forwards can be `Stance = MasterOnly`, which judges the master's actor and none of its
+character.
 
 **Template fields for requests.** None runs for the owning client's own `Apply`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `AcceptsRequests` | `false` | Accept requests. Off, every request is refused `NotAccepted`. |
-| `Stance` | `Any` | `Any`, `Hostile` (another side from the target) or `Friendly` (the target's side). |
+| `Stance` | `Any` | `Any`, `Hostile` (another side from the target), `Friendly` (the target's side) or `MasterOnly` (the master client alone, judged by its actor). |
 | `MaxRange` | `0` | Metres, measured on the target's client. 0 checks no range. |
 | `RequiresLineOfSight` | `false` | Refuse when something blocks the line between the two characters. |
 | `RefuseSeated` | `false` | Refuse a seated requester. |

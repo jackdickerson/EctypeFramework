@@ -128,6 +128,11 @@ moment while a multi-ship mod rewrites a respawned character's faction.
   `TryApply` and `TryRemove` on a client that is not the master return `NotMaster`. Messages from
   one sender arrive in the order it sent them, so every client applies the master's changes in
   the same order. A character status with this stance accepts requests from the master alone.
+- **`MasterOnly` trusts whoever holds the master role.** Each receiver asks Photon which actor is
+  the master when a message arrives. It refuses every client that does not hold the role; it
+  does not stop a client that obtains the role. Photon's room API lets a client ask the server to
+  make a player the master (`PhotonNetwork.SetMasterClient`), so a modified client may be able to
+  make itself master and then apply or remove a `MasterOnly` status like the host.
 - **The master may always remove.** It simulates the NPCs, and a multi-ship mod's arbiter
   runs there. A removal is judged when it arrives: one from a client that is no longer the
   master by then (it just handed the role on) is refused, is not retried, and the status runs
@@ -183,16 +188,26 @@ it no meaning: a team number, a ship number, an index into the mod's own table.
 A status can target a part of a networked object instead of a space object: a panel, a door, a
 console. `StatusPart` names it the same way on every client, as the id of the PhotonView the part
 sits under and the part's index among that view's components of the part's type.
-`StatusPart.Of(component)` takes the nearest PhotonView at or above the component and its index
-in that view's `GetComponentsInChildren<T>(true)`; `part.Resolve<T>()` is the inverse. The index
-agrees across clients because every client instantiates the same prefab, so the walk meets the
-same components in the same order. Name a part with the same `T` on every client.
+`StatusPart.Of<T>(component)` takes the nearest PhotonView at or above the component and its
+index in that view's `GetComponentsInChildren<T>(true)`; `part.Resolve<T>()` is the inverse.
+Two things decide whether every client names the same part:
+
+- **The type is not on the wire.** Only the view id and the index travel, so the index means
+  something only under the `T` it was taken with. `Of` takes `T` from the static type at the
+  call site, so a variable typed as a base class counts among that base class's components.
+  Write the type parameter out on both `Of<T>` and `Resolve<T>`, the same on every client.
+- **The index agrees only while the hierarchy under the view agrees.** It holds when every
+  client instantiated the same prefab and nothing has been added under the view since. Children
+  a mod adds at runtime under a shared view, in a different order or on some clients only, shift
+  the indices. Name a component that carries its own PhotonView, such as a module's power drain
+  or a panel (`PowerDrain` and `Enhancement` are both `MonoBehaviourPun`): the view is then the
+  component's own and the index is 0.
 
 ```csharp
-StatusPart panelPart = StatusPart.Of(panel);           // panel: the component to name
-EnemyStatuses.Apply(panelPart, key, 120f, tag: 0);     // TryApply returns a StatusRefusal
-EnemyStatuses.Remove(panelPart, key);                  // TryRemove likewise
-EnemyStatuses.IsActive(panelPart, key);                // + RemainingSeconds, Stacks, Tag
+StatusPart panelPart = StatusPart.Of<Enhancement>(panel);  // panel: the component to name
+EnemyStatuses.Apply(panelPart, key, 120f, tag: 0);         // TryApply returns a StatusRefusal
+EnemyStatuses.Remove(panelPart, key);                      // TryRemove likewise
+EnemyStatuses.IsActive(panelPart, key);                    // + RemainingSeconds, Stacks, Tag
 ```
 
 - **Same timing, stacking and removal as on a space object.** The end is a server timestamp; a
@@ -214,6 +229,20 @@ EnemyStatuses.IsActive(panelPart, key);                // + RemainingSeconds, St
 - **`CoalesceMs` does not apply.** Each application to a part is one message.
 - **The part's view must exist** on the client that applies and on each receiver. A receiver
   without it ignores the message, as for a space object it does not have.
+- **One view holds at most 64 part statuses.** A new status past that is refused `Failed` on
+  the client that applies and on each receiver, with one warning per view; re-applying a live
+  one is not affected. A new status whose index is at or past the number of components under
+  the view (of any type) names no part and is refused `InvalidTarget`. Both bounds keep a sender
+  that may apply a status (anyone, under `Any`) from growing every peer's table without limit.
+- **A player who joins while a part status runs** does not receive it.
+
+Things that look like they should work and do not:
+
+- `StatusPart.Of(component)` with the component in a variable typed `MonoBehaviour` or
+  `Component`. The index counts every component of that type under the view, and a client that
+  resolves with the concrete type finds another part, or none.
+- Naming a child a mod added at runtime under a ship's shared view. A client that added its
+  children in another order, or not at all, resolves the index to another component.
 
 ## Instance callbacks
 
@@ -224,6 +253,12 @@ application, with `Created` true for the one that started this life of the statu
 with. Add what the status enforces when `Created` is true and take it away in
 `OnInstanceRemoved`: every client runs both, so every client enforces the same thing over the
 same span. A callback that throws is logged once per status and does not stop the status.
+
+On `Remove`, the removal is sent and remembered before `OnRemoved` and `OnInstanceRemoved` run
+on the removing client, and on a receiver the removal is remembered before they run there. A
+callback that applies the same key again therefore starts a new life whose application travels
+after the removal and starts no earlier than it, so every client keeps the new life. With
+`CoalesceMs`, the re-application's batch is queued after the removal dropped the old ones.
 
 ## Worked example: a host-granted door window and a sabotaged panel
 
@@ -260,6 +295,7 @@ EnemyStatuses.Register(new EnemyStatusDef(Sabotage)
         var held = new Held { Drain = drain, RefuseOn = (was, now) => !now };
         drain.IsOn.ChangeValidators.Add(held.RefuseOn);   // every client refuses switching it on
         HeldOff[s.Part] = held;
+        if (drain.photonView.IsMine) drain.IsOn.ForceChange(false);   // the owner switches it off
     },
     OnInstanceRemoved = s =>
     {
@@ -273,7 +309,7 @@ EnemyStatuses.Register(new EnemyStatusDef(Sabotage)
 // on the host, after a hack completes (team: the hacking team's number):
 EnemyStatuses.Apply(enemyShip, DoorAccess, 300f, 1f, null, team);
 // on the host, after it accepts a sabotage request for a panel:
-EnemyStatuses.Apply(StatusPart.Of(panel), Sabotage, 120f);
+EnemyStatuses.Apply(StatusPart.Of<Enhancement>(panel), Sabotage, 120f);
 
 // on every client, whenever a door is used:
 static bool HasAccess(int team, PlayerControlledShip ship)
@@ -291,9 +327,9 @@ foreach (StatusInstance row in Rows) DrawCountdown(row);   // row.Tag, row.Part,
 - **Why the validator holds the switch off.** `PowerDrain.IsOn` is a `ChangeResponsive<bool>`.
   Its `RequestChange` runs every function in `ChangeValidators` with the current and the
   requested value and declines the change when one returns false, so `(was, now) => !now`
-  declines every switch-on while it is in the list. `ForceChange` skips the validators. The
-  status does not switch running equipment off: the view's owner does that with `ForceChange`
-  when the status lands.
+  declines every switch-on while it is in the list. `ForceChange` skips the validators, so the
+  drain's owner switches a running panel off with it when the status is created; the new state
+  replicates from the owner. The validator then holds it off on every client.
 - **Why `MasterOnly` and not a side.** The host judged the request: whether the hacker reached
   the terminal, whether the saboteur stands at the panel. A side stance would let any client on
   the right side grant the window without passing those checks.
@@ -350,11 +386,25 @@ hit, and the stacks reach the peers at most 150 ms late.
   client extended it) adds the stacks. A duration no longer than `CoalesceMs` plus 500 ms can
   end before its batch arrives, so the peers never see it; the first such `Apply` per key logs
   a warning.
+- **A batch carries one Tag.** An application with another Tag than the open batch's closes it
+  and opens a new one, so each receiver runs every application's callbacks with the Tag the
+  applier's ran with. Alternating Tags within one window cost one message per change.
 - **A removal drops what is still queued** for that target and key, on the client that
   removed it and on every client that accepts the removal. A batch another client had already
   sent when the removal was made can still arrive after it; each client remembers the removal
   for `CoalesceMs` plus 2 s and ignores an application whose start precedes it, so such a batch
   does not re-create the status. An application started after the removal is new and lands.
+  The removal carries the remover's server time and every client remembers it from that time,
+  not from when it arrived, so an application the remover makes a moment after removing lands
+  on every client however late the removal reached them. A time later than the receiver's clock
+  is taken as the receiver's now.
+- **Two clients racing a removal can disagree.** An application sent alone (a status without
+  `CoalesceMs`) by a third client after the removal's time but before the removal reached it
+  joins that client's running copy, which the
+  removal then ends there; a receiver that gets the application after the removal creates a new
+  life from it. The status then runs on some clients only until it ends. A status whose removal
+  must agree everywhere is applied and removed from one client, such as `MasterOnly`, whose
+  messages arrive in the order sent.
 - One message carries at most 255 applications; more within one window travel as a second
   message.
 - `0` (the default) sends each application at once.

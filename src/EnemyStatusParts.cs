@@ -10,9 +10,12 @@ namespace Ectype
     /// <summary>
     /// A part of a networked object, named the same way on every client: the id of the
     /// PhotonView the part sits under, and the part's index among that view's components of the
-    /// part's type (<see cref="Of{T}"/>). The index is stable across clients because every client
-    /// instantiates the same prefab, so <c>GetComponentsInChildren</c> walks the same hierarchy in
-    /// the same order. An enemy status can target a part: a panel, a door, a console of a ship.
+    /// part's type (<see cref="Of{T}"/>). The type is not part of the name: every client must
+    /// name and resolve the part with the same type parameter. The index agrees across clients
+    /// only while every client holds the same components under the view in the same order, which
+    /// holds for a component with a PhotonView of its own and fails when children are added at
+    /// runtime under a shared view. An enemy status can target a part: a panel, a door, a console
+    /// of a ship.
     /// </summary>
     public readonly struct StatusPart : IEquatable<StatusPart>
     {
@@ -34,7 +37,8 @@ namespace Ectype
 
         /// <summary>
         /// Names a component: the nearest PhotonView at or above it, and its index in that view's
-        /// <c>GetComponentsInChildren&lt;T&gt;(true)</c>. An invalid part (<see cref="IsValid"/>
+        /// <c>GetComponentsInChildren&lt;T&gt;(true)</c>, <typeparamref name="T"/> being the static
+        /// type at the call site; pass it explicitly. An invalid part (<see cref="IsValid"/>
         /// false) when the component is null or has no PhotonView above it.
         /// </summary>
         public static StatusPart Of<T>(T part) where T : Component
@@ -158,10 +162,36 @@ namespace Ectype
     /// </summary>
     internal sealed class PartStatusTable
     {
+        /// <summary>The most part statuses one view may hold at once. A status that would be the
+        /// next is refused, so no sender can grow the table without bound.</summary>
+        internal const int MaxPerView = 64;
+
         private readonly Dictionary<string, PartStatusEntry> _live = new Dictionary<string, PartStatusEntry>();
+        private readonly Dictionary<int, int> _perView = new Dictionary<int, int>();
         private readonly List<string> _ended = new List<string>();
 
         internal int Count { get { return _live.Count; } }
+
+        /// <summary>Live part statuses under one view.</summary>
+        internal int CountOn(int viewId)
+        {
+            int n;
+            return _perView.TryGetValue(viewId, out n) ? n : 0;
+        }
+
+        /// <summary>True when the status is not live and its view already holds
+        /// <see cref="MaxPerView"/> statuses, so <see cref="Apply"/> would refuse it.</summary>
+        internal bool Full(StatusPart part, string key)
+        {
+            return Find(part, key) == null && CountOn(part.ViewId) >= MaxPerView;
+        }
+
+        private void Counted(int viewId, int delta)
+        {
+            int n = CountOn(viewId) + delta;
+            if (n > 0) _perView[viewId] = n;
+            else _perView.Remove(viewId);
+        }
 
         private static string Id(StatusPart part, string key)
         {
@@ -177,7 +207,7 @@ namespace Ectype
         /// <summary>
         /// Applies <paramref name="applications"/> applications at once, the timer moved once,
         /// and calls <paramref name="each"/> after each with whether it created the status.
-        /// Returns the live entry.
+        /// Returns the live entry, or null when the status would be new and its view is full.
         /// </summary>
         internal PartStatusEntry Apply(EnemyStatusDef def, StatusPart part, PhotonView view, bool tracksView,
                                        int startTs, int durationMs, int tag, int applierActor,
@@ -190,6 +220,8 @@ namespace Ectype
             bool created = !_live.TryGetValue(id, out e);
             if (created)
             {
+                if (CountOn(part.ViewId) >= MaxPerView) return null;
+                Counted(part.ViewId, 1);
                 e = new PartStatusEntry
                 {
                     Def = def, Part = part, View = view, TracksView = tracksView, StartTs = startTs,
@@ -219,6 +251,7 @@ namespace Ectype
             PartStatusEntry e;
             if (!_live.TryGetValue(id, out e)) return null;
             _live.Remove(id);
+            Counted(part.ViewId, -1);
             return e;
         }
 
@@ -235,8 +268,10 @@ namespace Ectype
             }
             for (int i = 0; i < _ended.Count; i++)
             {
-                ended.Add(_live[_ended[i]]);
+                PartStatusEntry e = _live[_ended[i]];
+                ended.Add(e);
                 _live.Remove(_ended[i]);
+                Counted(e.Part.ViewId, -1);
             }
         }
 
@@ -252,7 +287,14 @@ namespace Ectype
     {
         /// <summary>Live statuses on parts.</summary>
         internal static readonly PartStatusTable Parts = new PartStatusTable();
-        private static readonly List<PartStatusEntry> PartScratch = new List<PartStatusEntry>();
+
+        /// <summary>GetActive's own list. No callback runs while it is filled, and nothing else
+        /// uses it, so a callback that calls GetActive cannot disturb a loop elsewhere.</summary>
+        private static readonly List<PartStatusEntry> ActiveScratch = new List<PartStatusEntry>();
+
+        /// <summary>PollParts' list of ended statuses, emptied into an array before any
+        /// callback runs.</summary>
+        private static readonly List<PartStatusEntry> ExpireScratch = new List<PartStatusEntry>();
 
         /// <summary>
         /// Apply (or re-apply) a status to a part of a networked object for a duration, and
@@ -337,11 +379,11 @@ namespace Ectype
                                             fx.StackCount, fx.EndTs, false));
                 added++;
             }
-            PartScratch.Clear();
-            Parts.Collect(key, PartScratch);
-            for (int i = 0; i < PartScratch.Count; i++) into.Add(PartScratch[i].Instance(false));
-            added += PartScratch.Count;
-            PartScratch.Clear();
+            ActiveScratch.Clear();
+            Parts.Collect(key, ActiveScratch);
+            for (int i = 0; i < ActiveScratch.Count; i++) into.Add(ActiveScratch[i].Instance(false));
+            added += ActiveScratch.Count;
+            ActiveScratch.Clear();
             return added;
         }
 
@@ -442,6 +484,8 @@ namespace Ectype
                     ReportOwnRefusal("Apply", key, PartText(part), Reason(verdict, def, side, me), fireAndForget);
                     return verdict;
                 }
+                StatusRefusal room = PartRoom(me, part, key, view);
+                if (room != StatusRefusal.None) return room;
                 int startTs = PhotonNetwork.ServerTimestamp;
                 int durationMs = (int)(seconds * 1000f);
                 ApplyPartLocal(def, part, view, startTs, durationMs, tag, me, 1);
@@ -471,9 +515,12 @@ namespace Ectype
                     ReportOwnRefusal("Remove", key, PartText(part), Reason(verdict, def, side, me), fireAndForget);
                     return verdict;
                 }
+                // Sent and remembered before the callbacks run, as on a space object: an
+                // OnInstanceRemoved that applies the same key again travels after the removal.
+                int removedTs = PhotonNetwork.ServerTimestamp;
+                RecordPartRemoval(part, def, removedTs);
+                Broadcast(new object[] { (byte)3, part.ViewId, key, part.Index, removedTs });
                 RemovePartLocal(part, key);
-                RecordPartRemoval(part, def);
-                Broadcast(new object[] { (byte)3, part.ViewId, key, part.Index });
                 return StatusRefusal.None;
             }
             catch (Exception e)
@@ -512,10 +559,50 @@ namespace Ectype
             if (e != null) ReportPartRemoved(e);
         }
 
-        private static void RecordPartRemoval(StatusPart part, EnemyStatusDef def)
+        private static void RecordPartRemoval(StatusPart part, EnemyStatusDef def, int removedTs)
         {
-            Tombstones.Record(part.ViewId, PartTombKey(def.Key, part.Index), PhotonNetwork.ServerTimestamp,
-                              RemovalMemoryMs(def));
+            Tombstones.Record(part.ViewId, PartTombKey(def.Key, part.Index), removedTs, RemovalMemoryMs(def));
+        }
+
+        /// <summary>True when <paramref name="index"/> can name a component under a view holding
+        /// <paramref name="componentCount"/> components: an index at or past that count names no
+        /// part of any type.</summary>
+        internal static bool PartIndexInRange(int index, int componentCount)
+        {
+            return index >= 0 && index < componentCount;
+        }
+
+        /// <summary>
+        /// Whether a part status the table does not hold yet may be created: refused
+        /// <see cref="StatusRefusal.Failed"/> when its view already holds
+        /// <see cref="PartStatusTable.MaxPerView"/> statuses, and
+        /// <see cref="StatusRefusal.InvalidTarget"/> when its index is at or past the number of
+        /// components under the view. A status already live passes without either check.
+        /// </summary>
+        private static StatusRefusal PartRoom(int sender, StatusPart part, string key, PhotonView view)
+        {
+            if (Parts.Find(part, key) != null) return StatusRefusal.None;
+            if (Parts.Full(part, key))
+            {
+                if (WarnedOnce.Add("partcap:" + part.ViewId))
+                    Plugin.Log.LogWarning("Ectype: status '" + key + "' on " + PartText(part) + " refused: the " +
+                                          "view already holds " + PartStatusTable.MaxPerView + " part statuses, " +
+                                          "the most one view may hold (logged once per view).");
+                return StatusRefusal.Failed;
+            }
+            int count = view != null ? view.GetComponentsInChildren<Component>(true).Length : 0;
+            if (!PartIndexInRange(part.Index, count))
+            {
+                string line = "Ectype: status '" + key + "' on " + PartText(part) + " from actor " + sender +
+                              " refused: the view has " + count + " components, so the index names no part.";
+                if (sender == LocalActor())
+                {
+                    if (WarnedOnce.Add("partindex:" + key)) Plugin.Log.LogWarning(line);
+                }
+                else StatusRefusalLog.Report(sender, "apply", key, line);
+                return StatusRefusal.InvalidTarget;
+            }
+            return StatusRefusal.None;
         }
 
         /// <summary>Ends part statuses whose time is up or whose view is gone. Every client runs
@@ -523,22 +610,36 @@ namespace Ectype
         private static void PollParts()
         {
             if (Parts.Count == 0) return;
-            PartScratch.Clear();
-            Parts.Expire(PhotonNetwork.ServerTimestamp, PartScratch);
-            for (int i = 0; i < PartScratch.Count; i++) ReportPartRemoved(PartScratch[i]);
-            PartScratch.Clear();
+            EndExpired(Parts, PhotonNetwork.ServerTimestamp);
+        }
+
+        /// <summary>
+        /// Takes the statuses ended at <paramref name="now"/> out of the table and runs their
+        /// OnInstanceRemoved. The callbacks run over an array of their own, so one that reads or
+        /// changes the statuses (GetActive, Apply, Remove) cannot cut the loop short: every ended
+        /// status gets its callback. Returns how many ended.
+        /// </summary>
+        internal static int EndExpired(PartStatusTable table, int now)
+        {
+            ExpireScratch.Clear();
+            table.Expire(now, ExpireScratch);
+            if (ExpireScratch.Count == 0) return 0;
+            PartStatusEntry[] ended = ExpireScratch.ToArray();
+            ExpireScratch.Clear();
+            for (int i = 0; i < ended.Length; i++) ReportPartRemoved(ended[i]);
+            return ended.Length;
         }
 
         /// <summary>
         /// A received part apply (op 2: <c>[byte 2, int viewId, string key, int startTs,
         /// int durationMs, int index, int tag]</c>) or remove (op 3: <c>[byte 3, int viewId,
-        /// string key, int index]</c>), judged like its space-object counterpart, the part's side
-        /// being that of the ship or space object it belongs to.
+        /// string key, int index, int removedTs]</c>), judged like its space-object counterpart,
+        /// the part's side being that of the ship or space object it belongs to. The caller has
+        /// checked the fields against the op's layout.
         /// </summary>
         internal static StatusRefusal HandlePart(int sender, byte op, int viewId, string key, object[] args)
         {
-            if (op == 2 && args.Length < 7) return StatusRefusal.Failed;
-            if (op == 3 && args.Length < 4) return StatusRefusal.Failed;
+            if (!EctypeNet.FitsEnemyStatusOp(args) || (op != 2 && op != 3)) return StatusRefusal.Failed;
             StatusPart part = new StatusPart(viewId, op == 2 ? (int)args[5] : (int)args[3]);
             if (!part.IsValid) return StatusRefusal.InvalidTarget;
             PhotonView view = PhotonView.Find(viewId);
@@ -557,8 +658,8 @@ namespace Ectype
                         ReportReceivedRefusal(sender, "remove", key, PartText(part), verdict, def, rside);
                     return verdict;
                 }
+                RecordPartRemoval(part, def, RemovalTime((int)args[4]));
                 RemovePartLocal(part, key);
-                RecordPartRemoval(part, def);
                 return StatusRefusal.None;
             }
 
@@ -583,6 +684,8 @@ namespace Ectype
                 ReportReceivedRefusal(sender, "apply", key, PartText(part), stance, def, side);
                 return stance;
             }
+            StatusRefusal room = PartRoom(sender, part, key, view);
+            if (room != StatusRefusal.None) return room;
             ApplyPartLocal(def, part, view, startTs, durationMs, tag, sender, 1);
             return StatusRefusal.None;
         }

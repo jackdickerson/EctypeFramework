@@ -10,7 +10,7 @@ Mods that limit what players may use aboard a ship can tell a system's power swi
 
 Mods can keep choices only the host makes, such as fleet or team picks, in sync on every player's game for as long as the room lasts. A value changed by any other player is ignored and the host's is put back, and a player who takes over as host carries on with the same choices.
 
-Mods can put timed effects on a part of a ship, such as a panel switched off for two minutes, and can make an effect one only the host may start or end, such as a door-access window a team wins by hacking; every player sees the same effect end at the same moment. A player who joins while one runs does not see it.
+Mods can put timed effects on a part of a ship, such as a panel switched off for two minutes, and can make an effect one only the host may start or end, such as a door-access window a team wins by hacking; every player sees the same effect end at the same moment. A player who joins while one runs does not see it. Players need this version to join a host running it.
 
 ## 0.30.0
 

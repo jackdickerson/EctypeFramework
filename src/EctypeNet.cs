@@ -47,9 +47,10 @@ namespace Ectype
 
         /// <summary>Enemy status apply and remove: [byte op, int viewId, string key, ...].
         /// Op 0 applies to a space object, adding int startTs, int durationMs, float magnitude,
-        /// int attackerView, and int tag when the tag is not 0; op 1 removes from one. Op 2
-        /// applies to a part, adding int startTs, int durationMs, int index, int tag; op 3
-        /// removes from one, adding int index.</summary>
+        /// int attackerView, and int tag when the tag is not 0; op 1 removes from one, adding
+        /// int removedTs. Op 2 applies to a part, adding int startTs, int durationMs, int index,
+        /// int tag; op 3 removes from one, adding int index, int removedTs. The op byte picks
+        /// the layout (<see cref="EnemyStatusOpLayouts"/>).</summary>
         internal const byte EnemyStatus = 2;
 
         /// <summary>Coalesced enemy status applications (ApplyN): [int viewId, string key,
@@ -87,6 +88,37 @@ namespace Ectype
         /// change here is a change of contract: raise
         /// <see cref="EctypePluginInfo.NET_CONTRACT_VERSION"/> with it.
         /// </summary>
+        /// <summary>Enemy status op 0: an application to a space object.</summary>
+        internal static readonly Type[] StatusApply =
+            { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int), typeof(float), typeof(int) };
+
+        /// <summary>Enemy status op 0 with a Tag.</summary>
+        internal static readonly Type[] StatusApplyTagged =
+            { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int), typeof(float), typeof(int),
+              typeof(int) };
+
+        /// <summary>Enemy status op 1: a removal from a space object, with the remover's server time.</summary>
+        internal static readonly Type[] StatusRemove = { typeof(byte), typeof(int), typeof(string), typeof(int) };
+
+        /// <summary>Enemy status op 2: an application to a part.</summary>
+        internal static readonly Type[] StatusPartApply =
+            { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int), typeof(int), typeof(int) };
+
+        /// <summary>Enemy status op 3: a removal from a part, with the remover's server time.</summary>
+        internal static readonly Type[] StatusPartRemove =
+            { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int) };
+
+        /// <summary>The layouts each enemy status op may take, indexed by op. A message is read
+        /// only when its fields fit a layout of its own op, so fields that fit another op's
+        /// layout are refused before any of them is cast.</summary>
+        internal static readonly Type[][][] EnemyStatusOpLayouts =
+        {
+            new[] { StatusApply, StatusApplyTagged },
+            new[] { StatusRemove },
+            new[] { StatusPartApply },
+            new[] { StatusPartRemove },
+        };
+
         internal static readonly Dictionary<byte, Type[][]> Layouts = new Dictionary<byte, Type[][]>
         {
             { AbilityActive, new[]
@@ -94,17 +126,7 @@ namespace Ectype
                     new[] { typeof(int), typeof(string), typeof(bool), typeof(object[]),
                             typeof(object[]), typeof(bool) },
                 } },
-            { EnemyStatus, new[]
-                {
-                    new[] { typeof(byte), typeof(int), typeof(string) },
-                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
-                            typeof(float), typeof(int) },
-                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
-                            typeof(float), typeof(int), typeof(int) },
-                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int), typeof(int),
-                            typeof(int), typeof(int) },
-                    new[] { typeof(byte), typeof(int), typeof(string), typeof(int) },
-                } },
+            { EnemyStatus, new[] { StatusApply, StatusApplyTagged, StatusRemove, StatusPartApply, StatusPartRemove } },
             { EnemyStatusStacks, new[]
                 {
                     new[] { typeof(int), typeof(string), typeof(int), typeof(int), typeof(float),
@@ -139,13 +161,29 @@ namespace Ectype
             Type[][] layouts;
             if (args == null || !Layouts.TryGetValue(subtype, out layouts)) return false;
             foreach (Type[] layout in layouts)
-            {
-                if (layout.Length != args.Length) continue;
-                bool ok = true;
-                for (int i = 0; i < layout.Length && ok; i++)
-                    ok = args[i] != null && args[i].GetType() == layout[i];
-                if (ok) return true;
-            }
+                if (Fits(layout, args)) return true;
+            return false;
+        }
+
+        /// <summary>Whether the arguments fit one layout exactly: same count, and each element
+        /// non-null and of that exact type.</summary>
+        internal static bool Fits(Type[] layout, object[] args)
+        {
+            if (layout == null || args == null || layout.Length != args.Length) return false;
+            for (int i = 0; i < layout.Length; i++)
+                if (args[i] == null || args[i].GetType() != layout[i]) return false;
+            return true;
+        }
+
+        /// <summary>Whether an enemy status message fits a layout of the op its first field
+        /// names.</summary>
+        internal static bool FitsEnemyStatusOp(object[] args)
+        {
+            if (args == null || args.Length == 0 || !(args[0] is byte)) return false;
+            byte op = (byte)args[0];
+            if (op >= EnemyStatusOpLayouts.Length) return false;
+            foreach (Type[] layout in EnemyStatusOpLayouts[op])
+                if (Fits(layout, args)) return true;
             return false;
         }
 
