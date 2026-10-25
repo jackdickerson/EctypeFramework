@@ -4,6 +4,42 @@ Newest first. Each entry lists what changed for a mod that depends on the framew
 A version that is not listed carried no change a dependent can observe, or has no recorded
 build.
 
+## 0.22.0
+
+- `Topology`: which player ships exist and which is whose, answered the same on every client.
+  `Ships`, `Multi`, `CrewShipOf`, `AboardShipOf`, `ShipOfPart`, `ShipNumberOf`,
+  `ShipByNumber`, `ForceOf`, `Hostile`, `Changed`, `Stamp`, `Provider`. With Void Crew Fleet
+  installed it binds Fleet's public API by reflection for crew membership; without it every
+  answer comes from game data. In a room with one ship every answer is that ship.
+- `characterShip` perks land on each holder's own crew ship in a room with several ships,
+  instead of on whichever ship each client was viewing. A holder with no crew ship yet
+  contributes nothing until one exists, and a holder whose ship changes is moved within half a
+  second. One-ship rooms are unchanged.
+- `IncomingProjectileSpeed` is per ship. Each hostile shot takes the factor of one ship, chosen
+  as it registers: the guided target's ship, else the hostile ship nearest the shot's line.
+  Shots fired by a player ship are never slowed. One-ship rooms are unchanged.
+- `ShipArrivals.FleetArrived`: raised once per jump on every machine, after every ship that
+  jumped is back in normal flight. Its `ShipArrival` carries the last ship to arrive, the worst
+  kind and the latest stamp. `Arrived` is documented as once per ship per jump, which it
+  already was.
+- Status markers take their colour from the game's own affiliation rule, the one its object
+  markers use: a marker on a neutral object (faction 0) now draws as neutral, where it drew as
+  enemy. Lock-gated markers follow the ship this client views when the view moves to another
+  ship.
+- Enemy ability suspension lifts the enemy's modifiers from every player ship.
+- `CancelTriggers.InertiaZoneEntry` also fires when the character moves from one ship's inertia
+  zone straight into another's.
+- Timed stat contributions are safe to deep-copy: the applied modifier's dynamic value and
+  source hold an integer handle, not the contribution. The modifier's `Source` is no longer the
+  `TimedStatContribution` itself: `collection.RemoveModifier(contribution)` no longer removes
+  it, and a modifier's source no longer compares equal to the contribution. End one with
+  `TimedStatContributions.End`.
+- A carryable registered at runtime with no crafting data logs one warning naming it, because
+  the game's end-of-run alloy tally throws on it.
+- Fewer stalls at spawn: the ability install sweep rebuilds each character's ability array
+  once, and the role lookup the host runs for every member caches its reflection. A build
+  process whose requester has no live character no longer logs an error every frame.
+
 ## 0.20.1
 
 - Removed `SelectionGate`, `GateResult`, `GateVerdict`, `MemberModResult` and
