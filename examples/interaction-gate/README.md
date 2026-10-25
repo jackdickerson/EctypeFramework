@@ -35,4 +35,4 @@ The first restore downloads the .NET Framework 4.7.2 reference assemblies from n
 
 Copy `bin\Release\ExampleInteractionGate.dll` to `<game>\BepInEx\plugins\` on every player's machine. `BepInEx\LogOutput.log` carries `Example Interaction Gate v0.1.0 loaded: the helm is host-only.` and the framework's `interaction gate '<guid>.host-helm' registered (1 gate).`
 
-To check it, join a host's room as a second player and look at the helm's seat from close by: no prompt shows, and the warning `ONLY THE HOST MAY PILOT THIS SHIP.` appears. The host still takes the helm as usual. A request that reaches the host anyway logs `interaction gate '<guid>.host-helm' refused Helm <seat> by player <n> (Owner): helm is host-only` there.
+To check it, join a host's room as a second player and look at the helm's seat from close by: no prompt shows, and the warning `ONLY THE HOST MAY PILOT THIS SHIP.` appears. The host still takes the helm as usual. A request that reaches the host anyway logs `interaction gate '<guid>.host-helm' refused Helm <seat> by player <n> (Owner): helm is host-only (further refusals of this kind to this player are logged in verbose mode only).` there.

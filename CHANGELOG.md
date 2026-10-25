@@ -11,10 +11,13 @@ build.
   `Register(id, Func<GateQuery, Refusal>)`, `Unregister`, `SuppressWarningsFor`, `Evaluate`,
   `Classify`. Each interaction is judged on the acting player's game (no highlight, no prompt,
   a warning at most every 3 s and the same text at most every 20 s) and again on the game that
-  owns the part when the request arrives (dropped silently). Gates only refuse, the first
-  refusal in registration order decides, and a gate that throws counts as allowing. With no
-  gate registered nothing changes. The hooks run after Void Crew Fleet's on the same methods and
-  stay silent when Fleet already refused. See `docs/reference/interaction-gate.md`.
+  owns the part when the request arrives (dropped silently). A change of an object's owner is
+  decided by its current owner, or the host when none is present, which hands a refused object
+  back. Gates only refuse, the first refusal in registration order decides, a gate that throws
+  counts as allowing, and every client that judges must give the same answer. With no gate
+  registered nothing changes and Photon is never patched. The hooks run after Void Crew Fleet's
+  on the same methods and stay silent when Fleet already refused. See
+  `docs/reference/interaction-gate.md`.
 
 ## 0.22.0
 
