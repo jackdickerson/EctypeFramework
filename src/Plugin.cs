@@ -77,8 +77,6 @@ namespace Ectype
             catch (Exception e) { Log.LogError("Ectype: loot table patch failed: " + e); }
             try { HowToHints.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: how-to hint patches failed: " + e); }
-            try { ProgressionGuard.Install(harmony); }
-            catch (Exception e) { Log.LogError("Ectype: progression guard failed: " + e); }
             try { SessionData.ApplyPatches(harmony); }
             catch (Exception e) { Log.LogError("Ectype: session data patches failed: " + e); }
             try { SessionStats.Install(); }
@@ -172,7 +170,6 @@ namespace Ectype
 #endif
             Step("net", EctypeNet.Poll);
             Step("presence", PeerPresence.Publish);
-            Step("progression guard", ProgressionGuard.Poll);
             Step("session data", SessionData.Poll);
             Step("session stats", SessionStats.Poll);
             Step("topology", Topology.Poll);

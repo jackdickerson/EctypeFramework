@@ -111,16 +111,18 @@ plain words.
    package version is the same bytes on every machine. State the version the listing was
    written for and tell players to update the framework and your mod together.
 3. **Sessions are flagged as modded.** The game tags a room as modded and shows the tag in
-   the server browser, which is how it separates modded rooms in matchmaking. The
-   framework blocks cloud profile writes and Steam stats and achievements from the first
-   tagged room until the game restarts, with or without VoidManager. The tag is set
-   when the mod loads and cannot be switched off from the mod's settings.
+   the server browser, which is how it separates modded rooms in matchmaking. The tag is
+   set when the mod loads and cannot be switched off from the mod's settings. The framework
+   does not touch progression, achievements or cloud saves; with VoidManager installed,
+   VoidManager's own policy applies to mods that declare `All` or `Session` to it.
 4. **What the framework dependency means.** One line: the role needs the Ectype Framework
    package, which the mod manager installs automatically and which a hand installer has
    to add.
 
-The Void Crew community's categories include `All Required` and `Disables Progression`,
-which describe a role mod's requirements. The framework's own package carries `All Required`.
+The Void Crew community's categories include `All Required`, which describes a role mod's
+requirement. The framework's own package carries `All Required`. The community also has
+`Disables Progression`; the framework does not disable progression, so a role mod carries that
+category only if its own code does.
 It declares no `VoidPlugin`, so a mod launcher that looks for one in the DLL finds none and
 falls back to the package's categories; the DLL also carries
 `AssemblyMetadata("MPType", "All")` for a reader that inspects assembly metadata. The list changes over time: read the live list
@@ -133,8 +135,8 @@ A listing skeleton for the multiplayer section:
 ### Multiplayer
 
 - Everyone in the room needs this mod and the Ectype Framework, at the same version.
-- Hosting or joining a room with this mod marks the session as modded: progression and
-  achievements are off for everyone in it until the game restarts.
+- Hosting a room with this mod marks the session as modded in the server browser until the
+  game restarts.
 - Players without VoidManager can join only a host that either has no VoidManager or runs no
   mod declared `All` to it.
 - Updating: update this mod and the Ectype Framework together.
