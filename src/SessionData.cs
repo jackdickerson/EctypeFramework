@@ -1069,7 +1069,8 @@ namespace Ectype
                 _subscribed = client;
             }
 
-            // Every frame, so the values set in one frame leave together at the next.
+            // Every frame: follows the room and the master role. The host's values leave at the
+            // end of the frame, from the driver's end-of-frame step.
             HostRoomValues.Poll();
 
             if (Time.unscaledTime < _nextPoll) return;

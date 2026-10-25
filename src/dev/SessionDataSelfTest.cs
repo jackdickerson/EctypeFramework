@@ -429,40 +429,97 @@ namespace Ectype
             host.Write("a", "1");
             host.Write("b", "[2]");
             host.Write("a", "3");
-            List<KeyValuePair<string, string>> batch = host.TakeBatch();
+            List<KeyValuePair<string, string>> batch = host.TakeBatch(0f);
             if (batch.Count != 2 || batch[0].Key != "a" || batch[0].Value != "3" || batch[1].Key != "b")
                 failures.Add("host room: a frame's writes did not batch into one update of the latest values");
-            if (host.TakeBatch().Count != 0 || host.Write("a", "3") || host.PendingCount != 0)
+            if (host.TakeBatch(0f).Count != 0 || host.Write("a", "3") || host.PendingCount != 0)
                 failures.Add("host room: an unchanged value was written again");
             if (host.TotalBytesWith("a", "12345") != 5 + 3)
                 failures.Add("host room: the total size counted a replaced value");
 
-            // Another player's write: put back only when it differs.
-            if (!host.Foreign("a", "9") || host.Foreign("b", "[2]") || !host.Foreign("b", 5))
+            // A batch Photon did not send is pending again, ahead of later writes, with the
+            // values held when it is next taken.
+            host.Write("c", "4");
+            batch = host.TakeBatch(0f);
+            host.Write("a", "5");
+            host.Write("c", "6");
+            host.Requeue(batch);
+            batch = host.TakeBatch(0f);
+            if (batch.Count != 2 || batch[0].Key != "c" || batch[0].Value != "6" || batch[1].Key != "a")
+                failures.Add("host room: an unsent batch was not sent again first, with the latest values");
+
+            // Another player's write: put back only when it differs, at most once per key in
+            // PutBackSeconds; an own write in the meantime leaves at once.
+            float t = 10f;
+            if (!host.Foreign("a", "9", t) || host.Foreign("b", "[2]", t) || !host.Foreign("b", 5, t))
                 failures.Add("host room: a foreign write was judged wrongly");
-            batch = host.TakeBatch();
-            if (batch.Count != 2 || batch[0].Value != "3" || batch[1].Value != "[2]")
+            batch = host.TakeBatch(t);
+            if (batch.Count != 2 || batch[0].Value != "5" || batch[1].Value != "[2]")
                 failures.Add("host room: the host did not put its own values back");
+            host.Foreign("a", "9", t + 0.1f);
+            host.Foreign("b", "9", t + 0.1f);
+            if (host.TakeBatch(t + 0.1f).Count != 0 || host.PendingCount != 2)
+                failures.Add("host room: a key was put back twice within the throttle");
+            host.Write("b", "[7]");
+            batch = host.TakeBatch(t + 0.2f);
+            if (batch.Count != 1 || batch[0].Key != "b" || batch[0].Value != "[7]")
+                failures.Add("host room: an own write waited behind a throttled put-back");
+            batch = host.TakeBatch(t + HostRoomCopy.PutBackSeconds);
+            if (batch.Count != 1 || batch[0].Key != "a" || host.PendingCount != 0)
+                failures.Add("host room: a throttled put-back did not leave once due");
 
-            // A client that becomes host keeps what it accepted, and puts back what the room holds
-            // differently (a refused forged write, and a key it never accepted a value for).
+            // Provenance: a value is Master only from a write that named the master; the join
+            // response is unverified; a value that did not read leaves the held one unverified.
             HostRoomCopy client = new HostRoomCopy();
-            client.Accept("a", "1");
-            client.Accept("b", "[2]");
-            Dictionary<string, object> room = new Dictionary<string, object> { { "a", "1" }, { "b", "[9]" }, { "c", "5" } };
-            List<string> back2 = client.Adopt(new[] { "a", "b", "c", "d" },
-                                              k => room.TryGetValue(k, out object raw) ? raw : null);
-            batch = client.TakeBatch();
-            if (back2.Count != 2 || back2[0] != "b" || back2[1] != "c" || batch.Count != 2 ||
-                batch[0].Value != "[2]" || batch[1].Value != null)
-                failures.Add("host room: adoption did not keep the held values and put back the room's differences");
+            client.Took("j", "1", false);
+            client.Took("a", "1", true);
+            client.Took("b", "[2]", true);
+            client.Refused("b", HostRoomRefusal.Writer);
+            client.Took("r", "1", true);
+            client.Refused("r", HostRoomRefusal.Read);
+            if (client.Source("j") != HostRoomSource.Unverified || client.Source("a") != HostRoomSource.Master ||
+                client.Source("b") != HostRoomSource.Master || client.Refusal("b") != HostRoomRefusal.Writer ||
+                client.Source("r") != HostRoomSource.Unverified || client.Refusal("r") != HostRoomRefusal.Read ||
+                client.Held("r") != "1")
+                failures.Add("host room: provenance was recorded wrongly");
 
+            // A client that becomes host keeps what the master wrote and puts back a refused
+            // forgery; clears what it holds unverified, the join response's value included; and
+            // leaves alone a room value it could not read.
+            Dictionary<string, object> room = new Dictionary<string, object>
+            {
+                { "j", "1" }, { "a", "1" }, { "b", "[9]" }, { "r", "{\"newer\":1}" }, { "c", "5" },
+            };
+            HostRoomAdoption adopted = client.Adopt(new[] { "j", "a", "b", "r", "c", "d" },
+                                                    k => room.TryGetValue(k, out object raw) ? raw : null);
+            batch = client.TakeBatch(0f);
+            if (adopted.Back.Count != 1 || adopted.Back[0] != "b" || adopted.Cleared.Count != 2 ||
+                adopted.Cleared[0] != "j" || adopted.Cleared[1] != "c" || adopted.Standing.Count != 1 ||
+                adopted.Standing[0] != "r" || adopted.Held != 2 || batch.Count != 3 ||
+                batch[0].Key != "j" || batch[0].Value != null || batch[1].Key != "b" || batch[1].Value != "[2]" ||
+                batch[2].Key != "c" || batch[2].Value != null)
+                failures.Add("host room: adoption did not follow provenance");
+            if (client.Held("j") != null || client.Source("a") != HostRoomSource.Own ||
+                client.Source("r") != HostRoomSource.Unverified || client.Foreign("r", "x", 0f))
+                failures.Add("host room: adoption left the wrong values held or guarded");
+
+            // Losing the host role: a value the room took from it stays; one it never saw the room
+            // take goes back to the last the master wrote; one with no master write known is read
+            // from the room again.
+            client.Echo("j", null);
             client.Write("a", "7");
-            List<string> dropped = client.DropPending();
-            if (dropped.Count != 1 || dropped[0] != "a" || client.PendingCount != 0)
-                failures.Add("host room: unsent writes were not dropped with the host role");
+            client.Write("j", "8");
+            client.TakeBatch(0f);
+            client.Echo("j", "8");
+            client.Write("c", "6");
+            HostRoomRelease released = client.Release(new[] { "j", "a", "b", "r", "c", "d" });
+            if (client.PendingCount != 0 || released.Reverted.Count != 1 || released.Reverted[0] != "a" ||
+                client.Held("a") != "1" || client.Held("j") != "8" || client.Source("j") != HostRoomSource.Master ||
+                released.FromRoom.Count != 2 || released.FromRoom[0] != "c" || released.FromRoom[1] != "d")
+                failures.Add("host room: losing the host role kept a value the room never took");
 
-            if (!HostRoomCopy.WriterAccepted(2, 2) || HostRoomCopy.WriterAccepted(3, 2) || !HostRoomCopy.WriterAccepted(0, 2))
+            if (!HostRoomCopy.WriterAccepted(2, 2) || HostRoomCopy.WriterAccepted(3, 2) ||
+                !HostRoomCopy.WriterAccepted(0, 2) || HostRoomCopy.WriterAccepted(-1, 2))
                 failures.Add("host room: the writer rule gave the wrong answer");
         }
 

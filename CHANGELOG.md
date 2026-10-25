@@ -19,10 +19,15 @@ build.
 - `SessionData.HostRoomValue<T>(key, defaultValue, maxBytes)` returns a `HostRoomValue<T>`: a
   value only the host writes, of any type `SessionData.Register` accepts, held in its own room
   property `Ectype.Value:<key>` for the life of the room, in the hub and in a mission. `Value`,
-  `HasValue`, `Set` (host only; the values set in one frame leave in one room update), `CanSet`,
-  `Changed`. A client takes a change only when Photon reports the master client as its writer;
-  the host puts its own value back after another player's write; a player who becomes the master
-  keeps the values it held and puts back what the room holds differently. Each value is capped
+  `HasValue`, `Set` (host only; the values set during a frame leave in one room update at the end
+  of that frame, and a call Photon does not send is resent), `CanSet`, `Changed`. A client takes a
+  change only when Photon reports the master client (or the server, actor 0) as its writer; the
+  host puts its own value back after another player's write, each key at most twice a second.
+  Each client records where every value came from: a player who becomes the master keeps the
+  values a master wrote and puts them back where the room differs, leaves alone a room value it
+  could not read, and clears the values it read only from the join response; a player who loses
+  the master role goes back to the last value the room took from the master. A warning names a
+  master switch made while the previous master is still in the room. Each value is capped
   by `maxBytes` (default 4096) and all of them together at 16384 bytes. The room properties are
   new; no existing message changes. See `docs/reference/host-room-values.md`.
 - One identifier rule across every API, stated in `docs/identifiers.md`: an owner is the

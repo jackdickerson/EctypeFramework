@@ -248,10 +248,11 @@ the next session it starts.
 `SessionData.HostRoomValue(key, defaultValue, maxBytes)` returns a `HostRoomValue<T>`: a value
 of any type `Register` accepts that only the host writes, at any time, in the hub and in a
 mission, held for the life of the room. Each value is its own room property,
-`Ectype.Value:<key>`; the values the host sets in one frame leave in one room update; clients
-take a change only when Photon reports the master as its writer, and a new master keeps the
-values it held. [host-room-values.md](host-room-values.md) has the mechanism, the limits and its
-log lines.
+`Ectype.Value:<key>`; the values the host sets during a frame leave in one room update at the end
+of that frame; clients take a change only when Photon reports the master as its writer, and a new
+master keeps the values a master wrote and clears the ones it read only from the join response.
+Values that must agree with each other belong in one `HostRoomValue<T>`.
+[host-room-values.md](host-room-values.md) has the mechanism, the limits and its log lines.
 
 ## Log lines
 
