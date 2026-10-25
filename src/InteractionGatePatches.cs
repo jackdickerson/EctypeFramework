@@ -4,6 +4,7 @@ using System.Reflection;
 
 using CG.Client.Player.Interactions;
 using CG.Client.Ship;
+using CG.Client.Ship.Interactions;
 using CG.Client.Ship.Modules.Mediators;
 using CG.Game.Player;
 using CG.Game.SpaceObjects.Controllers;
@@ -12,8 +13,10 @@ using CG.Objects;
 using CG.Ship.Hull;
 using CG.Ship.Modules;
 using CG.Ship.Object;
+using CG.Ship.Repair;
 using ExitGames.Client.Photon;
 using Gameplay.Carryables;
+using Gameplay.Defects;
 using Gameplay.Enhancements;
 using Gameplay.Power;
 using Gameplay.Terminals;
@@ -32,8 +35,9 @@ namespace Ectype
     /// after Void Crew Fleet's on the same methods and stay silent when Fleet has already refused.
     ///
     /// Client side (the acting player's own game, for the prompt and the warning): the
-    /// interaction raycast, the start of a seat, the one event that starts every station, the
-    /// carry interaction and the module upgrade tool.
+    /// interaction raycast's final pick, each station's own entry (seat, terminals, repairs and
+    /// defects), the activation event for the stations that raise nothing else, the carry
+    /// interaction and its pick-up, and the module upgrade tool.
     ///
     /// Owner side (the part owner's game, for authority): each network request a player's game
     /// sends the owner of a part. The sender of most of the game's requests is recovered from
@@ -42,7 +46,8 @@ namespace Ectype
     /// host's own actions are judged on its client side.
     ///
     /// The Photon hooks (the RPC sender, the socket request context and the ownership events)
-    /// are patched from the driver once the game's state machine has left its loading states:
+    /// are patched from the driver once a gate is registered and the game's state machine has
+    /// left its loading states:
     /// patching PhotonNetwork at start-up sets Photon up before the game does, and its
     /// connection then never gets past the name server.
     /// </summary>
@@ -59,6 +64,8 @@ namespace Ectype
         // PUN's ownership events: a player takes a network object, or one is handed to a player.
         private const byte OwnershipRequestEvent = 209;
         private const byte OwnershipTransferEvent = 210;
+        // PUN's ownership update: sets owners on any objects. The game's host alone sends it.
+        private const byte OwnershipUpdateEvent = 212;
 
         private static Harmony _harmony;
         private static bool _photonPatched;
@@ -88,10 +95,8 @@ namespace Ectype
             int ok = 0, total = 0;
 
             // Client side.
-            Patch(ref ok, ref total, typeof(RaycastHandler), "IsValidInteractableHit", null, null, "ValidHitPostfix",
-                  "interactables are not hidden from the prompt");
             Patch(ref ok, ref total, typeof(RaycastHandler), "FindInteractable", null, null, "FindInteractablePostfix",
-                  "an item in a socket is not hidden from the prompt");
+                  "refused interactables still show their prompt");
             Patch(ref ok, ref total, typeof(CustomCharacterLocomotion), "OnActivateAbilities", null,
                   "ActivateAbilitiesPrefix", null, "clone tubes and the periscope start without a client check");
             Patch(ref ok, ref total, typeof(TakeoverChair), "TrySitInChair", Type.EmptyTypes, "TrySitPrefix", null,
@@ -100,11 +105,16 @@ namespace Ectype
                   "TerminalOpenPrefix", null, "module terminals open without a client check");
             Patch(ref ok, ref total, typeof(TerminalScreen), "OnInteractClicked", Type.EmptyTypes,
                   "TerminalScreenPrefix", null, "terminal screens open without a client check");
-            Patch(ref ok, ref total, typeof(CrypticCore), "Activate", Type.EmptyTypes, "MinigamePrefix", null,
-                  "minigames start without a client check");
+            Patch(ref ok, ref total, typeof(RepairObject), "ClickedRepairStart", Type.EmptyTypes, "RepairStartPrefix", null,
+                  "repairs start without a client check");
+            Patch(ref ok, ref total, typeof(Defect), "StartDefectRepair", Type.EmptyTypes, "DefectStartPrefix", null,
+                  "defect repairs start without a client check");
             Patch(ref ok, ref total, typeof(CarryableInteract), "StartInteraction",
                   new[] { typeof(AbstractInteractable), typeof(bool) }, "StartInteractionPrefix", null,
                   "pick-ups and socket use have no client backstop");
+            Patch(ref ok, ref total, typeof(CarryableInteract), "PickupGrabable",
+                  new[] { typeof(AbstractInteractable) }, "PickupPrefix", null,
+                  "the pick-up that follows a socket swap has no client check");
             Patch(ref ok, ref total, typeof(InteractiveCarryableModuleUpgrader), "IsInvalidUpgradeTarget", null, null,
                   "UpgradeTargetPostfix", "the module upgrade tool is not gated");
 
@@ -170,12 +180,18 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Driver step: once the game's state machine has left its first state and the loading
-        /// screen, patches the Photon hooks, once.
+        /// Driver step. Prunes the classifier's registrations of destroyed controls on a slow
+        /// timer, and patches the Photon hooks once, when a gate is registered and the game's
+        /// state machine has left its first state and the loading screen. With no gate ever
+        /// registered, Photon is never patched.
         /// </summary>
         internal static void PollLate()
         {
-            if (_photonPatched || _harmony == null || !GameLoaded()) return;
+            InteractionClassifier.PollPrune();
+#if ECTYPE_DEV
+            PollPickupCheck();
+#endif
+            if (_photonPatched || _harmony == null || !InteractionGate.AnyRegistered || !GameLoaded()) return;
             _photonPatched = true;
             int ok = 0, total = 0;
             PatchPhoton(ref ok, ref total, typeof(PhotonNetwork), "ExecuteRpc", typeof(RpcSender), "RpcPrefix", "RpcFinalizer",
@@ -244,11 +260,29 @@ namespace Ectype
             return new GateQuery(PhotonNetwork.LocalPlayer, interactable, kind, GateSide.Client);
         }
 
-        /// <summary>A client query for an interactable, classified by the shared classifier.</summary>
-        private static GateQuery ClientQuery(Component interactable)
+        /// <summary>
+        /// The client-side verdict on an interactable, classified by the shared classifier. A
+        /// swap at an occupied socket puts the carried item in, takes the socket's item out and
+        /// picks that item up, and the owner judges each of those requests, so all three are
+        /// judged here before anything is sent.
+        /// </summary>
+        private static bool RefuseInteractable(Component interactable, bool warn)
         {
             Component resolved = InteractionClassifier.Resolve(interactable);
-            return ClientQuery(resolved, InteractionClassifier.Classify(resolved, LocalCarrying()));
+            InteractionKind kind = InteractionClassifier.Classify(resolved, LocalCarrying());
+            if (InteractionGate.RefuseOnClient(ClientQuery(resolved, kind), warn)) return true;
+            if (kind != InteractionKind.SocketInsert) return false;
+            CarryableObject held = SocketPayload(resolved);
+            if (held == null) return false;
+            return InteractionGate.RefuseOnClient(ClientQuery(resolved, InteractionKind.SocketRelease), warn) ||
+                   InteractionGate.RefuseOnClient(ClientQuery(held, InteractionKind.CarryablePickup), warn);
+        }
+
+        private static CarryableObject SocketPayload(Component c)
+        {
+            SocketInteractable si = c as SocketInteractable;
+            CarryablesSocket socket = si != null && si.SocketActor != null ? si.SocketActor.Socket : c as CarryablesSocket;
+            return socket != null ? socket.Payload : null;
         }
 
         /// <summary>True when an owner-side check applies to this sender: a known remote player
@@ -272,27 +306,23 @@ namespace Ectype
 
         // ---- client side -------------------------------------------------------------------
 
-        /// <summary>A refused interactable is not a valid hit: no highlight, no prompt, and a
-        /// warning when the player is within the game's default reach.</summary>
-        private static void ValidHitPostfix(ref bool __result, ref AbstractInteractable interactable, float distance)
+        /// <summary>
+        /// The raycast's final pick, after the game resolved occlusion and turned an item in a
+        /// socket into the socket: a refused pick is no pick at all (no highlight, no prompt,
+        /// no intersection point), with a warning when it is within the game's default reach.
+        /// One verdict per frame, on what the player actually looks at.
+        /// </summary>
+        private static void FindInteractablePostfix(ref AbstractInteractable interactable, ref Vector3? worldPos,
+                                                    Transform ___cameraTransform)
         {
-            if (!__result || interactable == null || !InteractionGate.AnyRegistered) return;
+            if (!InteractionGate.AnyRegistered || interactable == null) return;
             try
             {
-                if (!InteractionGate.RefuseOnClient(ClientQuery(interactable), distance < WarnDistance)) return;
-                __result = false;
+                float distance = worldPos.HasValue && ___cameraTransform != null
+                    ? Vector3.Distance(worldPos.Value, ___cameraTransform.position) : 0f;
+                if (!RefuseInteractable(interactable, distance < WarnDistance)) return;
                 interactable = null;
-            }
-            catch (Exception e) { InteractionClassifier.LogHookFailure("RaycastHandler.IsValidInteractableHit", e); }
-        }
-
-        /// <summary>The raycast's final pick, after an item in a socket became the socket.</summary>
-        private static void FindInteractablePostfix(ref AbstractInteractable interactable)
-        {
-            if (interactable == null || !InteractionGate.AnyRegistered) return;
-            try
-            {
-                if (InteractionGate.RefuseOnClient(ClientQuery(interactable), false)) interactable = null;
+                worldPos = null;
             }
             catch (Exception e) { InteractionClassifier.LogHookFailure("RaycastHandler.FindInteractable", e); }
         }
@@ -303,15 +333,17 @@ namespace Ectype
         /// station a mod adds. The others change state before or after raising it, and are judged
         /// at their own entry instead, before anything changes: a seat (and the helm or turret it
         /// starts) at <see cref="TrySitPrefix"/>, a terminal at <see cref="TerminalOpenPrefix"/>
-        /// and <see cref="TerminalScreenPrefix"/>, a minigame at <see cref="MinigamePrefix"/>.
-        /// Refusing those here would leave a seat taken with the player standing, or the view
-        /// switched to a terminal the player cannot leave.
+        /// and <see cref="TerminalScreenPrefix"/>, a repair or defect at
+        /// <see cref="RepairStartPrefix"/> and <see cref="DefectStartPrefix"/>, a panel's
+        /// minigame at the raycast. Refusing those here would leave a seat taken with the player
+        /// standing, the view switched to a terminal the player cannot leave, or a minigame's
+        /// skill modifier applied with no minigame running.
         /// </summary>
         private static bool ActivateAbilitiesPrefix(CustomCharacterLocomotion __instance, IAbilityActivator activator,
                                                     bool activate, bool __runOriginal)
         {
             if (!__runOriginal) return false;
-            if (!activate || !InteractionGate.AnyRegistered) return true;
+            if (!InteractionGate.AnyRegistered || !activate) return true;
             try
             {
                 LocalPlayer local = LocalPlayer.Instance;
@@ -383,20 +415,35 @@ namespace Ectype
             }
         }
 
-        /// <summary>A minigame the local player starts (a repair, a defect, a System Enhancement
-        /// panel), before its skill modifier is applied.</summary>
-        private static bool MinigamePrefix(CrypticCore __instance, bool __runOriginal)
+        /// <summary>A repair the local player starts, before the instant-win roll and before the
+        /// repair skill modifier is applied. A minigame already running is not interrupted.</summary>
+        private static bool RepairStartPrefix(RepairObject __instance, bool __runOriginal)
         {
             if (!__runOriginal) return false;
             if (!InteractionGate.AnyRegistered || __instance == null) return true;
             try
             {
-                return !InteractionGate.RefuseOnClient(
-                    ClientQuery(__instance, InteractionClassifier.Classify(__instance, false)), true);
+                return !InteractionGate.RefuseOnClient(ClientQuery(__instance, InteractionKind.Minigame), true);
             }
             catch (Exception e)
             {
-                InteractionClassifier.LogHookFailure("CrypticCore.Activate", e);
+                InteractionClassifier.LogHookFailure("RepairObject.ClickedRepairStart", e);
+                return true;
+            }
+        }
+
+        /// <summary>A defect repair the local player starts, before the instant-win roll.</summary>
+        private static bool DefectStartPrefix(Defect __instance, bool __runOriginal)
+        {
+            if (!__runOriginal) return false;
+            if (!InteractionGate.AnyRegistered || __instance == null) return true;
+            try
+            {
+                return !InteractionGate.RefuseOnClient(ClientQuery(__instance, InteractionKind.Minigame), true);
+            }
+            catch (Exception e)
+            {
+                InteractionClassifier.LogHookFailure("Defect.StartDefectRepair", e);
                 return true;
             }
         }
@@ -407,15 +454,42 @@ namespace Ectype
                                                    bool __runOriginal)
         {
             if (!__runOriginal) return false;
-            if (interactable == null || !InteractionGate.AnyRegistered) return true;
+            if (!InteractionGate.AnyRegistered || interactable == null) return true;
             try
             {
                 if (___player == null || ___player != LocalPlayer.Instance) return true;
-                return !InteractionGate.RefuseOnClient(ClientQuery(interactable), true);
+                return !RefuseInteractable(interactable, true);
             }
             catch (Exception e)
             {
                 InteractionClassifier.LogHookFailure("CarryableInteract.StartInteraction", e);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// The pick-up itself, run a frame after the click and also after a socket swap, which
+        /// picks the socket's old item up with no click of its own. A refusal here comes before
+        /// the ownership request, and clears the carry lock the caller set, so the player can
+        /// carry again.
+        /// </summary>
+        private static bool PickupPrefix(AbstractInteractable interactable, LocalPlayer ___player,
+                                         ref bool ___lockInteraction, bool __runOriginal)
+        {
+            if (!__runOriginal) return false;
+            if (!InteractionGate.AnyRegistered || interactable == null) return true;
+            try
+            {
+                if (___player == null || ___player != LocalPlayer.Instance) return true;
+                if (!RefuseInteractable(interactable, true)) return true;
+                ___lockInteraction = false;
+                if (___player.Carrier != null) ___player.Carrier.OverrideSentPayloadToNull = false;
+                NoteRefusedPickup();
+                return false;
+            }
+            catch (Exception e)
+            {
+                InteractionClassifier.LogHookFailure("CarryableInteract.PickupGrabable", e);
                 return true;
             }
         }
@@ -425,7 +499,7 @@ namespace Ectype
         private static void UpgradeTargetPostfix(InteractiveCarryableModuleUpgrader __instance, CellModule module,
                                                  ref bool __result)
         {
-            if (__result || module == null || !InteractionGate.AnyRegistered) return;
+            if (!InteractionGate.AnyRegistered || __result || module == null) return;
             try
             {
                 LocalPlayer local = LocalPlayer.Instance;
@@ -668,34 +742,37 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Every client: a network object set to be taken over at will changes owner on each
-        /// client by itself, with no owner asked, when a player takes it (209) or is handed it
-        /// (210). Every client judges the new owner and ignores a refused change, so the object
-        /// stays with its owner everywhere except, at most, on the taker's own game. Judged: an
-        /// item in a socket (taking it out), a loose item (a pick-up), and a part of a player
-        /// ship. Not judged: an item a player carries, the host as the new owner, and anything
-        /// else.
+        /// Ownership events. A network object set to be taken over at will changes owner on each
+        /// client by itself when a player takes it (209) or is handed it (210), and an ownership
+        /// update (212) sets owners on any object from any sender. The object's current owner
+        /// decides, or the host for an object with no owner present:
+        /// - it ignores a refused change and hands the object back to itself, which every other
+        ///   client applies after the refused change, so the room converges on the owner;
+        /// - the taker's own game also judges its own 209 and, on a refusal, answers the game's
+        ///   pending pick-up as a failure, so its carry interaction is not left locked.
+        /// Every other client applies the event as PUN does. Not judged: the host as taker or new
+        /// owner, a hand-off by the host or the current owner (the game's own logic), an object
+        /// following its holder (a socket's item to the socket's owner, a seat's connected object
+        /// to the seated player), an item a player carries, and anything outside the ship and its
+        /// items.
         /// </summary>
         private static bool OwnershipEventPrefix(EventData photonEvent, bool __runOriginal)
         {
             if (!__runOriginal) return false;
-            if (photonEvent == null || !InteractionGate.AnyRegistered) return true;
+            if (!InteractionGate.AnyRegistered || photonEvent == null) return true;
             byte code = photonEvent.Code;
-            if (code != OwnershipRequestEvent && code != OwnershipTransferEvent) return true;
+            if (code != OwnershipRequestEvent && code != OwnershipTransferEvent && code != OwnershipUpdateEvent)
+                return true;
             try
             {
                 int[] data = photonEvent.CustomData as int[];
                 if (data == null || data.Length < 2) return true;
-                int actor = code == OwnershipRequestEvent ? photonEvent.Sender : data[1];
-                Photon.Realtime.Player player = PlayerOf(actor);
-                if (player == null || player.IsMasterClient) return true;
+                if (code == OwnershipUpdateEvent) return OwnershipUpdate(photonEvent.Sender, data);
                 PhotonView view = PhotonView.Find(data[0]);
-                if (view == null || view.OwnershipTransfer != OwnershipOption.Takeover) return true;
-
-                Component part;
-                InteractionKind kind;
-                if (!OwnershipTarget(view, out part, out kind)) return true;
-                return !InteractionGate.RefuseOnOwner(new GateQuery(player, part, kind, GateSide.Owner));
+                if (view == null) return true;
+                return code == OwnershipRequestEvent
+                    ? OwnershipRequest(photonEvent.Sender, view)
+                    : OwnershipTransfer(photonEvent.Sender, data[1], view);
             }
             catch (Exception e)
             {
@@ -703,6 +780,169 @@ namespace Ectype
                 return true;
             }
         }
+
+        /// <summary>209: a player takes an object.</summary>
+        private static bool OwnershipRequest(int takerActor, PhotonView view)
+        {
+            Photon.Realtime.Player taker = PlayerOf(takerActor);
+            if (taker == null || taker.IsMasterClient || view.OwnershipTransfer == OwnershipOption.Fixed) return true;
+            bool own = taker.IsLocal;
+            // A request-only object is decided by its owner through the request hooks.
+            bool decides = view.OwnershipTransfer == OwnershipOption.Takeover && Decides(view);
+            if (!own && !decides) return true;
+            Component part;
+            InteractionKind kind;
+            if (!OwnershipTarget(view, out part, out kind)) return true;
+            if (own)
+            {
+                if (!InteractionGate.RefuseOnClient(new GateQuery(taker, part, kind, GateSide.Client), true)) return true;
+                SettleOwnRequest(view);
+                return false;
+            }
+            if (!InteractionGate.RefuseOnOwner(new GateQuery(taker, part, kind, GateSide.Owner))) return true;
+            Reassert(view);
+            return false;
+        }
+
+        /// <summary>210: an object is handed to a player.</summary>
+        private static bool OwnershipTransfer(int senderActor, int newOwner, PhotonView view)
+        {
+            // PUN applies a request-only object's transfer only from its owner or controller.
+            if (view.OwnershipTransfer != OwnershipOption.Takeover) return true;
+            if (senderActor == view.OwnerActorNr || senderActor == view.ControllerActorNr) return true;
+            Photon.Realtime.Player sender = PlayerOf(senderActor);
+            if (sender != null && sender.IsMasterClient) return true;
+            bool refused;
+            return !RefuseHandOff(view, newOwner, out refused);
+        }
+
+        /// <summary>212 from anyone but the host, which alone sends it in the game: each pair this
+        /// client decides is judged as a hand-off; a refusal drops the whole update here and
+        /// hands each refused object back.</summary>
+        private static bool OwnershipUpdate(int senderActor, int[] pairs)
+        {
+            Photon.Realtime.Player sender = PlayerOf(senderActor);
+            if (sender != null && sender.IsMasterClient) return true;
+            bool refused = false;
+            for (int i = 0; i + 1 < pairs.Length; i += 2)
+            {
+                PhotonView view = PhotonView.Find(pairs[i]);
+                if (view == null || pairs[i + 1] == view.OwnerActorNr) continue;
+                bool one;
+                RefuseHandOff(view, pairs[i + 1], out one);
+                refused |= one;
+            }
+            return !refused;
+        }
+
+        /// <summary>Judges handing an object to a player on the client that decides it; a refused
+        /// object is handed back to its owner.</summary>
+        private static bool RefuseHandOff(PhotonView view, int newOwner, out bool refused)
+        {
+            refused = false;
+            Photon.Realtime.Player to = PlayerOf(newOwner);
+            if (to == null || to.IsMasterClient) return false;
+            if (!Decides(view) || FollowsHolder(view, newOwner)) return false;
+            Component part;
+            InteractionKind kind;
+            if (!OwnershipTarget(view, out part, out kind)) return false;
+            if (!InteractionGate.RefuseOnOwner(new GateQuery(to, part, kind, GateSide.Owner))) return false;
+            refused = true;
+            Reassert(view);
+            return true;
+        }
+
+        /// <summary>True when this client decides the object's owner: it owns it, or it is the
+        /// host and the object has no owner present in the room.</summary>
+        private static bool Decides(PhotonView view)
+        {
+            Photon.Realtime.Player local = PhotonNetwork.LocalPlayer;
+            if (local == null) return false;
+            int owner = view.OwnerActorNr;
+            if (owner == local.ActorNumber) return true;
+            if (!local.IsMasterClient) return false;
+            if (owner == 0) return true;
+            Photon.Realtime.Player p = PlayerOf(owner);
+            return p == null || p.IsInactive;
+        }
+
+        /// <summary>The deciding client hands a refused object back: to itself when it owns it,
+        /// else (the host, for an object with no owner present) to the room. The server delivers
+        /// this after the refused event to every client, so clients that applied the refused
+        /// change fall back.</summary>
+        private static void Reassert(PhotonView view)
+        {
+            Photon.Realtime.Player local = PhotonNetwork.LocalPlayer;
+            int keep = view.OwnerActorNr == local.ActorNumber || view.OwnerActorNr != 0 ? local.ActorNumber : 0;
+            view.TransferOwnership(keep);
+        }
+
+        /// <summary>An object following its holder: an item in a socket going to the socket's
+        /// owner, or a seat's connected object going to whoever owns the seat.</summary>
+        private static bool FollowsHolder(PhotonView view, int newOwner)
+        {
+            CarryableObject item = view.GetComponentInParent<CarryableObject>();
+            if (item != null)
+            {
+                CarryablesSocket socket = item.Carrier as CarryablesSocket;
+                PhotonView socketView = socket != null ? PhotonView.Get(socket) : null;
+                return socketView != null && socketView.OwnerActorNr == newOwner;
+            }
+            TakeoverChair chair = InteractionClassifier.ChairHolding(view);
+            return chair != null && chair.photonView != null && chair.photonView.OwnerActorNr == newOwner;
+        }
+
+        /// <summary>
+        /// The taker's own game refused its own pick-up after the request went out. The game's
+        /// carrier is waiting for the item's owner change; answering it with the unchanged owner
+        /// makes the game reject the pick-up itself, which clears the carry lock.
+        /// </summary>
+        private static void SettleOwnRequest(PhotonView view)
+        {
+            CarryableObject item = view.GetComponentInParent<CarryableObject>();
+            if (item == null || item.OwnerChange == null) return;
+            item.OwnerChange(view.Owner);
+            NoteRefusedPickup();
+        }
+
+#if ECTYPE_DEV
+        private static float _pickupCheckAt = -1f;
+        private static AccessTools.FieldRef<CarryableInteract, bool> _carryLock;
+#endif
+
+        /// <summary>Dev tools build: schedules the check that a refused pick-up left the carry
+        /// interaction unlocked.</summary>
+        private static void NoteRefusedPickup()
+        {
+#if ECTYPE_DEV
+            _pickupCheckAt = Time.unscaledTime + 0.5f;
+#endif
+        }
+
+#if ECTYPE_DEV
+        private static void PollPickupCheck()
+        {
+            if (_pickupCheckAt < 0f || Time.unscaledTime < _pickupCheckAt) return;
+            _pickupCheckAt = -1f;
+            try
+            {
+                if (_carryLock == null) _carryLock = AccessTools.FieldRefAccess<CarryableInteract, bool>("lockInteraction");
+                LocalPlayer local = LocalPlayer.Instance;
+                CarryableInteract carry = local != null && local.Locomotion != null
+                    ? local.Locomotion.GetAbility<CarryableInteract>() : null;
+                if (carry == null) return;
+                if (!_carryLock(carry))
+                    Plugin.Log.LogInfo("Ectype: dev check: a refused pick-up left the carry interaction unlocked.");
+                else
+                    Plugin.Log.LogError("Ectype: dev check: FAILED - the carry interaction is still locked 0.5 s " +
+                                        "after a refused pick-up (or a new pick-up started within that time).");
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning("Ectype: dev check: the refused pick-up check could not run: " + e.Message);
+            }
+        }
+#endif
 
         private static bool OwnershipTarget(PhotonView view, out Component part, out InteractionKind kind)
         {

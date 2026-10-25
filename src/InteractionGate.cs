@@ -59,9 +59,10 @@ namespace Ectype
         Client,
 
         /// <summary>The game of whoever owns the part (the host, or a pilot holding a seat's
-        /// views), on a request that arrived over the network; for an ownership takeover, every
-        /// client. A refusal drops the request and shows nothing. Never asked about the host, nor
-        /// about a request the owner's own game sent itself.</summary>
+        /// views), on a request that arrived over the network; for an ownership change, the
+        /// object's owner, or the host when no owner is present. A refusal drops the request and
+        /// shows nothing. Never asked about the host, nor about a request the owner's own game
+        /// sent itself.</summary>
         Owner,
     }
 
@@ -193,10 +194,11 @@ namespace Ectype
     ///
     /// The framework asks twice for one interaction: on the acting player's client, for the
     /// prompt and the warning, and on the part owner's game when the request arrives, because a
-    /// modified client can skip its own check. A gate must therefore read only state both games
-    /// agree on: room properties, replicated statuses and abilities, factions, positions with
-    /// slack. A gate that reads local-only state makes the client allow and the owner refuse,
-    /// which leaves seats and doors stuck mid-way.
+    /// modified client can skip its own check. A gate must therefore give the same answer on
+    /// every client that judges, reading only state they agree on: room properties, replicated
+    /// statuses and abilities, factions, positions with slack. A gate that reads local-only state
+    /// makes the client allow and the owner refuse: the player uses the part and nothing
+    /// happens.
     /// </summary>
     public static class InteractionGate
     {
@@ -211,6 +213,7 @@ namespace Ectype
         private static Entry[] _snapshot = new Entry[0];
         private static readonly HashSet<string> Muted = new HashSet<string>(StringComparer.Ordinal);
         private static readonly HashSet<string> LoggedOwnerRefusals = new HashSet<string>(StringComparer.Ordinal);
+        private static string _lastClientLog;
 
         /// <summary>True while at least one gate is registered. Every chokepoint returns at once
         /// when it is false.</summary>
@@ -332,7 +335,9 @@ namespace Ectype
 
         /// <summary>
         /// The client-side verdict: evaluates, and on a refusal shows its text through the
-        /// throttled warning when <paramref name="warn"/> is true. Returns true when refused.
+        /// throttled warning when <paramref name="warn"/> is true. Returns true when refused. In
+        /// verbose mode a refusal is logged when it differs from the last one logged (gate,
+        /// object, kind), so a player looking at a refused part logs it once, not every frame.
         /// </summary>
         internal static bool RefuseOnClient(GateQuery query, bool warn)
         {
@@ -340,8 +345,16 @@ namespace Ectype
             Refusal r = EvaluateWithId(query, out id);
             if (r.IsAllowed) return false;
             if (Plugin.Verbose)
-                Plugin.Log.LogInfo("Ectype: interaction gate '" + id + "' refused " + query +
-                                   (r.Reason.Length > 0 ? ": " + r.Reason : "") + ".");
+            {
+                string key = id + "|" + (query.Interactable != null ? query.Interactable.GetInstanceID() : 0) +
+                             "|" + query.Kind;
+                if (key != _lastClientLog)
+                {
+                    _lastClientLog = key;
+                    Plugin.Log.LogInfo("Ectype: interaction gate '" + id + "' refused " + query +
+                                       (r.Reason.Length > 0 ? ": " + r.Reason : "") + ".");
+                }
+            }
             if (warn && !r.Silent && !Muted.Contains(id)) GateWarnings.Show(r.Text);
             return true;
         }
