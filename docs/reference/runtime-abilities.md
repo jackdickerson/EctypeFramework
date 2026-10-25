@@ -20,6 +20,10 @@ peer without the ability simply ignores the message.
   stop for the same character and key cancels it.
 - A prefab ability, one built into the character prefab, falls through to vanilla replication
   untouched.
+- A replica runs the ability's effect code on each crewmate's client. Code that reaches a ship
+  resolves it from the owner, not from the game's player-ship getter, which names the viewing
+  client's ship: `RoleContext` for a role ability ([roles.md](roles.md#ships-in-role-code)),
+  `Topology` for any other ([topology.md](topology.md)).
 
 ## Recipients
 

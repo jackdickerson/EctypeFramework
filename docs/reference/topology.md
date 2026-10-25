@@ -41,6 +41,7 @@ the multi-ship mod's own crew list when one is installed.
 | `ForceOf(Photon.Realtime.Player)`, `ForceOf(Player character)` | The character's faction. A player without a character (a spectator) takes their crew ship's faction, or under a team match the faction of a living ship of their team; -1 when none is known. |
 | `Hostile(a, b)` | True when a and b are on different sides. Each may be a ship, a character, a Photon player, any space object or a ship's part. Two space objects are compared with the game's own different-faction check. False when either side is unknown. |
 | `Changed`, `Stamp` | `Changed` is raised on the main thread the frame after a ship spawns, starts dying or is destroyed, and when the multi-ship mod reports a change of ships or teams. `Stamp` advances with it; store it and compare to re-resolve only on change. Crew moves inside one side raise nothing, so poll `CrewShipOf` where they matter. |
+| `TeamMatch` | True while a team match is running: while Void Crew Fleet's API is bound and reports one (in the hub too), else while player ships of more than one faction have been seen this mission. False in a vanilla or co-op room. |
 | `Provider` | `"fleet"` while Void Crew Fleet's API is bound and the Fleet plugin is enabled, `"single"` otherwise. |
 | `FleetPluginGuid` | `"com.captainchunck.voidcrew.fleet"`, the plugin GUID the binding looks for. |
 
@@ -86,7 +87,7 @@ class `VoidCrewFleet.FleetApi` in its assembly by reflection and reads `ApiVersi
 raises that number when a member's meaning changes, so any value other than 1 leaves Fleet
 unbound and every answer comes from game data. Otherwise it probes each member it uses by name
 and signature: `int ShipOfPlayer(int)`, `int TeamOf(int)`, `int TeamOfShip(int)`,
-`event Action ShipsChanged`, `event Action TeamsChanged`. A missing member is named once in the
+`bool IsTeamMatch` (a static property), `event Action ShipsChanged`, `event Action TeamsChanged`. A missing member is named once in the
 log and its answer falls back to game data. Fleet's answers are used only while its plugin
 component is enabled and its own `[General] Enabled` setting is on. Nothing references Fleet at
 compile time.
@@ -98,8 +99,9 @@ Each rule names the mechanism that makes it hold and the check that catches a vi
 1. **Never read the player-ship getter for another player.** On every client the getter can
    return the viewing client's ship, so an effect placed through it lands on a different ship
    on each client, and the copy on the ship's simulating owner decides the outcome. Resolve the
-   player's ship with `CrewShipOf` (or `AboardShipOf` for "where they stand"). The getter is
-   right only for what the local screen shows. Check: two clients log the same ship number for
+   player's ship with `CrewShipOf` (or `AboardShipOf` for "where they stand"); in a role
+   ability, with `RoleContext.ShipOf(this)`. The getter is right only for what the local screen
+   shows. Check: two clients log the same ship number for
    the same player.
 2. **Spawn networked objects through the game's own paths, from a registered asset GUID.** The
    game's spawn calls (the fabricator, the object factory's spawn by GUID, the ship loadout's
@@ -139,4 +141,6 @@ The first line is written about two seconds after the ship count settles, at eve
 start and after every ship loss. A vanilla mission logs `1 ship(s), provider=single`.
 
 Related: [multiplayer.md](../multiplayer.md) (rooms with more than one ship),
-[roles.md](roles.md) (the `characterShip` target), [ship-arrivals.md](ship-arrivals.md).
+[manifest.md](../manifest.md#ship-targets) (the ship targets and conditions built on these
+answers), [roles.md](roles.md#ships-in-role-code) (`RoleContext`, the same answers for a role
+ability's owner), [ship-arrivals.md](ship-arrivals.md).

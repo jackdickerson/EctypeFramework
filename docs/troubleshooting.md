@@ -115,7 +115,19 @@ affected. `<problem>` is one of:
 | `perk '<k>' on row <n> is a wide cell and must declare wide: true` | The perk sits on a full-width cell (row 2, 5 or 7) without `"wide": true`. Add the flag. |
 | `perk '<k>' on row <n> has wide: true, but only rows 2, 5 and 7 are wide cells` | `"wide": true` on a normal cell. Remove the flag, or move the perk to a wide row. |
 | `perk '<k>' unlocks entry '<x>' is not a GUID (32 hex chars, dashes allowed)`, `hero unlocks entry ...`, `suppress entry ...` | A GUID list entry is not 32 hexadecimal characters. Dashes are accepted. |
-| `hero perk has unrecognised target '<x>' (this framework knows character, seat, seatShip, characterShip)` | The hero's `target` is misspelled or newer than this framework. A bad target on any other perk skips only that perk. |
+| `hero perk has unrecognised target '<x>' (this framework knows character, seat, seatShip, characterShip, characterAboard, characterFleet, seatFleet)` | The hero's `target` is misspelled or newer than this framework. A bad target on any other perk skips only that perk. |
+| `hero perk has unrecognised distribution '<x>' (this framework knows each, split)` | `distribution` is misspelled. |
+| `hero perk has distribution split on target '<t>', which lands on one collection (split needs characterFleet or seatFleet)` | Only a target that can name several ships can divide an amount among them. Remove `distribution` or change the target. |
+| `hero perk has distribution split with a scalar effect on '<stat>' at level <n> (split divides flat and percent effects only)` | A product over ships is not a sum, so a `scalar` amount cannot be divided. Use `percent`, or `each`. |
+| `hero perk has distribution split with an int effect on '<stat>' at level <n> (an integer amount cannot be divided)` | Use a float effect, or `each`. |
+| `hero perk has distribution split with an effect of unknown type '<x>' on '<stat>' at level <n>` | The effect's `type` names no modifier type, so the split cannot be checked. Fix the `type`. |
+| `hero perk has unrecognised condition '<x>' (this framework knows onOwnShip, onAllyShip, onEnemyShip, inOpenSpace, teamMatch, ownShipAlive, spectating; prefix one with ! to require it false)` | A `when` entry is misspelled or newer than this framework. |
+| `hero perk has condition '<x>', which reads other ships' state; this framework evaluates only conditions the holder's own client decides (onOwnShip, onAllyShip, onEnemyShip, inOpenSpace, teamMatch, ownShipAlive, spectating)` | A condition on another ship's hull, distance, loss or count needs a decision broadcast by whoever observes that ship, which the framework does not make. Apply a timed status when the event happens instead. |
+| `hero perk has a condition written as an object (<json>); a condition is a name (onOwnShip, onAllyShip, onEnemyShip, inOpenSpace, teamMatch, ownShipAlive, spectating)` | `when` takes names, not objects with values. |
+| `hero perk has a condition that is not a name (<json>)` | A `when` entry is a number, a boolean or a list. |
+| `hero perk has condition '<x>' both required and forbidden` | `when` lists both `<x>` and `!<x>`, which never holds. |
+| `hero perk has conditions on target '<t>' (conditions need a target the framework applies: character, characterShip, characterAboard, characterFleet, seatFleet)` | `seat` and `seatShip` are applied by the game itself on sit and stand, so the framework cannot switch them. |
+| `abilityWhen has <problem>` | The role's `abilityWhen` has one of the condition problems above. |
 | `a custom stat has no name` | Every `customStats` entry needs a `name`. |
 
 ### `Ectype: manifest '<resource>' in <assembly> failed to parse: <message>`
@@ -124,10 +136,12 @@ The resource is not valid JSON for the manifest model. The message comes from th
 and usually names the line or the field whose value has the wrong type (a string where a number
 belongs, for instance). Fix the file. Check for a byte-order mark or a trailing comma.
 
-### `Ectype: role '<name>' perk '<key>' skipped: unrecognised target '<x>' (this framework knows character, seat, seatShip, characterShip).`
+### `Ectype: role '<name>' perk '<key>' skipped: <problem>.`
 
-A non-hero perk names a `target` the framework does not know. Only that perk is dropped. Fix the
-spelling; the comparison ignores case.
+A non-hero perk failed one of the target, distribution or condition checks. Only that perk is
+dropped. `<problem>` is one of the hero problems above without the leading `hero perk has`, for
+example `unrecognised target '<x>' (this framework knows character, seat, seatShip, characterShip, characterAboard, characterFleet, seatFleet)`. Names are compared without
+regard to case.
 
 ### No role appears and the log says `Ectype: discovered 0 role(s).`
 
@@ -637,13 +651,14 @@ no ability for.
 
 ### The framework's network channel
 
-Ability replication, enemy-status replication and character-status requests ride one Photon
-event, code 181. Every message starts with a subtype byte: 1 is an ability start or stop, 2 an
+Ability replication, enemy-status replication, character-status requests and condition answers
+ride one Photon event, code 181. Every message starts with a subtype byte: 1 is an ability start or stop, 2 an
 enemy status apply or remove, 3 a batch of coalesced enemy status applications
 (`enemy-status-applyN`), 4 a request for a status on the recipient's own character
 (`character-status-request`), 5 a character's own client announcing a status on that character
 for presentation, or its early end (`character-status-applied`), 6 the target's verdict on a
-request, sent to the requester (`character-status-result`).
+request, sent to the requester (`character-status-result`), 7 a player's own client publishing
+that player's condition answer (`condition-mask`).
 
 | Line | Cause |
 | --- | --- |
@@ -678,7 +693,10 @@ VerboseLogging` on, on every client compared.
 | `Ectype: topology: Void Crew Fleet <version> has API v<n>; this framework reads v1, so answers come from game data alone.` | Fleet's API version is one whose members this framework was not written against, so it is not bound. | Update the framework to one that reads that version. |
 | `Ectype: topology: Void Crew Fleet <version> is loaded but has no VoidCrewFleet.FleetApi; answers come from game data alone.` and `Ectype: topology: binding Void Crew Fleet's API failed; answers come from game data alone: <message>` | Fleet is installed but its API could not be found or bound. | Crew ships then come from the aboard rule, so a player standing on another ship resolves to it. |
 | `Ectype: topology: Fleet's VCF_Ships room property failed its shape check (<why>); ship numbers come from view-id rank instead.` | Fleet's published ship list was not an array of one to six view ids, or named one id twice, so ship numbers come from spawn order. | Numbers can then differ on a client that joined after a ship was lost. |
-| `Ectype: characterShip - actor <n> → ship <k> (<source>).` or `... → no ship (<source>).` (verbose) | Where one holder's `characterShip` contribution sits, and which rule decided: `single`, `only living ship`, `fleet crew`, `aboard, same faction`; or why it is pending: `single, other side's ship`, `only living ship, other side's ship`, `single, no ship`, `no living ship`, `fleet: not playing`, `fleet ship <n> not alive`, `pending`. | With holders on two ships, every client, the host included, logs the same `<k>` for each actor. A PvP boarder never resolves to the enemy's ship, and when one team's ship is the last one left, the other team's players log `other side's ship`. |
+| `Ectype: <target> - actor <n> → ship <k> (<source>).`, `... → ships <k>, <k> (<source>).` or `... → no ship (<source>).` (verbose) | Where one holder's contribution for a ship target sits, logged when it changes. For `characterShip`, which rule decided: `single`, `only living ship`, `fleet crew`, `aboard, same faction`; or why it is pending: `single, other side's ship`, `only living ship, other side's ship`, `single, no ship`, `no living ship`, `fleet: not playing`, `fleet ship <n> not alive`, `pending`. For `characterAboard`: `aboard`, `open space`, `aboard another side's ship`. For `characterFleet`: `holder's side`, `no living ship on the holder's side`. For `seatFleet`: `seat's side`, `not seated`, `no living ship on the seat's side`. | With holders on two ships, every client, the host included, logs the same ships for each actor. A PvP boarder never resolves `characterShip` or `characterAboard` to the enemy's ship, and when one team's ship is the last one left, the other team's players log `other side's ship`. |
+| `Ectype: perk route - actor <n> contributes <m> modifier(s) to <k> ship(s)[ and the character][, <d> detached module tree(s)][, waiting for a ship][, <h> perk(s) held off by conditions (<conditions>)].` (verbose) | One holder's routed totals, logged when they change. `waiting for a ship`: the holder's targets name no ship yet. `held off by conditions` names the holder's condition answer this client applied (`unknown` until it arrives). | A `characterFleet` holder in a co-op room of three ships logs `to 3 ship(s)` on every client. |
+| `Ectype: conditions - actor <n> now <conditions> (this client).` and `Ectype: conditions - actor <n> now <conditions>.` (verbose) | The first: this client adopted a new condition answer for its own player and sends it. The second: another player's answer arrived. `<conditions>` lists the conditions that hold, or `none`. Logged only while an installed role declares a condition. | The same actor's line on the two clients names the same conditions. |
+| `Ectype: ignored a condition mask <m> from actor <a>: it sets bits this network contract does not define (reported once per sender).` | A peer sent a condition answer this build cannot read, which on one network contract is a framework bug. That player's conditional perks stay as they were. | |
 | `Ectype: IncomingProjectileSpeed: shot <id> → ship <k>, factor <f>.` (verbose; with one ship, only when the factor is not 1) | The ship a hostile shot was bound to as it registered, and the factor it carries. | Two ships with different factors: a shot aimed at each carries its own ship's factor, and the same `<id>` logs the same `<k>` on both clients. |
 | `Ectype: IncomingProjectileSpeed on ship <k> now <f>.` (verbose) | One ship's factor changed; its shots in flight take the new value. | Only that ship's shots change speed. |
 | `Ectype: status marker lock gate bound to ship <k>.` (verbose) | The ship whose target locks gate lock-only status markers on this client. | In co-op, walking from one ship into another logs the new ship. |
@@ -686,7 +704,11 @@ VerboseLogging` on, on every client compared.
 | `Ectype: topology: ship <k> started dying.` (verbose) | The death-start broadcast reached this client. At the next pass every holder on that ship resolves again by the crew-ship rules: with Fleet active they go pending; without it, to a single living ship on their side, or to the same-faction ship they stand on. | Logged once per lost ship on every client. |
 | `Ectype: Topology.Changed subscriber <Type>.<method> threw: <exception>` | A subscriber to `Topology.Changed` threw. Each runs in its own `try` block, so the others still ran. | |
 | `Ectype: topology ship registration failed: <exception>`, `Ectype: topology ship removal failed: <exception>`, `Ectype: topology ship death handling failed: <exception>` | A ship lifecycle patch threw. The registry can then miss a ship or keep a destroyed one until its next prune. | |
-| `Ectype: characterShip rebuild for a ship change failed: <exception>` | Moving one holder's contribution to its newly resolved ship threw. That holder is retried at the next pass. | |
+| `Ectype: perk route rebuild for a ship change failed: <exception>` | Moving one holder's contribution to its newly resolved ships threw. That holder is retried at the next pass. |
+| `Ectype: perk route reapply failed: <exception>`, `Ectype: perk route reset failed: <exception>`, `Ectype: perk route re-parent handling failed: <exception>`, `Ectype: perk route player-removal handling failed: <exception>` | Applying or removing a holder's routed contribution threw at a perk reapply, a perk reset, a module tree gaining a parent, or a player leaving. The next rebuild of that holder starts from scratch. | |
+| `Ectype: <target> perk '<name>' held at level <n> has no such level - skipped.` | A routed perk is held at a level its asset does not have, past the level clamp that normally prevents it. | |
+| `Ectype: SittingInChair.<method> not found (game update?); seatFleet perks follow seat changes at the next pass instead.` and `Ectype: perk route seat hooks failed: <exception>` | The seat hooks did not install. `seatFleet` still follows sitting and standing, up to a quarter of a second late. | | |
+| `Ectype: dev self-test: perk scopes passed (4 ship sets over 7 actors in a two-side room and the one-ship collapse, split math, validation, 7 condition masks, 128 mask round trips, RoleContext).` (dev tools build only) | Every ship target, distribution, condition and `RoleContext` answer came out as documented for a synthetic room with two sides, and every condition answer survives the network round trip. A `FAILED` line names each wrong answer. | Logged once per launch, at load. |
 | `Ectype: dev self-test: timed stat copy passed - DeepCopy returned; <n> objects walked, no StatCollection, no Unity object other than a ScriptableObject; copy of applied value 0.25 then 0, copy of template 0.25 then 0 (expected 0.25 then 0).` (dev tools build only) | A stat modifier carrying a live timed-stat value survives the game's deep copy without dragging in the target collection, and both kinds of copy follow the curve and go neutral at the end. A `FAILED` line names what the copy reached or which amount was wrong. | Logged once per launch, a few seconds after a character exists. The test names a ship-only stat on a character, so it also logs one `has no effect there` warning. |
 | `Ectype: timed stat copy check on apply failed (reported once): <exception>` | The check that finds copies of a timed-stat modifier as a collection applies them threw. Copies of applied values may then keep the amount they had when copied. | |
 | `Ectype: timed stat '<label>': refreshing a copy threw; the copy is no longer refreshed: <message>` (verbose) | A copy of a timed-stat modifier could not be recalculated, usually because its collection went away. | |

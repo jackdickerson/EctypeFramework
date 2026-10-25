@@ -134,6 +134,22 @@ Framework table.
   `inOpenSpace`, `teamMatch`, `ownShipAlive`, `spectating`), then broadcast-edge
   conditions on other ships' state.
 
+Shipped in 0.29.0 (network contract 5): the three targets through the scope table, `each`
+and `split`, `RoleContext`, the seven owner-evaluated conditions on perks (`when`) and on
+role abilities (`abilityWhen`), carried as a per-holder mask.
+
+Follow-up, broadcast-edge conditions (validation refuses them by name until then): conditions
+on other ships' state, such as `allyShipHullBelow(x)`, `ownShipHullBelow(x)`,
+`enemyShipWithin(m)`, `allyShipLostRecently(s)`, `forceShips >= n`, `outnumbered`. Hull and
+distance cross a threshold at slightly different moments on each client, so one client must
+decide each edge and broadcast it: the holder's owner (or the host where the holder is not
+trusted) evaluates with hysteresis (enter below 30%, leave above 33%), sends the edge, and every
+client flips the contribution on receipt; a late joiner needs the current state replayed. The
+manifest needs an object form (`{"allyShipHullBelow": 0.3}`), a second mask or an edge message
+per (holder, condition), and a hull replication rate measured first to set the margin. Trigger:
+a role that needs one. Until then a timed status applied when the event happens covers most
+designs.
+
 ## Collaboration track (parallel, starts after Phase 1 is on a branch)
 
 1. Send the proposal (in `reports/ideas-collab.md` §5), pointing at the branch.

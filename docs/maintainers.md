@@ -24,7 +24,10 @@ Paths are relative to the framework project folder.
 | Character statuses | `src/CharacterStatus.cs`; requests, validation and presentation copies in `src/CharacterStatusSync.cs` |
 | Session data and host-synced settings | `src/SessionData.cs` |
 | Ship arrivals | `src/ShipArrivals.cs` |
-| Ship registry and per-player ship resolution | `src/Topology.cs` |
+| Ship registry and per-player ship resolution | `src/Topology.cs`; the per-actor facts other features read, and the dev build's synthetic-view seam, in `src/TopologyView.cs` |
+| Framework-routed perk targets (scope table, ship sets, distribution, the per-holder route) | `src/PerkScopes.cs`, `src/CharacterShipRoute.cs` |
+| Owner-evaluated conditions (parsing, evaluation, the condition-mask message) | `src/HolderConditions.cs` |
+| `RoleContext` | `src/RoleContext.cs` |
 | Interaction gate (API and throttle, classifier, chokepoints and RPC sender) | `src/InteractionGate.cs`, `src/InteractionClassifier.cs`, `src/InteractionGatePatches.cs` |
 | Crafting-data audit | `src/CraftingAudit.cs` |
 | Content registry (publication, `ModContent`, ordered authored-list insert) | `src/RuntimeContent.cs`, `src/ModContent.cs`, `src/AssetDescriptionOrder.cs` |
@@ -53,9 +56,10 @@ column.
 | --- | --- |
 | `PlayerDataHelper.GetPlayerRole(Dictionary<GUIDUnion,int>)` prefix (replacing) | Replaces fixed Roles array with N-tree to allow more PerkTreeDefs. N-tree seeds from framework-registered PerkTreeDefs. |
 | `PlayerPerkLoader.ReApplyPerks` prefix | null-def dereference and unchecked `Levels[level - 1]` wipe perks after `ResetPerks`; drop unknown GUIDs and perks with no levels (covers all mods' strays), plus suppressed perks so their effects never apply, and clamp a held level above the perk's `Levels.Count` to its top level (backstop for a peer whose owner did not refund at load) |
-| `PlayerPerkLoader.ReApplyPerks` postfix + finalizer | applies the holder's `characterShip` effects to the holder's resolved ship (`ClientGame.PlayerShip` only while one ship object exists, else `Topology`'s crew-ship rules); the finalizer re-runs the apply when the method threw after `ResetPerks` had already removed them. The postfix also runs the target-reach check against the same ship |
-| `PlayerPerkLoader.ResetPerks` postfix | removes the holder's `characterShip` modifiers, each by its own source |
-| `ClientGame.OnPlayerShipSet` (subscribed) | raised from `PlayerControlledShip.Start` after `Awake` has set `PlayerShip`, once per ship; requests the `characterShip` pass on the next frame, which rebuilds only holders whose resolved ship changed |
+| `PlayerPerkLoader.ReApplyPerks` postfix + finalizer | applies the holder's framework-routed effects (every perk asset with `PerkBuffTarget` value 4, which the loader's switch skips; its meaning is the scope table entry for its GUID) to the ships each scope names (`ClientGame.PlayerShip` only while one ship object exists, else `Topology`'s rules), or to the character for a conditional `character` perk, gated on the holder's condition mask; the finalizer re-runs the apply when the method threw after `ResetPerks` had already removed them. The postfix also runs the target-reach check against the same ship |
+| `PlayerPerkLoader.ResetPerks` postfix | removes the holder's routed modifiers, each by its own source |
+| `SittingInChair.AbilityStarted` / `AbilityStopped` postfixes, patched by name after the attribute pass | the seat ability runs on every client's copy of a character; each requests the route's pass on the next frame so `seatFleet` follows sitting and standing at once. A miss leaves the 4 Hz pass to notice it. The seat's ship is `Topology.ShipOfPart(seat.Chair)` while the ability `IsActive` |
+| `ClientGame.OnPlayerShipSet` (subscribed) | raised from `PlayerControlledShip.Start` after `Awake` has set `PlayerShip`, once per ship; requests the route's pass on the next frame, which rebuilds only holders whose resolved ships changed |
 | `PlayerControlledShip.Awake` postfix, `OnDestroy` prefix, `NetPublishShipDeathBegan` postfix | the `Topology` ship registry. `Awake` runs on every client for every ship and is where the ship assigns itself as the game's player ship; the death-began method is an RPC sent to all and sets `StartedDeath` |
 | `ClientGame.PlayerShip` (read) | presentation only (the status-marker lock gate, and the distance ranking of status markers and visuals past their caps), and simulation only while `Topology.Multi` is false. A multi-ship mod can postfix the getter to return the viewing client's ship |
 | `EventData.Sender` (through the framework's channel), `Room.GetPlayer(int)`, `PhotonNetwork.MasterClient` / `IsMasterClient` (read); `OrbitObject.IsObjectFromDifferentFaction` (through `Topology.Hostile`) | enemy-status authority: the sender's side against the template's stance for an application and a removal, the master's removal exemption, and the master-with-NPC-attacker case. The game's different-faction check is a plain faction comparison, so neutral objects (faction 0) are on another side from every player |
@@ -67,8 +71,8 @@ column.
 | Plugin `com.captainchunck.voidcrew.fleet`: `VoidCrewFleet.FleetApi.ApiVersion`, `ShipOfPlayer(int)`, `TeamOf(int)`, `TeamOfShip(int)`, events `ShipsChanged` / `TeamsChanged` (bound by reflection); room property `VCF_Ships` (read, shape-checked) | `Topology`'s crew-ship and team answers and ship numbering under Void Crew Fleet. Bound only for `ApiVersion` 1; answers used only while the plugin component and its `[General] Enabled` entry are on. A missing member is logged once and answered from game data |
 | `GuidedProjectile.Target`, `SyncedProjectile.Source` / `Velocity` / `ProjectileId` (read) | the per-shot ship choice for `IncomingProjectileSpeed` |
 | `ObjectMarkerHelpers.GetAffiliationBasedOnFaction(OrbitObject)` (called) | status-marker colour; the same helper the game's own object markers use |
-| `ModelEventBus.OnPlayerRemoved` (subscribed) | raised by `ClientGame.RemovePlayerInternal` on every client; removes the leaving player's `characterShip` contribution |
-| `StatTagCollection.RegisterChildCollection` postfix | a detached module root carrying a `characterShip` contribution has just had its new parent's modifiers replayed into it; every holder is rebuilt so the contribution is not counted twice |
+| `ModelEventBus.OnPlayerRemoved` (subscribed) | raised by `ClientGame.RemovePlayerInternal` on every client; removes the leaving player's routed contribution |
+| `StatTagCollection.RegisterChildCollection` postfix | a detached module root carrying a routed contribution has just had its new parent's modifiers replayed into it; every holder is rebuilt so the contribution is not counted twice |
 | `PlayerPerkLoader.ReApplyPerks` postfix | catch-up for ability adoption: the spawn-time sweep skips a role whose registration has not settled, and this path runs on every perk change |
 | `CG.Profile.PerkLoadout(Dictionary<GUIDUnion,int>)` ctor prefix | profile-load vs. registration race, the load half of the vanilla-tree suppression scrub (vanilla degrade semantics), and the lost-level refund: a saved level above the perk's `Levels.Count` is lowered to it, so the points come back as unspent and the owner's `PBL` publishes the lowered level |
 | `PlayerProfile.UsedPerkPoints` getter postfix | suppressed role perks stay in the save but do not count as spent |
@@ -235,6 +239,16 @@ What it adds:
   announcement must be refused `Authority`; and a presentation copy on the character must leave
   `MotorAcceleration` and the `OnApplied` count unchanged. Its five refusal warnings are
   expected.
+- A perk scope self-test at load, offline: a synthetic two-side room (side 0 with two living
+  ships and a dying one, side 1 with one) and a one-ship room are installed through
+  `TopologyView.UseTestView` for the call. Each ship set must name the expected ships for seven
+  actors (crew, boarder, floater, no character, ally visitor, seated on the other side, crew of
+  the dying ship), every set must collapse to the room's ship in the one-ship room, split factors
+  and scaled copies must sum to the authored amount, validation must accept and refuse each
+  documented case, each actor's condition mask must match, the debounce must adopt on the
+  second read, every mask 0-127 must survive the condition-mask message's Protocol18 round trip
+  and the receive record, and `RoleContext` must answer for a synthetic owner. It logs
+  `dev self-test: perk scopes passed` or `FAILED` with each wrong answer.
 - Ability diagnostics: every framework role ability logs its own lifecycle on the owning
   client, whatever `VerboseLogging` says: input bound and unbound with a running count, the
   ability disabled while still selected, a channel stopped with time left (with a short
@@ -327,6 +341,24 @@ added to the list, and a renamed key logs `no entry '<key>'`.
   target's client gathers, so the requester can run the same function on its own view and the
   self-test can feed it synthetic views.
 - The saved-mutator-list warning reports a missing mutator by GUID.
+
+## Perk targets and conditions
+
+- The perk asset's `Target` is what the game sees and the only thing it reads: the perk loader
+  applies 1 (seat), 2 (character) and 3 (seatShip) and skips anything else, and the gene-tree
+  tooltip (`ContextInfoMaker.ComposeBodyString`) renders the description and each level's
+  `StatMod` descriptions and never the target. Every framework-routed target therefore
+  writes 4 and keeps its meaning in the scope table keyed by perk GUID. A new target is a new
+  scope, never a new game-visible value. After a game update, check that the loader's switch
+  still skips 4 and that no new reader of `PerkBuff.Target` appeared.
+- A condition is owner-evaluated: only the holder's client reads its own character, and
+  every client gates on the mask it received. A new condition is a new bit in
+  `HolderCondition`, which changes what the condition-mask message carries: raise
+  `NET_CONTRACT_VERSION`. A condition on another ship's state is not owner-evaluated and does
+  not belong in that mask.
+- `TopologyView` is the only input the scope resolution, the condition evaluation and
+  `RoleContext` read, so a rule added there is testable with a synthetic view. Never read
+  `ClientGame.PlayerShip` in them except through the live view's one-ship branch.
 
 ## Manifest notes
 

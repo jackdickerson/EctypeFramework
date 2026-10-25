@@ -65,8 +65,9 @@ modifier surface:
   velocity mirror the vanilla `AttractorMaxRange` / `AttractorPullVelocity`: each hand float
   is registered under two ids, the framework id and the vanilla id, so a character-side
   modifier on either id reaches it. One source must never name both ids, or the two
-  modifiers compound. A modifier applied to the ship's collection (`seatShip`,
-  `characterShip`, ship-installed items) never reaches the hand.
+  modifiers compound. A modifier applied to a ship's collection (`seatShip`,
+  `characterShip`, `characterAboard`, `characterFleet`, `seatFleet`, ship-installed items) never
+  reaches the hand.
 
 [framework-stats.json](framework-stats.json) describes each one: what it wraps, the game's
 authored value, and how the game consumes it. [reference/framework-stats.md](reference/framework-stats.md)
@@ -82,7 +83,9 @@ no-op on the side of a mixed room that has the older build.
 ## The category guides the perk's `target`, as a heuristic
 
 A stat is read from the collection it lives on. `weapon/module` and `ship *` stats generally
-want `seat` or `seatShip`, and `EVA suit` and `character` stats want `character`. Some stats
+want `seat` or one of the ship targets (`seatShip`, `characterShip`, `characterAboard`,
+`characterFleet`, `seatFleet`, which all land on ship collections), and `EVA suit` and
+`character` stats want `character`. Some stats
 exist on more than one collection: vanilla ships `*Vulnerability` and `BatteryRechargeAmount`
 on `character`-target perks (personal damage resistance, carried-cell charging) despite their
 ship-side category bits. The vanilla dump a dev tools build of the framework
