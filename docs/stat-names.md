@@ -56,7 +56,8 @@ modifier surface:
   `MeleeDamage`, `MeleeCooldown` and `MeleeReach` on the player's own collection,
   `AntiPersonnelDamage` on each player ship's collection, and `HostileSpawnScale` on the
   session collection. Their category `session` names the framework's run-wide collection,
-  which no vanilla stat lives on.
+  which no vanilla stat lives on and no perk target reaches: a manifest effect naming
+  `HostileSpawnScale` is refused.
 - A hand-held attractor's `HandAttractorMaxRange`, `HandAttractorPullVelocity`,
   `HandAttractorDuration`, `HandAttractorCooldown` and `HandAttractorBeams` on the owning
   ability's collection. Duration and cooldown are second ids onto the ability's own

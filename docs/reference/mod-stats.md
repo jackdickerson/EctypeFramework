@@ -36,20 +36,24 @@ A stats file is JSON whose resource name or file name ends in `ectype-stats.json
 
 | Key | Required | Meaning |
 | --- | --- | --- |
-| `owner` | yes | The namespace of every stat in the file. Lower-case letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 64 characters. `ectype` (the framework's own owner) and `framework` are reserved. Part of every id: renaming it derives new ids. |
+| `owner` | yes | The namespace of every stat in the file. Lower-case letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 64 characters. `ectype` (the framework's own owner) and `framework` are reserved, and so is the id of every installed role: a role's stats come from its manifest's `customStats`. Part of every id: renaming it derives new ids. |
 | `stats` | yes | 1 to 256 stat objects. |
 | `name` | yes | Letters, digits and `_`, starting with a letter, at most 64 characters. Part of the id. |
 | `kind` | yes | `"field"`: an absolute number whose base is `default`; the mod reads the composed value in place of its constant. `"factor"`: a multiplier whose base is 1; the mod multiplies its constant by it. |
-| `default` | for a field | The base value. A factor's is 1; any other number is refused. |
-| `collection` | yes | `"character"`: every player character's own collection, the local player and every replica, registered at spawn. `"ship"`: every player ship's own collection, every replica, registered as the ship fills its stats. `"session"`: the session collection below. |
+| `default` | for a field | The base value, a JSON number. A factor's is exactly 1; any other number refuses the stat. A number no 32-bit float can hold (beyond about ±3.4e38) refuses the whole file. |
+| `collection` | yes | `"character"`: every player character's own collection, the local player and every replica, registered at spawn. `"ship"`: every player ship's own collection, every replica, registered as the ship fills its stats. `"session"`: the session collection below, which holds at most 128 stats. |
 | `display` | no | The tooltip header. Default: the name. |
 | `tooltip` | no | The tooltip body. |
 | `lowerIsBetter` | no | True colours a reduction as a buff in tooltips. Default false. |
 | `displayType` | no | `"value"` or `"percentage"`: how a modifier on it reads in tooltips. Default `"percentage"` for a factor, `"value"` for a field. |
 | `iconFrom` | no | A vanilla `StatType` name or framework stat name whose tooltip icon the stat borrows. Default: no icon. |
 
-An unknown key is a warning and is ignored. `$schema` and `$comment` are accepted anywhere a key
-is. The JSON schema is [../schemas/ectype-stats.schema.json](../schemas/ectype-stats.schema.json).
+`display`, `tooltip`, `iconFrom` and `displayType` must be strings and `lowerIsBetter` a boolean;
+a value of another type, `null` included, refuses the stat. `$schema` and `$comment` at the top
+level, and `$comment` in a stat, are accepted silently. Any other key is a warning to the
+framework and is ignored; the JSON schema,
+[../schemas/ectype-stats.schema.json](../schemas/ectype-stats.schema.json), refuses it. The
+schema and the framework agree on every other rule.
 
 The suffix is `ectype-stats.json` rather than `.stats.json` because the framework reads every
 matching resource of every plugin and every matching file beside every plugin DLL. A generic
@@ -60,16 +64,21 @@ suffix would make it parse, and refuse, other mods' unrelated files.
 Discovery runs once per launch, after the game's stat table has loaded and before any role
 registers a perk, so a perk can name a declared stat. It reads:
 
-1. Embedded resources of every loaded BepInEx plugin assembly whose name ends in the suffix,
-   ordered by assembly name, then resource name.
-2. Files ending in the suffix in the folder of every loaded plugin DLL, top level only, ordered
-   by path. A folder that holds several plugins is read once.
+1. Embedded resources of every loaded BepInEx plugin assembly whose name ends in the suffix.
+2. Files ending in the suffix in the folder of every loaded plugin DLL, top level only. A folder
+   that holds several plugins is read once.
 
-The first declaration of an id wins. A later declaration of the same id, or of the same
-`owner/name` with different capitals, is refused with one error naming both declarers. Ship the
-file either embedded or loose, not both: shipping both declares every stat twice, and the loose
-copy is refused. A file over 64 KB is refused. A file added while the game runs is read at the
-next launch.
+A plugin that failed to load contributes neither. Each file is parsed on its own: a file that
+fails, for any reason, is refused by name and every other file still registers. A file over
+64 KB is refused. A file added while the game runs is read at the next launch.
+
+When two declarations share an id, or an `owner/name` up to capitals, one wins and the other is
+refused with one error naming both declarers. The winner is decided the same way on every
+machine, whatever folders the mod manager installed into: an embedded declaration before a loose
+one, then the declaring assembly's simple name (for a loose file, the smallest among the plugins
+whose folder holds it), then the resource or file name. Paths never decide. Ship the file
+either embedded or loose, not both: shipping both declares every stat twice, and the loose copy
+is refused.
 
 ### What a declared stat gets
 
@@ -77,8 +86,10 @@ next launch.
 - A `ModifiableFloat` at its base, registered into every collection of its kind that does not
   already hold the id. The first collection built triggers discovery on demand, so a character
   that spawns before the framework's own registration pass still gets them.
-- A name manifests resolve. A perk effect's `"stat"` names it as `"owner/Name"`, for example
-  `"fleet/HackSeconds"`. The bare name does not resolve.
+- For a `character` or `ship` stat, a name manifests resolve. A perk effect's `"stat"` names it
+  as `"owner/Name"`, for example `"fleet/HackSeconds"`. The bare name does not resolve. A
+  manifest effect naming a `session` stat is refused, because no perk target reaches the session
+  collection.
 
 The framework never reads a declared stat. The declaring mod reads it; until it does, the stat
 renders and changes nothing.
@@ -157,7 +168,8 @@ constant, so the mod behaves the same with and without the framework.
 All five are factors of authored value 1, so "no contributor" and "not registered" read the same
 and a reader keeps its own constant as the base. Two readers with different bases compose
 correctly. A manifest names them by bare name, like every framework stat; code gets the id from
-`FrameworkStats.Id(name)` or from the formula with owner `ectype`.
+`FrameworkStats.Id(name)` or from the formula with owner `ectype`. `HostileSpawnScale` lives in
+the session collection, so a manifest effect naming it is refused like any session stat.
 
 How a reader uses them, with the attacker's replica as the source of truth:
 
@@ -180,11 +192,13 @@ stats file's.
 ### Lifecycle
 
 - **Host.** As the host starts a session, at the moment session data produces its values, the
-  framework builds a fresh collection with every session stat at its base, raises
-  `SessionStats.Opening`, and publishes the composed value of every float stat in it under the
-  session data key `framework/sessionStats` as `{"<id>": value}`.
+  framework drops the previous session's collection, builds a fresh one with every session stat
+  at its base, raises `SessionStats.Opening`, and publishes the composed value of every float
+  stat in it under the session data key `framework/sessionStats` as `{"<id>": value}`. Inside
+  `Opening`, `SessionStats.Collection` is the new collection and `SessionStats.SessionId` is
+  null.
 - **Every other client.** When the session arrives, the framework builds its own collection and
-  gives each stat one modifier that makes its composed value the host's. A stat the host
+  sets each stat's base to the host's value, which reproduces it exactly. A stat the host
   published that this client does not declare is registered at the host's value, so a reader by
   id still gets it. A late joiner gets the values with the cached session, as it joins.
 - **End.** The collection is dropped, and every modifier removed from it by source, when the next
@@ -197,7 +211,9 @@ stats file's.
 
 ### Contributing
 
-Only the host contributes. Subscribe at plugin `Awake`, on every client:
+Session stats take contributions only through `SessionStats.Contribute` on the host. No perk
+target reaches the session collection, and a manifest effect naming a session stat is refused.
+Subscribe at plugin `Awake`, on every client:
 
 ```csharp
 SessionStats.Opening += () =>
@@ -215,17 +231,13 @@ SessionStats.Opening += () =>
   stat. Clients keep the session-start value until the next session.
 - On a client `Contribute` returns false with one warning. Outside a session, or for an id that is
   not a session stat, it returns false with a warning.
-- A mod may also `RegisterStat` its own float into the collection during `Opening`; the host
-  publishes it with the rest, and clients register it at the host's value.
+- A mod may also `RegisterStat` its own float into `SessionStats.Collection` during `Opening`;
+  the host publishes it with the rest, and clients register it at the host's value.
 - The holder carries no tags, so a modifier with tag requirements never activates in the session
   collection.
 
 **Host migration.** The new master keeps the values it received. Its later contributions change
 its own collection only, as above, until it starts the next session.
-
-**Mutators.** A mutator effect that contributes is not built. The seam is `Opening`: such an
-effect would contribute from it, reading the session's active mutators, because the values are
-published at that moment.
 
 ### Why there is no live path
 
@@ -288,6 +300,11 @@ ship.
   reader computing the id must spell the owner exactly as declared.
 - **`"stat": "HackSeconds"` in a manifest.** Unresolved: a declared stat is named
   `"owner/Name"`.
+- **A perk effect on `HostileSpawnScale` or another session stat.** Refused: no perk target
+  reaches the session collection. Contribute from `SessionStats.Opening` on the host.
+- **A stats file whose owner is a role's id.** Refused: a role declares its stats in its
+  manifest's `customStats`, under the same id formula.
+- **`"default": 1e40`.** The whole file is refused: no float holds it.
 - **Computing the id from `fleet/hackseconds`.** A different id. The framework's name lookup
   ignores case; the formula does not.
 - **A factor with `"default": 2`.** Refused. Declare a field when the base is not 1.

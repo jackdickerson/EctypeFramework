@@ -13,9 +13,11 @@ build.
   `iconFrom`). Each gets a tooltip entry and is registered at its base into every collection of
   its kind. The id is `0x20000000 | (MD5("ectype:stat:" + owner + "/" + name) first four bytes,
   little-endian, & 0x0FFFFFFF)`, so a mod that never references the framework reads its stats by
-  id. Embedded files are read before loose ones; a duplicate id is refused with an error naming
-  both files; owners `ectype` and `framework` are reserved. Manifest effects name a declared stat
-  as `"owner/Name"`. Schema: `docs/schemas/ectype-stats.schema.json`.
+  id. Each file is parsed on its own, so a bad file is refused by name and the others register. A
+  duplicate id is refused with an error naming both files, the winner decided by embedded before
+  loose, then assembly name, never by install path. Owners `ectype`, `framework` and every
+  installed role's id are reserved. Manifest effects name a declared character or ship stat as
+  `"owner/Name"`. Schema: `docs/schemas/ectype-stats.schema.json`.
 - `ModStats`: `Id(owner, name)`, `Id(name)`, `TryGet`/`Get` by collection or by
   `StatCollectionKind`, `LocalCollection`, `IsDeclared`.
 - Framework stats `MeleeDamage`, `MeleeCooldown`, `MeleeReach` (character), `AntiPersonnelDamage`
@@ -24,8 +26,10 @@ build.
 - `SessionStats`: a run-wide stat collection, one per session. The host raises `Opening`, takes
   contributions through `Contribute(statId, modifier, source)` and `Withdraw(source)`, and
   publishes the composed values in the session data key `framework/sessionStats`; every other
-  client, late joiners included, reproduces them. A contribution after the session starts
-  changes the host's value only, until the next session. The collection is held by a component
+  client, late joiners included, sets each stat's base to them. At most 128 session stats. A
+  contribution after the session starts changes the host's value only, until the next session.
+  No perk target reaches the session collection, so a manifest effect naming a session stat,
+  `HostileSpawnScale` included, is refused. The collection is held by a component
   on the GameObject `Ectype.SessionStats`, reachable through the game's `IStatCollectionHolder`.
 - No change to network contract 1.
 
