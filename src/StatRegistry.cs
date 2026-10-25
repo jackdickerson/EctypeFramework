@@ -81,9 +81,22 @@ namespace Ectype
         /// "owner/name", the vanilla StatType names, a raw int literal. Throws
         /// with the failing name - the caller turns that into one named error and an empty
         /// level, never a broken perk. That order is what keeps a role from being broken by
-        /// a name the framework or the game adds later.
+        /// a name the framework or the game adds later. On the manifest path (a non-null
+        /// <paramref name="customStats"/>) a session stat is refused by name.
         /// </summary>
         public static int Resolve(string stat, Dictionary<string, int> customStats)
+        {
+            int id = ResolveAny(stat, customStats);
+            // customStats is non-null only on the manifest path. No perk target reaches the session
+            // collection, so an effect on a session stat would register and change nothing.
+            if (customStats != null && ModStats.IsSessionStat(id))
+                throw new Exception("'" + stat + "' is a session stat, which no perk target reaches; " +
+                                    "session stats take contributions only through " +
+                                    "SessionStats.Contribute on the host");
+            return id;
+        }
+
+        private static int ResolveAny(string stat, Dictionary<string, int> customStats)
         {
             if (string.IsNullOrEmpty(stat)) throw new Exception("effect names no stat");
             int id;

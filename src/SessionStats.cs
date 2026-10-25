@@ -17,9 +17,16 @@ namespace Ectype
     /// The host is authoritative. As the host starts a session it builds a fresh collection,
     /// raises <see cref="Opening"/> for contributors, and publishes the composed value of every
     /// session stat through <see cref="SessionData"/>, so the values are frozen with the session
-    /// and reach late joiners with it. Every other client builds its own collection and gives
-    /// each stat one modifier that reproduces the host's value. The collection is dropped when
-    /// the next session arrives or the client leaves the room.
+    /// and reach late joiners with it. Every other client builds its own collection with each
+    /// stat's base set to the host's value. The collection is dropped when the next session
+    /// arrives or the client leaves the room.
+    ///
+    /// Publishing composed values is a choice. The alternative is to replicate the inputs: every
+    /// contribution would come from data every client already holds (mutators, perks, frozen host
+    /// config), each client would compose the same value itself, and a reader could run anywhere
+    /// with tooltips matching. That needs every contributor to be replicated data, which code
+    /// contributions on the host are not, so the host's composition is the single truth and
+    /// clients copy it.
     ///
     /// The game's StatTagCollection constructor reads its holder's tags, so the collection is
     /// held by a component on a DontDestroyOnLoad GameObject named <see cref="HolderObjectName"/>.
@@ -37,6 +44,10 @@ namespace Ectype
 
         internal const int MaxBytes = 8192;
 
+        /// <summary>The most stats the session collection holds: about 25 bytes each in the
+        /// published values keeps them well inside <see cref="MaxBytes"/>.</summary>
+        public const int MaxStats = 128;
+
         /// <summary>
         /// Raised on the host only, once per session, while the host starts the session and
         /// before the values are published. Contribute here: a contribution made inside this event
@@ -45,13 +56,18 @@ namespace Ectype
         public static event Action Opening;
 
         /// <summary>The current session's collection, or null outside a session or when session
-        /// data is unavailable.</summary>
+        /// data is unavailable. Inside <see cref="Opening"/>, the collection being opened.</summary>
         public static StatTagCollection Collection
         {
-            get { return _current != null ? _current.Collection : null; }
+            get
+            {
+                Live live = _pending ?? _current;
+                return live != null ? live.Collection : null;
+            }
         }
 
-        /// <summary>The id of the session the collection belongs to, or null.</summary>
+        /// <summary>The id of the session the collection belongs to, or null (also inside
+        /// <see cref="Opening"/>, before the session's id is known).</summary>
         public static string SessionId
         {
             get { return _current != null ? _current.SessionId : null; }
@@ -66,13 +82,6 @@ namespace Ectype
             internal StatTagCollection Collection;
             internal bool Host;
             internal readonly HashSet<int> WarnedLate = new HashSet<int>();
-        }
-
-        /// <summary>The source of a client's reproduction of the host's value.</summary>
-        private sealed class HostValueSource : IModifierSource
-        {
-            internal static readonly HostValueSource Instance = new HostValueSource();
-            public override string ToString() { return "Ectype session stats (host value)"; }
         }
 
         private static Live _current;
@@ -158,9 +167,19 @@ namespace Ectype
         /// composed values. Runs as session data produces the host's values for a new session.</summary>
         private static Dictionary<string, float> Produce()
         {
+            return Produce(Opening);
+        }
+
+        /// <summary>
+        /// Discards the previous session's collection, makes the new one current for
+        /// <see cref="Collection"/> and <see cref="Contribute"/>, raises
+        /// <paramref name="handlers"/>, and returns the composed values.
+        /// </summary>
+        internal static Dictionary<string, float> Produce(Action handlers)
+        {
+            Close();
             Live live = new Live { Collection = NewCollection(ModStats.DeclaredFor(StatCollectionKind.Session)), Host = true };
             _pending = live;
-            Action handlers = Opening;
             if (handlers != null)
             {
                 foreach (Delegate d in handlers.GetInvocationList())
@@ -286,9 +305,10 @@ namespace Ectype
         }
 
         /// <summary>
-        /// Gives each stat in <paramref name="values"/> one modifier that makes its composed value
-        /// the host's. A stat the host published and this client does not declare is registered
-        /// at the host's value, so a reader by id still gets it. Unparseable entries are skipped.
+        /// Sets each stat in <paramref name="values"/> to the host's value by setting its base,
+        /// which reproduces the value exactly: a client's collection carries no modifiers. A stat
+        /// the host published and this client does not declare is registered at the host's value,
+        /// so a reader by id still gets it. Unparseable entries are skipped.
         /// </summary>
         internal static void ApplyHostValues(StatTagCollection c, Dictionary<string, float> values)
         {
@@ -306,13 +326,21 @@ namespace Ectype
                     c.RegisterStat(id, ref f);
                     continue;
                 }
+                // SetBaseValue, not the collection's OverrideBaseValue: that one writes the field
+                // without marking the value for recalculation, so a value read before stays stale.
                 ModifiableFloat cur = stat.Data as ModifiableFloat;
-                if (cur == null) continue;
-                float delta = kv.Value - cur.BaseValue;
-                if (delta == 0f) continue;
-                ContributeTo(c, id, new FloatModifier(delta, ModifierType.PrimaryAddend), HostValueSource.Instance);
+                if (cur != null) cur.SetBaseValue(kv.Value);
             }
         }
+
+#if ECTYPE_DEV
+        /// <summary>Dev self-test: drops a collection <see cref="Produce(Action)"/> left pending.</summary>
+        internal static void DiscardPendingForTest()
+        {
+            if (_pending != null) Dispose(_pending.Collection);
+            _pending = null;
+        }
+#endif
 
         /// <summary>Removes every modifier from the collection, by source, which also releases
         /// the collection's subscriptions to dynamic values and conditions.</summary>

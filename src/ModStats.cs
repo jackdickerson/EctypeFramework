@@ -44,6 +44,9 @@ namespace Ectype
         internal string IconFrom;
         /// <summary>The file or resource that declared it, or "framework".</summary>
         internal string DeclaredBy;
+        internal bool Embedded;
+        internal string SortAssembly;
+        internal string SortName;
 
         internal string Qualified { get { return Owner + "/" + Name; } }
     }
@@ -69,8 +72,8 @@ namespace Ectype
         internal const int MaxFileBytes = 65536;
         internal const int MaxStatsPerFile = 256;
 
-        private static readonly Regex OwnerPattern = new Regex("^[a-z0-9][a-z0-9_.-]{0,63}$");
-        private static readonly Regex NamePattern = new Regex("^[A-Za-z][A-Za-z0-9_]{0,63}$");
+        private static readonly Regex OwnerPattern = new Regex("^[a-z0-9][a-z0-9_.-]{0,63}\\z");
+        private static readonly Regex NamePattern = new Regex("^[A-Za-z][A-Za-z0-9_]{0,63}\\z");
 
         /// <summary>Owners a stats file may not use: the framework's own owner string, and the
         /// word a reader would take for it.</summary>
@@ -133,17 +136,29 @@ namespace Ectype
             return qualifiedName != null && _byName.ContainsKey(qualifiedName);
         }
 
-        /// <summary>The id of a stat a stats file declared, by its qualified name; false for any
-        /// other name. Manifest resolution uses this.</summary>
+        /// <summary>The id of a stat by its qualified name: one a stats file declared, or
+        /// <c>"ectype/Name"</c> for a framework stat; false for any other name. Manifest
+        /// resolution uses this.</summary>
         internal static bool TryGetDeclaredId(string qualifiedName, out int id)
         {
             id = 0;
+            if (qualifiedName == null) return false;
+            int slash = qualifiedName.IndexOf('/');
+            if (slash <= 0) return false;
+            if (string.Equals(qualifiedName.Substring(0, slash), FrameworkStats.Owner, StringComparison.OrdinalIgnoreCase))
+                return FrameworkStats.TryGet(qualifiedName.Substring(slash + 1), out id);
             ModStatDecl decl;
-            if (qualifiedName == null || qualifiedName.IndexOf('/') <= 0 ||
-                !_byName.TryGetValue(qualifiedName, out decl) || decl.DeclaredBy == "framework")
-                return false;
+            if (!_byName.TryGetValue(qualifiedName, out decl)) return false;
             id = decl.Id;
             return true;
+        }
+
+        /// <summary>True when <paramref name="id"/> is registered for the session collection.</summary>
+        internal static bool IsSessionStat(int id)
+        {
+            ModStatDecl decl;
+            return _byId.TryGetValue(id, out decl) && decl.Collection == StatCollectionKind.Session &&
+                   _wired.Contains(decl);
         }
 
         private static bool Resolve(string name, out int id, out ModStatDecl decl)
@@ -264,16 +279,23 @@ namespace Ectype
 
         // ------------------------------------------------------------------ discovery
 
-        private struct Source
+        private sealed class Source
         {
             internal string DeclaredBy;
             internal string Text;
+            internal bool Embedded;
+            /// <summary>The declaring assembly's simple name; for a loose file, the smallest
+            /// simple name among the plugins whose folder holds it.</summary>
+            internal string SortAssembly;
+            /// <summary>The resource name or the file name, never a path.</summary>
+            internal string SortName;
         }
 
         /// <summary>
         /// Reads every stats file and registers what it declares. Runs once, from
         /// <see cref="FrameworkStats.EnsureRegistered"/>, after the framework's own stats and
-        /// before any role registers a perk.
+        /// before any role registers a perk. Each file is parsed in its own try/catch: a file that
+        /// throws is refused by name and the others still register.
         /// </summary>
         internal static void DiscoverAndRegister()
         {
@@ -294,6 +316,11 @@ namespace Ectype
                 _byName[d.Qualified] = d;
             }
 
+            // Role ids are owners a stats file may not use, so the roles must be known first.
+            // Discovery of roles is idempotent and runs on the same pass right after this anyway.
+            try { RoleRegistry.DiscoverOnce(); }
+            catch (Exception e) { Plugin.Log.LogError("Ectype: mod stats: role discovery failed: " + e); }
+
             List<string> errors = new List<string>();
             List<string> warnings = new List<string>();
             List<ModStatDecl> parsed = new List<ModStatDecl>();
@@ -301,13 +328,40 @@ namespace Ectype
             foreach (Source src in CollectSources(errors))
             {
                 files++;
-                parsed.AddRange(Parse(src.Text, src.DeclaredBy, errors, warnings));
+                List<ModStatDecl> found;
+                try
+                {
+                    found = Parse(src.Text, src.DeclaredBy, errors, warnings, RoleOwnerProblem);
+                }
+                catch (Exception e)
+                {
+                    errors.Add(src.DeclaredBy + " rejected: " + e.Message.TrimEnd('.'));
+                    continue;
+                }
+                foreach (ModStatDecl d in found)
+                {
+                    d.Embedded = src.Embedded;
+                    d.SortAssembly = src.SortAssembly;
+                    d.SortName = src.SortName;
+                }
+                parsed.AddRange(found);
             }
-            List<ModStatDecl> accepted = Merge(parsed, _byId, _byName, errors);
+            List<ModStatDecl> accepted = Merge(Order(parsed), _byId, _byName, errors);
+
+            int sessionCount = 0;
+            foreach (ModStatDecl d in _wired) if (d.Collection == StatCollectionKind.Session) sessionCount++;
 
             List<string> summary = new List<string>();
             foreach (ModStatDecl d in accepted)
             {
+                if (d.Collection == StatCollectionKind.Session && sessionCount >= SessionStats.MaxStats)
+                {
+                    errors.Add("'" + d.Qualified + "' from " + d.DeclaredBy + " skipped: the session collection " +
+                               "holds at most " + SessionStats.MaxStats + " stats");
+                    _byId.Remove(d.Id);
+                    _byName.Remove(d.Qualified);
+                    continue;
+                }
                 try
                 {
                     StatRegistry.RegisterCustomStat(d.Owner, new CustomStatSpec
@@ -327,6 +381,7 @@ namespace Ectype
                     _byName.Remove(d.Qualified);
                     continue;
                 }
+                if (d.Collection == StatCollectionKind.Session) sessionCount++;
                 _wired.Add(d);
                 _modCount++;
                 summary.Add(d.Qualified + "=" + d.Id + " (" + KindName(d.Collection) + ")");
@@ -340,6 +395,40 @@ namespace Ectype
             else if (files > 0 || Plugin.Verbose)
                 Plugin.Log.LogInfo("Ectype: mod stats: none declared (" + files + " file(s) read).");
             Status = _modCount + " mod-declared" + (errors.Count > 0 ? ", " + errors.Count + " error(s)" : "");
+        }
+
+        /// <summary>Null, or why <paramref name="owner"/> may not be a stats file's owner because a
+        /// discovered role has that id.</summary>
+        private static string RoleOwnerProblem(string owner)
+        {
+            RoleRecord rec = RoleRegistry.Find(owner);
+            if (rec == null) return null;
+            return "owner '" + owner + "' is the role id of '" + rec.Manifest.roleName + "' (" +
+                   rec.SourceAssembly.GetName().Name + "); a role's stats come from its manifest's customStats";
+        }
+
+        /// <summary>
+        /// The order in which duplicates are decided, independent of where the game is installed:
+        /// by qualified name ignoring case, then embedded before loose, then by the declaring
+        /// assembly's simple name, then by resource or file name. Stable for equal keys.
+        /// </summary>
+        internal static List<ModStatDecl> Order(List<ModStatDecl> decls)
+        {
+            List<KeyValuePair<int, ModStatDecl>> indexed = new List<KeyValuePair<int, ModStatDecl>>();
+            for (int i = 0; i < decls.Count; i++) indexed.Add(new KeyValuePair<int, ModStatDecl>(i, decls[i]));
+            indexed.Sort((a, b) =>
+            {
+                ModStatDecl x = a.Value, y = b.Value;
+                int c = string.Compare(x.Qualified, y.Qualified, StringComparison.OrdinalIgnoreCase);
+                if (c == 0) c = string.CompareOrdinal(x.Qualified, y.Qualified);
+                if (c == 0) c = (x.Embedded ? 0 : 1).CompareTo(y.Embedded ? 0 : 1);
+                if (c == 0) c = string.CompareOrdinal(x.SortAssembly ?? "", y.SortAssembly ?? "");
+                if (c == 0) c = string.CompareOrdinal(x.SortName ?? "", y.SortName ?? "");
+                return c != 0 ? c : a.Key.CompareTo(b.Key);
+            });
+            List<ModStatDecl> ordered = new List<ModStatDecl>();
+            foreach (KeyValuePair<int, ModStatDecl> kv in indexed) ordered.Add(kv.Value);
+            return ordered;
         }
 
         private static Sprite BorrowIcon(ModStatDecl d)
@@ -359,39 +448,40 @@ namespace Ectype
             }
         }
 
-        /// <summary>Embedded resources of every plugin assembly first, ordered by assembly name
-        /// then resource name; then loose files beside each plugin DLL, ordered by path. A loose
-        /// file shared by several plugins' folder is read once.</summary>
+        /// <summary>Embedded resources of every loaded plugin assembly, and loose files in the
+        /// folder of every loaded plugin DLL (each file read once). A plugin that did not load
+        /// contributes neither.</summary>
         private static List<Source> CollectSources(List<string> errors)
         {
-            List<Source> embedded = new List<Source>();
-            List<Source> loose = new List<Source>();
+            List<Source> sources = new List<Source>();
             List<KeyValuePair<string, Assembly>> assemblies = new List<KeyValuePair<string, Assembly>>();
             HashSet<Assembly> seenAsm = new HashSet<Assembly>();
-            SortedSet<string> dirs = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            // folder -> smallest simple name among the loaded plugins in it
+            Dictionary<string, string> dirs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (KeyValuePair<string, BepInEx.PluginInfo> kv in BepInEx.Bootstrap.Chainloader.PluginInfos)
             {
                 BepInEx.PluginInfo info = kv.Value;
-                if (info == null) continue;
+                if (info == null || info.Instance == null) continue;
+                Assembly asm = info.Instance.GetType().Assembly;
+                string simple = asm.GetName().Name;
+                if (seenAsm.Add(asm)) assemblies.Add(new KeyValuePair<string, Assembly>(simple, asm));
                 try
                 {
-                    if (!string.IsNullOrEmpty(info.Location))
-                        dirs.Add(Path.GetFullPath(Path.GetDirectoryName(info.Location)));
+                    if (string.IsNullOrEmpty(info.Location)) continue;
+                    string dir = Path.GetFullPath(Path.GetDirectoryName(info.Location));
+                    string prior;
+                    if (!dirs.TryGetValue(dir, out prior) || string.CompareOrdinal(simple, prior) < 0)
+                        dirs[dir] = simple;
                 }
                 catch { }
-                if (info.Instance == null) continue;
-                Assembly asm = info.Instance.GetType().Assembly;
-                if (seenAsm.Add(asm)) assemblies.Add(new KeyValuePair<string, Assembly>(asm.GetName().Name, asm));
             }
-            assemblies.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
             foreach (KeyValuePair<string, Assembly> a in assemblies)
             {
                 string[] names;
                 try { names = a.Value.GetManifestResourceNames(); }
                 catch { continue; }
-                Array.Sort(names, StringComparer.Ordinal);
                 foreach (string res in names)
                 {
                     if (!res.EndsWith(FileSuffix, StringComparison.OrdinalIgnoreCase)) continue;
@@ -407,7 +497,11 @@ namespace Ectype
                                 continue;
                             }
                             using (StreamReader rd = new StreamReader(st, Encoding.UTF8))
-                                embedded.Add(new Source { DeclaredBy = by, Text = rd.ReadToEnd() });
+                                sources.Add(new Source
+                                {
+                                    DeclaredBy = by, Text = rd.ReadToEnd(), Embedded = true,
+                                    SortAssembly = a.Key, SortName = res,
+                                });
                         }
                     }
                     catch (Exception e) { errors.Add(by + " rejected: unreadable: " + e.Message); }
@@ -415,30 +509,33 @@ namespace Ectype
             }
 
             string root = SafePluginRoot();
-            List<string> paths = new List<string>();
-            foreach (string dir in dirs)
+            HashSet<string> seenPath = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, string> dir in dirs)
             {
-                try { paths.AddRange(Directory.GetFiles(dir, "*" + FileSuffix, SearchOption.TopDirectoryOnly)); }
-                catch { }
-            }
-            paths.Sort(StringComparer.OrdinalIgnoreCase);
-            foreach (string path in paths)
-            {
-                string by = Relative(root, path);
-                try
+                string[] files;
+                try { files = Directory.GetFiles(dir.Key, "*" + FileSuffix, SearchOption.TopDirectoryOnly); }
+                catch { continue; }
+                foreach (string path in files)
                 {
-                    if (new FileInfo(path).Length > MaxFileBytes)
+                    if (!seenPath.Add(path)) continue;
+                    string by = Relative(root, path);
+                    try
                     {
-                        errors.Add(by + " rejected: larger than " + MaxFileBytes + " bytes");
-                        continue;
+                        if (new FileInfo(path).Length > MaxFileBytes)
+                        {
+                            errors.Add(by + " rejected: larger than " + MaxFileBytes + " bytes");
+                            continue;
+                        }
+                        sources.Add(new Source
+                        {
+                            DeclaredBy = by, Text = File.ReadAllText(path, Encoding.UTF8), Embedded = false,
+                            SortAssembly = dir.Value, SortName = Path.GetFileName(path),
+                        });
                     }
-                    loose.Add(new Source { DeclaredBy = by, Text = File.ReadAllText(path, Encoding.UTF8) });
+                    catch (Exception e) { errors.Add(by + " rejected: unreadable: " + e.Message); }
                 }
-                catch (Exception e) { errors.Add(by + " rejected: unreadable: " + e.Message); }
             }
-
-            embedded.AddRange(loose);
-            return embedded;
+            return sources;
         }
 
         private static string SafePluginRoot()
@@ -464,15 +561,48 @@ namespace Ectype
             "iconFrom", "$comment",
         };
 
+        /// <summary>A problem that refuses the whole file from inside one stat.</summary>
+        private sealed class FileRefusal : Exception
+        {
+            internal FileRefusal(string message) : base(message) { }
+        }
+
         /// <summary>
         /// The stats one file declares. A file-level problem (not JSON, no valid owner, a reserved
-        /// owner, no stats array) adds one error and yields nothing; a stat-level problem skips
-        /// that stat with one error. Unknown keys are warnings. Ids are filled in.
+        /// owner, an owner <paramref name="ownerProblem"/> refuses, no stats array, a number no
+        /// float can hold) adds one error and yields nothing; a stat-level problem skips that stat
+        /// with one error. Unknown keys are warnings. Ids are filled in. Never throws.
         /// </summary>
         internal static List<ModStatDecl> Parse(string json, string declaredBy, List<string> errors,
-                                                List<string> warnings)
+                                                List<string> warnings, Func<string, string> ownerProblem = null)
         {
             List<ModStatDecl> found = new List<ModStatDecl>();
+            List<string> fileErrors = new List<string>();
+            List<string> fileWarnings = new List<string>();
+            try
+            {
+                ParseInto(json, declaredBy, found, fileErrors, fileWarnings, ownerProblem);
+            }
+            catch (FileRefusal r)
+            {
+                found.Clear();
+                fileErrors.Clear();
+                fileErrors.Add(declaredBy + " rejected: " + r.Message);
+            }
+            catch (Exception e)
+            {
+                found.Clear();
+                fileErrors.Clear();
+                fileErrors.Add(declaredBy + " rejected: " + e.Message.TrimEnd('.'));
+            }
+            errors.AddRange(fileErrors);
+            warnings.AddRange(fileWarnings);
+            return found;
+        }
+
+        private static void ParseInto(string json, string declaredBy, List<ModStatDecl> found, List<string> errors,
+                                      List<string> warnings, Func<string, string> ownerProblem)
+        {
             JObject root;
             try
             {
@@ -480,52 +610,42 @@ namespace Ectype
             }
             catch (Exception e)
             {
-                errors.Add(declaredBy + " rejected: not JSON: " + e.Message.TrimEnd('.'));
-                return found;
+                throw new FileRefusal("not JSON: " + e.Message.TrimEnd('.'));
             }
-            if (root == null)
-            {
-                errors.Add(declaredBy + " rejected: the document is not a JSON object");
-                return found;
-            }
+            if (root == null) throw new FileRefusal("the document is not a JSON object");
             foreach (JProperty p in root.Properties())
                 if (!TopKeys.Contains(p.Name)) warnings.Add(declaredBy + ": unknown key '" + p.Name + "' ignored");
 
             string owner = Str(root["owner"]);
             string problem = OwnerProblem(owner);
-            if (problem != null)
-            {
-                errors.Add(declaredBy + " rejected: " + problem);
-                return found;
-            }
+            if (problem == null && ownerProblem != null) problem = ownerProblem(owner);
+            if (problem != null) throw new FileRefusal(problem);
             JArray stats = root["stats"] as JArray;
-            if (stats == null || stats.Count == 0)
-            {
-                errors.Add(declaredBy + " rejected: no \"stats\" array, or it is empty");
-                return found;
-            }
+            if (stats == null || stats.Count == 0) throw new FileRefusal("no \"stats\" array, or it is empty");
             if (stats.Count > MaxStatsPerFile)
-            {
-                errors.Add(declaredBy + " rejected: " + stats.Count + " stats (at most " + MaxStatsPerFile + ")");
-                return found;
-            }
+                throw new FileRefusal(stats.Count + " stats (at most " + MaxStatsPerFile + ")");
 
             for (int i = 0; i < stats.Count; i++)
             {
                 JObject s = stats[i] as JObject;
-                string label = declaredBy + " stat #" + (i + 1);
+                string shortLabel = "stat #" + (i + 1);
+                string label = declaredBy + " " + shortLabel;
                 if (s == null)
                 {
                     errors.Add(label + " skipped: not a JSON object");
                     continue;
                 }
                 string name = Str(s["name"]);
-                if (name != null) label += " ('" + name + "')";
+                if (name != null)
+                {
+                    shortLabel += " ('" + name + "')";
+                    label = declaredBy + " " + shortLabel;
+                }
                 foreach (JProperty p in s.Properties())
                     if (!StatKeys.Contains(p.Name)) warnings.Add(label + ": unknown key '" + p.Name + "' ignored");
 
                 ModStatDecl d;
-                string why = ParseStat(owner, name, s, declaredBy, out d);
+                string why = ParseStat(owner, name, s, declaredBy, shortLabel, out d);
                 if (why != null)
                 {
                     errors.Add(label + " skipped: " + why);
@@ -533,10 +653,10 @@ namespace Ectype
                 }
                 found.Add(d);
             }
-            return found;
         }
 
-        private static string ParseStat(string owner, string name, JObject s, string declaredBy, out ModStatDecl d)
+        private static string ParseStat(string owner, string name, JObject s, string declaredBy, string label,
+                                        out ModStatDecl d)
         {
             d = null;
             if (name == null) return "no \"name\"";
@@ -552,14 +672,14 @@ namespace Ectype
 
             float def = 1f;
             JToken defToken = s["default"];
-            if (defToken != null && defToken.Type != JTokenType.Null)
+            if (defToken != null)
             {
                 if (defToken.Type != JTokenType.Float && defToken.Type != JTokenType.Integer)
                     return "\"default\" must be a number";
-                def = defToken.Value<float>();
-                if (float.IsNaN(def) || float.IsInfinity(def)) return "\"default\" must be a finite number";
-                if (factor && def != 1f) return "a factor's \"default\" is 1 (got " +
-                                                def.ToString(CultureInfo.InvariantCulture) + ")";
+                double value = Number(defToken, label);
+                if (factor && value != 1.0)
+                    return "a factor's \"default\" is 1 (got " + value.ToString("R", CultureInfo.InvariantCulture) + ")";
+                def = (float)value;
             }
             else if (!factor) return "a field needs a \"default\"";
 
@@ -575,9 +695,14 @@ namespace Ectype
             if (displayType != null && displayType != "value" && displayType != "percentage")
                 return "\"displayType\" must be \"value\" or \"percentage\", not '" + displayType + "'";
 
+            foreach (string key in new[] { "display", "tooltip", "iconFrom", "displayType" })
+            {
+                JToken t = s[key];
+                if (t != null && t.Type != JTokenType.String) return "\"" + key + "\" must be a string";
+            }
+
             JToken lib = s["lowerIsBetter"];
-            if (lib != null && lib.Type != JTokenType.Boolean && lib.Type != JTokenType.Null)
-                return "\"lowerIsBetter\" must be true or false";
+            if (lib != null && lib.Type != JTokenType.Boolean) return "\"lowerIsBetter\" must be true or false";
 
             d = new ModStatDecl
             {
@@ -590,11 +715,27 @@ namespace Ectype
                 Display = Str(s["display"]),
                 Tooltip = Str(s["tooltip"]),
                 DisplayType = displayType ?? (factor ? "percentage" : "value"),
-                LowerIsBetter = lib != null && lib.Type == JTokenType.Boolean && lib.Value<bool>(),
+                LowerIsBetter = lib != null && lib.Value<bool>(),
                 IconFrom = Str(s["iconFrom"]),
                 DeclaredBy = declaredBy,
             };
             return null;
+        }
+
+        /// <summary>
+        /// A JSON number as a double, read from its text so an integer too large for a 64-bit type
+        /// still reads. One that no float can hold refuses the whole file: a number the framework
+        /// would round to infinity or to a different stat base is a file another reader would read
+        /// differently.
+        /// </summary>
+        private static double Number(JToken token, string label)
+        {
+            string text = token.ToString(Newtonsoft.Json.Formatting.None);
+            double value;
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ||
+                double.IsNaN(value) || double.IsInfinity(value) || Math.Abs(value) > float.MaxValue)
+                throw new FileRefusal(label + ": \"default\" " + text + " is not a number a float can hold");
+            return value;
         }
 
         internal static string OwnerProblem(string owner)
@@ -608,7 +749,6 @@ namespace Ectype
                     return "owner '" + owner + "' is reserved for the framework";
             return null;
         }
-
         /// <summary>
         /// Admits each declaration in order unless an earlier one (already in the maps, or
         /// earlier in the list) has the same id or the same qualified name ignoring case; each
