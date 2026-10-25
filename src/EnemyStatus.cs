@@ -63,8 +63,8 @@ namespace Ectype
     /// </summary>
     public sealed class EnemyStatusDef
     {
-        /// <summary>Identity on the wire. Same literal on every client; namespace it with
-        /// the owning mod ("mymod.burn").</summary>
+        /// <summary>Identity on the wire: <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>, where the GUID is
+        /// the registering plugin's BepInEx GUID. Same literal on every client.</summary>
         public readonly string Key;
 
         /// <summary>Shown by GetHeader to anything that renders modifier sources.</summary>
@@ -224,6 +224,7 @@ namespace Ectype
         public static void Register(EnemyStatusDef def)
         {
             if (def == null) { Plugin.Log.LogError("Ectype: Register(null status)"); return; }
+            Identifiers.WarnId("enemy status", def.Key);
             if (Defs.ContainsKey(def.Key))
                 Plugin.Log.LogWarning("Ectype: status '" + def.Key + "' re-registered; " +
                                       "replacing the previous template.");

@@ -180,7 +180,8 @@ namespace Ectype
         /// when an argument is invalid, the stat name does not resolve, the window is already over on
         /// this machine's clock, or the framework is inert.
         /// </summary>
-        /// <param name="key">Identity on the target; namespace it with the owning mod.</param>
+        /// <param name="key">Identity on the target: <c>"&lt;plugin GUID&gt;/&lt;name&gt;"</c>, where the
+        /// GUID is the registering plugin's BepInEx GUID.</param>
         /// <param name="target">The collection the StatMod is applied to; it recurses into the
         /// children as any modifier does. A target whose holder is a Unity object ends without
         /// being touched once that object is destroyed.</param>
@@ -199,6 +200,19 @@ namespace Ectype
                                                   ModifierType type, Func<float, float> amountAt,
                                                   float durationSeconds, int startServerMs,
                                                   Func<bool> keepAlive = null, string label = null)
+        {
+            if (!string.IsNullOrEmpty(key)) Identifiers.WarnId("timed stat", key);
+            return StartUnchecked(key, target, statAlias, type, amountAt, durationSeconds, startServerMs,
+                                  keepAlive, label);
+        }
+
+        /// <summary><see cref="Start"/> without the identifier rule, for the framework's own
+        /// keys.</summary>
+        internal static TimedStatContribution StartUnchecked(string key, StatTagCollection target,
+                                                             string statAlias, ModifierType type,
+                                                             Func<float, float> amountAt, float durationSeconds,
+                                                             int startServerMs, Func<bool> keepAlive,
+                                                             string label)
         {
             TimedStatContribution c = null;
             try

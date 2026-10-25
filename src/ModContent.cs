@@ -27,7 +27,9 @@ namespace Ectype
         /// the game shows.</summary>
         public string DisplayName;
 
-        /// <summary>The publishing plugin's BepInEx GUID. Required.</summary>
+        /// <summary>The publishing plugin's BepInEx GUID, exactly as its <c>BepInPlugin</c>
+        /// attribute spells it. Required; a publication whose owner is not a loaded plugin's GUID
+        /// is refused.</summary>
         public string Owner;
 
         /// <summary>A category hint for a catalog's tabs. Empty means the game's own category:

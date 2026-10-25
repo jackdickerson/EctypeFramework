@@ -72,12 +72,7 @@ namespace Ectype
         internal const int MaxFileBytes = 65536;
         internal const int MaxStatsPerFile = 256;
 
-        private static readonly Regex OwnerPattern = new Regex("^[a-z0-9][a-z0-9_.-]{0,63}\\z");
         private static readonly Regex NamePattern = new Regex("^[A-Za-z][A-Za-z0-9_]{0,63}\\z");
-
-        /// <summary>Owners a stats file may not use: the framework's own owner string, and the
-        /// word a reader would take for it.</summary>
-        internal static readonly string[] ReservedOwners = { FrameworkStats.Owner, "framework" };
 
         /// <summary>The generic framework factors and the collection each lives on.</summary>
         private static readonly KeyValuePair<string, StatCollectionKind>[] FrameworkPlain =
@@ -188,7 +183,7 @@ namespace Ectype
                 _byId.TryGetValue(id, out decl);
                 return true;
             }
-            if (!OwnerPattern.IsMatch(owner) || !NamePattern.IsMatch(stat)) return false;
+            if (Identifiers.OwnerFormProblem(owner) != null || !NamePattern.IsMatch(stat)) return false;
             id = Guids.StatId(owner, stat);
             return true;
         }
@@ -292,6 +287,11 @@ namespace Ectype
             internal string SortAssembly;
             /// <summary>The resource name or the file name, never a path.</summary>
             internal string SortName;
+            /// <summary>The GUIDs the file's owner may be: the plugins its assembly declares, or,
+            /// for a loose file, the plugins whose DLL is in its folder.</summary>
+            internal HashSet<string> Plugins;
+            /// <summary>Where <see cref="Plugins"/> come from, completing "a plugin ...".</summary>
+            internal string PluginsFrom;
         }
 
         /// <summary>
@@ -338,7 +338,10 @@ namespace Ectype
                 List<ModStatDecl> found;
                 try
                 {
-                    found = Parse(src.Text, src.DeclaredBy, errors, warnings, RoleOwnerProblem);
+                    Source file = src;
+                    found = Parse(src.Text, src.DeclaredBy, errors, warnings,
+                                  o => RoleOwnerProblem(o) ??
+                                       Identifiers.OwnerProblem(o, null, file.Plugins, file.PluginsFrom));
                 }
                 catch (Exception e)
                 {
@@ -465,6 +468,10 @@ namespace Ectype
             HashSet<Assembly> seenAsm = new HashSet<Assembly>();
             // folder -> smallest simple name among the loaded plugins in it
             Dictionary<string, string> dirs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // assembly, or folder -> the GUIDs of the plugins it holds
+            Dictionary<Assembly, HashSet<string>> asmGuids = new Dictionary<Assembly, HashSet<string>>();
+            Dictionary<string, HashSet<string>> dirGuids =
+                new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
             foreach (KeyValuePair<string, BepInEx.PluginInfo> kv in BepInEx.Bootstrap.Chainloader.PluginInfos)
             {
@@ -473,6 +480,11 @@ namespace Ectype
                 Assembly asm = info.Instance.GetType().Assembly;
                 string simple = asm.GetName().Name;
                 if (seenAsm.Add(asm)) assemblies.Add(new KeyValuePair<string, Assembly>(simple, asm));
+                string guid = info.Metadata != null ? info.Metadata.GUID : kv.Key;
+                HashSet<string> set;
+                if (!asmGuids.TryGetValue(asm, out set))
+                    asmGuids[asm] = set = new HashSet<string>(StringComparer.Ordinal);
+                set.Add(guid);
                 try
                 {
                     if (string.IsNullOrEmpty(info.Location)) continue;
@@ -480,6 +492,9 @@ namespace Ectype
                     string prior;
                     if (!dirs.TryGetValue(dir, out prior) || string.CompareOrdinal(simple, prior) < 0)
                         dirs[dir] = simple;
+                    if (!dirGuids.TryGetValue(dir, out set))
+                        dirGuids[dir] = set = new HashSet<string>(StringComparer.Ordinal);
+                    set.Add(guid);
                 }
                 catch { }
             }
@@ -508,6 +523,7 @@ namespace Ectype
                                 {
                                     DeclaredBy = by, Text = rd.ReadToEnd(), Embedded = true,
                                     SortAssembly = a.Key, SortName = res,
+                                    Plugins = asmGuids[a.Value], PluginsFrom = "its assembly declares",
                                 });
                         }
                     }
@@ -537,6 +553,7 @@ namespace Ectype
                         {
                             DeclaredBy = by, Text = File.ReadAllText(path, Encoding.UTF8), Embedded = false,
                             SortAssembly = dir.Value, SortName = Path.GetFileName(path),
+                            Plugins = dirGuids[dir.Key], PluginsFrom = "in its folder",
                         });
                     }
                     catch (Exception e) { errors.Add(by + " rejected: unreadable: " + e.Message); }
@@ -745,17 +762,14 @@ namespace Ectype
             return value;
         }
 
+        /// <summary>Null, or why a file's owner is refused before anything asks which plugins
+        /// are loaded: missing, reserved, or not of a plugin GUID's form.</summary>
         internal static string OwnerProblem(string owner)
         {
             if (owner == null) return "no \"owner\"";
-            if (!OwnerPattern.IsMatch(owner))
-                return "owner '" + owner + "' must be lower-case letters, digits, '.', '_' or '-', starting " +
-                       "with a letter or digit, at most 64 characters";
-            foreach (string r in ReservedOwners)
-                if (string.Equals(owner, r, StringComparison.OrdinalIgnoreCase))
-                    return "owner '" + owner + "' is reserved for the framework";
-            return null;
+            return Identifiers.OwnerFormProblem(owner);
         }
+
         /// <summary>
         /// Admits each declaration in order unless an earlier one (already in the maps, or
         /// earlier in the list) has the same id or the same qualified name ignoring case; each

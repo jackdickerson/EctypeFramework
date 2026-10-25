@@ -155,8 +155,8 @@ namespace Ectype
         {
             if (_installed) return;
             EnsureHolder();
-            _installed = SessionData.Register<Dictionary<string, float>>(SessionDataKey, Produce, Apply,
-                new SessionDataOptions { MaxBytes = MaxBytes, KeepOnResume = false });
+            _installed = SessionData.RegisterCore<Dictionary<string, float>>(SessionDataKey, Produce, Apply,
+                new SessionDataOptions { MaxBytes = MaxBytes, KeepOnResume = false }, false);
             Status = _installed ? "no session" : "inert: session data unavailable";
             if (!_installed)
                 Plugin.Log.LogWarning("Ectype: session stats: inert this session (session data unavailable); " +

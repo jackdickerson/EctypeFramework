@@ -14,11 +14,13 @@ namespace Ectype
     /// Dev build self-test for session-stat mutators.
     ///
     /// Offline, on the driver's first frame:
-    /// - GUID derivation: DeriveGuid("fleet", "pilgrimage") is 2bfef27d74e984361edac3fedcd19523,
-    ///   the vector the docs print, and an explicit GUID with dashes and capitals normalises.
-    /// - Spec validation: a good spec passes; a bad owner, key, GUID, missing name, no effects, too
-    ///   many effects, an unknown kind, a non-finite amount, a factor of 0 and an empty stat are
-    ///   each refused with their reason.
+    /// - GUID derivation: DeriveGuid("com.captainchunck.voidcrew.fleet", "pilgrimage") is
+    ///   b0a920957ba0011396ae1e483f09c19d, the vector the docs print, and an explicit GUID with
+    ///   dashes and capitals normalises.
+    /// - Spec validation: a good spec owned by the framework's own plugin GUID passes; no owner,
+    ///   an owner with '/', the reserved owner, an owner that is no loaded plugin, a bad key, GUID,
+    ///   missing name, no effects, too many effects, an unknown kind, a non-finite amount, a factor
+    ///   of 0 and an empty stat are each refused with their reason.
     /// - Kinds: flat, percent and factor become PrimaryAddend, AdditiveMultiplier and
     ///   ExponentialMultiplier with an amount of factor - 1.
     /// - Manifest form: a JSON entry parses into a spec; a capitalised kind and a missing amount are
@@ -35,7 +37,8 @@ namespace Ectype
     /// </summary>
     internal static class SessionStatMutatorsSelfTest
     {
-        private const string Vector = "2bfef27d74e984361edac3fedcd19523";
+        private const string Vector = "b0a920957ba0011396ae1e483f09c19d";
+        private const string Fleet = "com.captainchunck.voidcrew.fleet";
         private static bool _offlineDone;
         private static bool _registeredDone;
         private static float _nextTry;
@@ -82,19 +85,21 @@ namespace Ectype
 
         private static void GuidVector(List<string> failures)
         {
-            string g = SessionStatMutators.DeriveGuid("fleet", "pilgrimage");
-            if (g != Vector) failures.Add("DeriveGuid(fleet, pilgrimage) is " + g + ", expected " + Vector);
-            if (Guids.Derive("ectype:mutator:fleet/pilgrimage") != g) failures.Add("DeriveGuid differs from Guids.Derive");
+            string g = SessionStatMutators.DeriveGuid(Fleet, "pilgrimage");
+            if (g != Vector) failures.Add("DeriveGuid(" + Fleet + ", pilgrimage) is " + g + ", expected " + Vector);
+            if (Guids.Derive("ectype:mutator:" + Fleet + "/pilgrimage") != g) failures.Add("DeriveGuid differs from Guids.Derive");
             MutatorSpec pinned = Good();
-            pinned.Guid = "2BFEF27D-74E9-8436-1EDA-C3FEDCD19523";
+            pinned.Guid = "B0A92095-7BA0-0113-96AE-1E483F09C19D";
             if (SessionStatMutators.GuidOf(pinned) != Vector)
                 failures.Add("an explicit GUID normalised to " + SessionStatMutators.GuidOf(pinned));
-            if (SessionStatMutators.GuidOf(Good()) != Vector) failures.Add("a spec without a GUID did not derive it");
+            MutatorSpec derived = Good();
+            derived.Owner = Fleet;
+            if (SessionStatMutators.GuidOf(derived) != Vector) failures.Add("a spec without a GUID did not derive it");
         }
 
         private static MutatorSpec Good()
         {
-            MutatorSpec s = new MutatorSpec { Owner = "fleet", Key = "pilgrimage", DisplayName = "Pilgrimage" };
+            MutatorSpec s = new MutatorSpec { Owner = EctypePluginInfo.PLUGIN_GUID, Key = "pilgrimage", DisplayName = "Pilgrimage" };
             s.Effects.Add(new SessionStatEffect { Stat = "ectype/HostileSpawnScale", Kind = SessionStatModifierKind.Factor, Amount = 1.5f });
             return s;
         }
@@ -104,8 +109,11 @@ namespace Ectype
             string ok = SessionStatMutators.Validate(Good());
             if (ok != null) failures.Add("a good spec was refused: " + ok);
 
-            Refused(failures, s => s.Owner = null, "no owner", "the owner must be");
-            Refused(failures, s => s.Owner = "fleet/x", "owner with '/'", "the owner must be");
+            Refused(failures, s => s.Owner = null, "no owner", "no owner");
+            Refused(failures, s => s.Owner = "fleet/x", "owner with '/'", "is not a BepInEx plugin GUID");
+            Refused(failures, s => s.Owner = "ectype", "reserved owner", "is reserved for the framework");
+            Refused(failures, s => s.Owner = "com.example.not-installed", "owner no plugin has",
+                    "is not the GUID of a loaded BepInEx plugin");
             Refused(failures, s => s.Key = "bad key", "key with a space", "the key 'bad key'");
             Refused(failures, s => s.Guid = "xyz", "bad GUID", "the guid 'xyz'");
             Refused(failures, s => s.DisplayName = " ", "blank name", "no display name");
@@ -154,7 +162,8 @@ namespace Ectype
             if (spec == null) failures.Add("a good manifest entry was refused: " + why);
             else if (spec.Owner != "selftest.role" || spec.Key != "surge" || spec.DisplayName != "Hostile Surge" ||
                      spec.Effects.Count != 1 || spec.Effects[0].Kind != SessionStatModifierKind.Factor ||
-                     !Near(spec.Effects[0].Amount, 1.5f) || SessionStatMutators.Validate(spec) != null)
+                     !Near(spec.Effects[0].Amount, 1.5f) ||
+                     SessionStatMutators.Validate(spec, o => o == "selftest.role") != null)
                 failures.Add("a good manifest entry read back wrong");
 
             entry.effects[0].kind = "Factor";

@@ -168,7 +168,7 @@ namespace Ectype
             rec.AbilityInstances[loco] = ability;
             // Opt into key-based replication so the ability's array position on other
             // clients is irrelevant to its start/stop sync (see AbilitySync).
-            RuntimeAbilities.Register(ability, "ectype:" + rec.Manifest.roleId);
+            RuntimeAbilities.RegisterUnchecked(ability, "ectype:" + rec.Manifest.roleId);
             return ability;
         }
 

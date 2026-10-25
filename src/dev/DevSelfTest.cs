@@ -63,7 +63,7 @@ namespace Ectype
             TimedStatContribution c = null;
             try
             {
-                c = TimedStatContributions.Start("ectype.dev.copytest", target,
+                c = TimedStatContributions.Start(EctypePluginInfo.PLUGIN_GUID + "/dev.copytest", target,
                                                  FrameworkStats.IncomingProjectileSpeed,
                                                  ModifierType.AdditiveMultiplier, u => Curve, 5f,
                                                  PhotonNetwork.ServerTimestamp, null,

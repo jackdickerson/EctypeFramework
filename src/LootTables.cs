@@ -16,7 +16,8 @@ namespace Ectype
     /// <summary>One runtime-registered item added to the game's loot rolls.</summary>
     public sealed class LootDrop
     {
-        /// <summary>Who registered it, for log lines: a mod name or plugin GUID.</summary>
+        /// <summary>The registering plugin's BepInEx GUID. Names the registration in log lines
+        /// and decides which registration of an item stands.</summary>
         public string Owner;
 
         /// <summary>The item. Anything the loot spawners can spawn by GUID: a composite weapon
@@ -118,6 +119,7 @@ namespace Ectype
                                         Describe(drop)) + ").");
                     return false;
                 }
+                Identifiers.WarnOwner("loot owner", drop.Owner);
                 string owner = string.IsNullOrEmpty(drop.Owner) ? "unnamed" : drop.Owner;
                 // Publications still pending count too: a mod may publish and register loot in
                 // the same Awake, before the containers exist.

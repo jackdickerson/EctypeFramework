@@ -10,12 +10,14 @@ namespace Ectype
     /// Dev build self-test for mod-declared stats and the session collection.
     ///
     /// Offline, on the driver's first frame:
-    /// - Id formula: ModStats.Id("fleet", "HackSeconds") is 714605015, the vector the docs print.
+    /// - Id formula: ModStats.Id("com.captainchunck.voidcrew.fleet", "HackSeconds") is 598029196,
+    ///   the vector the docs print.
     /// - Data file: a good file yields its three stats with kind, default, collection and display
     ///   read back; a second file declaring one of them again, and one declaring a case variant
     ///   of it, are each refused with an error naming both files; bad owner charset, bad name
     ///   charset, a reserved owner, a factor whose default is not 1 and a field with no default
-    ///   are each refused.
+    ///   are each refused; an owner with capitals parses; an owner that is not one of the file's
+    ///   plugins is refused naming the GUIDs it could have used.
     /// - Robustness: a file whose default is an integer too large for any float is refused by
     ///   name without throwing; an owner or name with a trailing newline, an owner a role uses,
     ///   a non-string display, a null lowerIsBetter and a factor default of 1.0000000001 are refused.
@@ -86,9 +88,12 @@ namespace Ectype
 
         private static void IdVector(List<string> failures)
         {
-            int id = ModStats.Id("fleet", "HackSeconds");
-            if (id != 714605015) failures.Add("ModStats.Id(fleet, HackSeconds) is " + id + ", expected 714605015");
-            if (ModStats.Id("fleet/HackSeconds") != id) failures.Add("ModStats.Id(\"fleet/HackSeconds\") differs");
+            const string fleet = "com.captainchunck.voidcrew.fleet";
+            int id = ModStats.Id(fleet, "HackSeconds");
+            if (id != 598029196) failures.Add("ModStats.Id(" + fleet + ", HackSeconds) is " + id + ", expected 598029196");
+            if (ModStats.Id(fleet + "/HackSeconds") != id) failures.Add("ModStats.Id(\"" + fleet + "/HackSeconds\") differs");
+            if (ModStats.Id("Com.Example.Mod/HackSeconds") != ModStats.Id("Com.Example.Mod", "HackSeconds"))
+                failures.Add("ModStats.Id of an undeclared owner with capitals did not derive the id");
         }
 
         private const string Good =
@@ -137,7 +142,26 @@ namespace Ectype
                              " (expected 0 and 2)");
 
             Refused(failures, "{ \"owner\": \"Fleet!\", \"stats\": [ { \"name\": \"A\", \"kind\": \"factor\", \"collection\": \"ship\" } ] }",
-                    "bad owner charset", "must be lower-case");
+                    "bad owner charset", "is not a BepInEx plugin GUID");
+            Refused(failures, "{ \"owner\": \"fleet/x\", \"stats\": [ { \"name\": \"A\", \"kind\": \"factor\", \"collection\": \"ship\" } ] }",
+                    "owner with '/'", "is not a BepInEx plugin GUID");
+            {
+                List<string> ownerErrors = new List<string>(), ownerWarnings = new List<string>();
+                List<ModStatDecl> got = ModStats.Parse(Good.Replace("\"selftest\"", "\"Com.Example.Mod\""),
+                                                       "capitals.ectype-stats.json", ownerErrors, ownerWarnings);
+                if (got.Count != 3 || got[0].Owner != "Com.Example.Mod" || ownerErrors.Count != 0)
+                    failures.Add("owner with capitals: " + got.Count + " admitted, errors: " +
+                                 string.Join(" | ", ownerErrors.ToArray()));
+                ownerErrors.Clear();
+                HashSet<string> plugins = new HashSet<string> { "com.example.b", "com.example.a" };
+                got = ModStats.Parse(Good, "plugins/x/wrong.ectype-stats.json", ownerErrors, ownerWarnings,
+                                     o => Identifiers.OwnerProblem(o, null, plugins, "in its folder"));
+                if (got.Count != 0 || ownerErrors.Count != 1 ||
+                    !ownerErrors[0].Contains("plugins/x/wrong.ectype-stats.json rejected: owner 'selftest' is not the GUID " +
+                                        "of a plugin in its folder; expected one of 'com.example.a', 'com.example.b'"))
+                    failures.Add("owner not among the file's plugins: " + got.Count + " admitted, errors: " +
+                                 string.Join(" | ", ownerErrors.ToArray()));
+            }
             Refused(failures, "{ \"owner\": \"fleet\", \"stats\": [ { \"name\": \"Hack Seconds\", \"kind\": \"factor\", \"collection\": \"ship\" } ] }",
                     "bad name charset", "must start with a letter");
             Refused(failures, "{ \"owner\": \"framework\", \"stats\": [ { \"name\": \"A\", \"kind\": \"factor\", \"collection\": \"ship\" } ] }",
@@ -230,7 +254,7 @@ namespace Ectype
                     "\"default\": 123456789012345678901234567890123456789012345678901234567890, \"collection\": \"ship\" } ] }",
                     "huge integer default", "bad.ectype-stats.json rejected:");
             Refused(failures, "{ \"owner\": \"fleet\\n\", \"stats\": [ { \"name\": \"A\", \"kind\": \"factor\", \"collection\": \"ship\" } ] }",
-                    "owner with trailing newline", "must be lower-case");
+                    "owner with trailing newline", "is not a BepInEx plugin GUID");
             Refused(failures, "{ \"owner\": \"fleet\", \"stats\": [ { \"name\": \"A\\n\", \"kind\": \"factor\", \"collection\": \"ship\" } ] }",
                     "name with trailing newline", "must start with a letter");
             Refused(failures, "{ \"owner\": \"fleet\", \"stats\": [ { \"name\": \"A\", \"kind\": \"factor\", \"collection\": \"ship\", \"display\": 3 } ] }",
