@@ -52,7 +52,7 @@ breaks. Validation runs in this order: `minFrameworkVersion`, `contractVersion`,
 
 | Field | Meaning |
 | --- | --- |
-| `stat` | A `StatType` name from [stat-names.md](stat-names.md), a framework-owned stat, a custom stat declared in this manifest (it shadows a vanilla name for this role, so do not reuse one), or a raw int id. Case-insensitive. Unresolvable: that effect is skipped with a named error and the level registers without it. |
+| `stat` | A `StatType` name from [stat-names.md](stat-names.md), a framework-owned stat, a stat another mod's stats file declares, named `"owner/Name"` ([reference/mod-stats.md](reference/mod-stats.md)), a custom stat declared in this manifest (it shadows a vanilla name for this role, so do not reuse one), or a raw int id. Case-insensitive. Unresolvable: that effect is skipped with a named error and the level registers without it. |
 | `type` | `"percent"` (+X%, AdditiveMultiplier), `"scalar"` (xN, ExponentialMultiplier), `"flat"` (PrimaryAddend), `"flat2"` (SecondaryAddend), or an exact `ModifierType` name. |
 | `value` | `percent 0.25` = +25%; `scalar 0.25` = x1.25; `flat` = the addend. **Negative values are legal and mean reduction**: `percent -0.20` = -20%, and the tooltip renders the sign (the game colours it by the stat's lower-is-better flag). |
 | `kind` | `"float"` (default, builds a `FloatModifier`) or `"int"` (builds an `IntModifier`). Vanilla ships no bool modifier class, so a conceptually boolean stat (`JetpackEnhanced`) is still an int amount of 1. Getting it wrong still registers the effect (both are `PrimitiveModifier<T>`), but the tooltip renders the wrong format and, for a custom stat whose `displayType` does not match, may render nonsense. |

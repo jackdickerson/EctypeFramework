@@ -113,4 +113,19 @@ perks, ship-installed items) are a different tree and do not reach the hand.
 scoped to the hand. `HandAttractorBeams` is a count the ability reads, rounded, at each start.
 Name the hand id or the vanilla alias, never both.
 
+## Generic factors
+
+`MeleeDamage`, `MeleeCooldown` and `MeleeReach` on the player's own collection,
+`AntiPersonnelDamage` on each player ship's own collection and `HostileSpawnScale` on the
+session collection are factors of authored value 1 with no field behind them. The framework
+registers each as a plain `ModifiableFloat` into its collection and reads none of them. The mod
+that owns the action keeps its own constant as the base and multiplies it by the composed value,
+read by id, so a punch, a turret's damage to players or a spawn wave composes every perk,
+relic and session contribution through the game's own modifier stack. With the framework absent
+the stat is absent, and the reader's factor is 1. [mod-stats.md](mod-stats.md) has the table of
+ids, how a reader on another client reads the attacker's replica, and the session collection.
+
+A mod declares stats of its own the same way, in a data file, without calling the framework;
+see [mod-stats.md](mod-stats.md).
+
 Sample: [examples/framework-stats](../../examples/framework-stats/).

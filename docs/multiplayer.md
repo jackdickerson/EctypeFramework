@@ -231,7 +231,9 @@ For a mod that declares `All`:
 
 A setting only the host's config should decide, so that every client acts on the same number,
 reaches every client through `SessionData.HostValue`; see
-[reference/session-data.md](reference/session-data.md).
+[reference/session-data.md](reference/session-data.md). A run-wide number that perks and
+mutators should be able to move, rather than a setting, is a session stat; see
+[reference/mod-stats.md](reference/mod-stats.md).
 
 ## Rooms with more than one ship
 

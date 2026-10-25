@@ -20,12 +20,16 @@ declares. Framework rows carry the category of the collection they live on.
 Names are matched case-insensitively. A raw int id is accepted as an escape hatch. Custom
 stats declared in the same manifest's `customStats` are also valid and shadow these names for
 that role's own effect lines, so do not reuse a vanilla name. Stat names from other mods can
-be used too, provided those mods are marked required.
+be used too, provided those mods are marked required. A stat a mod declares in its stats file is
+named `"owner/Name"`, for example `"fleet/HackSeconds"`; such stats are not rows of the CSV, and
+the declaring mod's own documentation lists them (see
+[reference/mod-stats.md](reference/mod-stats.md)).
 
 ## Resolution order
 
 An effect's `"stat"` field resolves in this order: the role's own `customStats`, then the
-framework-owned names, then `StatType`, then a raw int. A role's own declarations win so that
+framework-owned names, then an `"owner/Name"` a mod's stats file declares, then `StatType`, then
+a raw int. A role's own declarations win so that
 a name the framework adds later can never break an already-shipped role. The framework's
 names come before `StatType` for the same reason in reverse. A framework-owned name that
 shadows a vanilla one is a framework bug, caught at registration by the `StatTable` collision
@@ -48,6 +52,11 @@ modifier surface:
   speed of hostile NPC projectiles aimed at that ship, applied to each shot as it registers.
   Below 1 slows enemy shots in flight.
 - `ShipDrag` (the platform's quadratic drag) on the player ship's collection.
+- Generic factors (authored 1) that the framework registers and a mod reads by id:
+  `MeleeDamage`, `MeleeCooldown` and `MeleeReach` on the player's own collection,
+  `AntiPersonnelDamage` on each player ship's collection, and `HostileSpawnScale` on the
+  session collection. Their category `session` names the framework's run-wide collection,
+  which no vanilla stat lives on.
 - A hand-held attractor's `HandAttractorMaxRange`, `HandAttractorPullVelocity`,
   `HandAttractorDuration`, `HandAttractorCooldown` and `HandAttractorBeams` on the owning
   ability's collection. Duration and cooldown are second ids onto the ability's own

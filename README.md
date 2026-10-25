@@ -47,6 +47,7 @@ it; a mismatched version bounces the joiner.
 - [Ship speed surge](docs/reference/ship-speed-surge.md)
 - [HUD ability bar](docs/reference/hud-ability-bar.md)
 - [Framework stats](docs/reference/framework-stats.md)
+- [Mod-declared stats and the session collection](docs/reference/mod-stats.md)
 - [Runtime ability replication](docs/reference/runtime-abilities.md)
 
 The source code is licensed under the MIT licence: see [LICENSE](LICENSE).

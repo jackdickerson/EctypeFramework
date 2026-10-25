@@ -17,7 +17,8 @@ per-open event appear only with `[Debug] VerboseLogging = true` in
 | | `inert: patching did not complete` | Harmony patching failed. See the `FATAL` entry under Load. |
 | | `no role manifests found` | No installed mod carries a manifest. See "No role appears". |
 | | `<n>/<m> roles registered` | `n` of `m` discovered roles finished registering. `(<k> failed)` is appended when `k` gave up. |
-| `Stats:` | `<n> vanilla aliases, framework-owned <status>` | The stat names a manifest can use. `not registered` means the stat table has not loaded; `<n> registered` is the normal state. |
+| `Stats:` | `<n> vanilla aliases, framework-owned <status>, <k> mod-declared[, <e> error(s)]` | The stat names a manifest can use. `not registered` means the stat table has not loaded; `<n> registered` is the normal state. `<k> mod-declared` counts stats from mods' stats files (`not discovered` before the stat table loads); each error has its own `mod stats` line in the log. |
+| `Session stats:` | `no session`, `session <id>, host`, `session <id>, client`, or `inert: session data unavailable` | The run-wide stat collection. `inert` means the session data hooks are missing, and every session stat reads its declared default. |
 | `Network :` | `event 181, contract <n>, marker <guid>` | The framework's Photon event code, the network contract this build speaks, and the contract marker asset once registered (`marker not registered yet` before the asset tables load). |
 | `Suppress:` | `not resolved yet`, `nothing to suppress`, `no trees suppressed`, `<n> tree(s) suppressed: <names>`, or `<k> suppressed role(s)` | Which stock gene trees role mods have removed through `suppress`, and how many framework roles other role mods have removed through `suppressRoles`; both parts appear joined by `+` when both apply. `(<n> ignored)` counts manifest entries that named nothing usable; each has its own warning. |
 | One line per role | `registered (stage limit 9); tree def published as EPerkTree <n>` | The role is registered and its tree is published. |
@@ -763,6 +764,41 @@ A client that keeps its own config for a `HostValue` (`IsFromHost` false) in the
 valid room property from the current master; in a mission, the session it is in carries no
 value for the key, usually because the host does not run the mod.
 [reference/session-data.md](reference/session-data.md) has the precedence.
+
+### Mod-declared stats and session stats
+
+| Line | Cause and fix |
+| --- | --- |
+| `Ectype: mod stats: <n> declared in <m> file(s): <owner/name>=<id> (<collection>), ...` | The stats files were read and these stats registered. A reader computing the id by formula gets the same numbers. |
+| `Ectype: mod stats: none declared (<m> file(s) read).` | Stats files were found and none of their stats registered. The errors above say why. With `VerboseLogging` the line also appears with 0 files. |
+| `Ectype: mod stats: <declarer> rejected: <problem>.` | The whole file was refused: not JSON, not an object, no `owner` or an owner outside lower-case letters, digits, `.`, `_` and `-`, a reserved owner (`ectype`, `framework`), no `stats` array or more than 256 entries, larger than 65536 bytes, or unreadable. `<declarer>` is `<assembly> resource <name>` or the file's path under `plugins/`. |
+| `Ectype: mod stats: <declarer> stat #<i> ('<name>') skipped: <problem>.` | One stat was refused and the rest of the file stands: a bad name, a `kind` other than `field` or `factor`, a field with no `default`, a factor whose `default` is not 1, a non-finite default, a `collection` other than `session`, `ship` or `character`, a `displayType` other than `value` or `percentage`, or a non-boolean `lowerIsBetter`. |
+| `Ectype: mod stats: <declarer> declares '<owner/name>' (id <id>), already declared as '<owner/name>' (id <id>) by <declarer>; the later declaration is skipped.` | Two declarations of one id, or of one name in different capitals. Embedded files are read before loose ones, so a mod that ships its file both ways declares every stat twice: ship one copy. |
+| `Ectype: mod stats: <declarer>: unknown key '<key>' ignored.` and `Ectype: mod stats: <declarer> stat #<i> ('<name>'): unknown key '<key>' ignored.` | A key the framework does not read, often a misspelling. |
+| `Ectype: mod stats: registering '<owner/name>' from <declarer> failed, skipped: <message>.` | The game's stat table refused the id: another custom stat derives it, or a role manifest declares the same owner and name. |
+| `Ectype: mod stats: '<owner/name>' iconFrom '<name>' gave no icon: <message>.` | `iconFrom` names no vanilla or framework stat. The tooltip shows no icon. |
+| `Ectype: mod stats: <character\|ship\|session> surface installed on <type> (<owner/name>=<base>, ...).` | The first collection of that kind received its stats. Logged once per kind. |
+| `Ectype: mod stats: registering <character\|ship\|session> stats onto <type> failed - readers get the declared defaults: <exception>` | Registering into one collection threw. That object's readers fall back to their constants. |
+| `Ectype: mod stats: '<name>' names no stat (expected "owner/Name" or a framework stat name); it reads 0.` | `ModStats.Get` or `TryGet` was given a name that is neither. Logged once per name. |
+| `Ectype: mod stats: discovery failed: <exception>` | Reading the stats files threw. No mod-declared stat is registered this launch; the framework's own are. |
+| `Ectype: session stats: opened for session <id> as host (<name>=<value>, ...).` | Host: the session's collection, with the values published to every client. |
+| `Ectype: session stats: opened for session <id> with the host's values (<name>=<value>, ...).` | Client: the host's values arrived and the collection reproduces them. Compare with the host's line. |
+| `Ectype: session stats: opened for session <id> at the declared defaults (<name>=<value>, ...).` | The session carried no session stats. One of the two lines below says why. |
+| `Ectype: session stats: session <id> carried no session stats; every session stat reads its declared default.` | Client: the host's session data had no `framework/sessionStats` key. |
+| `Ectype: session stats: session <id> was sent without its session stats; clients read the declared defaults.` | Host: the values were produced and the session data left them out; an error from session data above names the cause. The host keeps its own values. |
+| `Ectype: session stats: <name> changed after the session started; clients keep the session-start value until the next session.` | Host: a contribution outside `SessionStats.Opening`. Contribute from `Opening` for the value to reach clients. Logged once per stat per session. |
+| `Ectype: session stats: a contribution on a client was refused; only the host contributes, and clients receive the host's values.` | `SessionStats.Contribute` ran on a client. Gate the call on the master client. Logged once. |
+| `Ectype: session stats: a contribution with no session open was refused; contribute from SessionStats.Opening.` | `Contribute` ran outside a session. Logged once. |
+| `Ectype: session stats: stat <name> is not a session stat; the contribution was refused.` | The id is not registered in the session collection: a character or ship stat, or a stat whose stats file was refused. |
+| `Ectype: SessionStats.Opening subscriber <type>.<method> threw: <exception>` | A mod's `Opening` handler threw. Its contributions up to the throw stand; the other subscribers ran. |
+| `Ectype: session stats: inert this session (session data unavailable); every session stat reads its declared default.` | The session data hooks are not applied; see the session data lines above. |
+| `Ectype: session stats install failed: <exception>` | The session collection could not be set up. Every session stat reads its declared default. |
+| `Ectype: session stats: removing a modifier at session end threw: <message>` | A modifier's own cleanup threw as its session ended. The collection is dropped anyway. |
+| `Ectype: session stats: closed for session <id>.` (verbose) | The session ended or the client left the room. |
+| `Ectype: dev self-test: mod stats passed (id formula; data file parse, duplicate and charset checks; session collection contribute, publish, rebuild and dispose).` and `Ectype: dev self-test: generic framework stats passed (5 at their documented ids).` (dev tools build only) | The id of `fleet/HackSeconds` is 714605015, a good file reads back, duplicates and bad names are refused, a client collection rebuilt from the host's values reads the same numbers, and the five generic factors sit at their documented ids. A `FAILED` line names each difference. |
+
+[reference/mod-stats.md](reference/mod-stats.md) has the file format, the id formula and the
+session collection's lifecycle.
 
 ### Field-backed stats
 

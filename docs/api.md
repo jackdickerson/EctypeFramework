@@ -21,8 +21,17 @@ Register them from literals that are identical on every client.
 | `CancelCooldown` | `Full`, or `Partial`: the cooldown times the share of the channel used. |
 | `ChannelEnd` | How a channel ended: `Cause`, `Fired`, `Reason`, `Early`, `UsedSeconds`, `ChannelSeconds`, `CooldownSeconds`. |
 | `RoleStats` | Role-scoped stats. `Id(roleId, statName)` returns the id of a custom stat declared in a role manifest, or 0. `RegisterAbilityTiming` registers an ability's duration and cooldown under role-declared stats so a perk can modify one role's ability without touching the others. |
-| `FrameworkStats` | Stats the framework registers for every player whether or not a role is installed: grapple hook speeds and cooldowns, external-force and motor damping, motor acceleration, gravity, incoming projectile speed, hand attractor values, `SystemModuleConstructionSpeed`, ship drag. Each name is a `const string`. `Id(name)` returns the stat id (0 before registration) to build a `StatMod` against, and `TryGet(name, out id)` reports whether it is registered; manifests can name the same stats. `EnsureRegistered()` runs registration early. `Status` describes the registration state. |
+| `FrameworkStats` | Stats the framework registers for every player whether or not a role is installed: grapple hook speeds and cooldowns, external-force and motor damping, motor acceleration, gravity, incoming projectile speed, hand attractor values, `SystemModuleConstructionSpeed`, ship drag, and the generic factors `MeleeDamage`, `MeleeCooldown`, `MeleeReach`, `AntiPersonnelDamage` and `HostileSpawnScale`. Each name is a `const string`. `Id(name)` returns the stat id (0 before registration) to build a `StatMod` against, and `TryGet(name, out id)` reports whether it is registered; manifests can name the same stats. `EnsureRegistered()` runs registration early. `Status` describes the registration state. |
 | `HandAttractorStats` | Stat surface for a hand-held attractor ability. `Register(stats, ref range, ref pullVelocity)` registers the two floats under their framework ids and the mirrored vanilla attractor ids on the ability's own collection. `RegisterTiming(ability, ref beams)` registers the ability's duration and cooldown under the hand ids and the beam count. Both are idempotent per id and return false when the framework ids are not yet available. |
+
+## Mod-declared stats
+
+| Type | Purpose |
+| --- | --- |
+| `ModStats` | Stats a mod declares in a file ending `ectype-stats.json`, embedded or beside its DLL, registered into every character, ship or session collection, and the reading API for them and the framework's stats. `Id(owner, name)` is the id formula; `Id(name)` takes `"owner/Name"`, `"ectype/Name"` or a bare framework name. `TryGet` and `Get` by collection or by `StatCollectionKind` return the composed value, or the declared base when the collection does not hold the stat. `LocalCollection(kind)`, `IsDeclared`, `FileSuffix`, `Status`. See [reference/mod-stats.md](reference/mod-stats.md). |
+| `StatCollectionKind` | `Character`, `Ship`, `Session`: the collection a declared stat is registered into. |
+| `SessionStats` | The run-wide collection, one per session. `Opening` is raised on the host while it starts a session; `Contribute(statId, modifier, source)` on the host and `Withdraw(source)`. The host publishes the composed values under the session data key `framework/sessionStats`, and every other client reproduces them. `Collection`, `SessionId`, `Status`, `SessionDataKey`, `HolderObjectName`. |
+| `SessionStatHolder` | The component on the GameObject `Ectype.SessionStats` that holds the session collection, through the game's `IStatCollectionHolder`. |
 
 ## Runtime ability replication
 

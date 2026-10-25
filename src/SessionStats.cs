@@ -155,7 +155,7 @@ namespace Ectype
         }
 
         /// <summary>Host: builds the session's collection, lets contributors in, and returns the
-        /// composed values. Runs inside the game's session serialisation.</summary>
+        /// composed values. Runs as session data produces the host's values for a new session.</summary>
         private static Dictionary<string, float> Produce()
         {
             Live live = new Live { Collection = NewCollection(ModStats.DeclaredFor(StatCollectionKind.Session)), Host = true };

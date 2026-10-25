@@ -223,6 +223,18 @@ added to the list, and a renamed key logs `no entry '<key>'`.
   constants, the JSON entries and the framework rows of the CSV disagree.
 - **The framework-owned names and the reserved owner string their ids hash from are part of
   the shipped contract across a room.**
+- **A generic factor with no field behind it** (the melee family, `AntiPersonnelDamage`,
+  `HostileSpawnScale`) takes a row in the collection table of `src/ModStats.cs` in place of a
+  consumer. The framework registers it into that collection at base 1 and never reads it; the
+  mod that owns the action reads it by id. Its JSON entry says so in `consumers`.
+- **The stat id formula is a published contract.** Mods that never reference the framework
+  compute it themselves, so `Guids.StatId`, the `ectype:stat:` prefix and the `owner/name`
+  join never change. The dev self-test checks the documented vector.
+- **Mod-declared stats are not rows of `docs/stat-names.csv`.** The CSV lists vanilla and
+  framework-owned stats only; a mod's stats file is its own catalogue.
+- **The session collection is decided by the host.** A change to how its values travel is a
+  change to the `framework/sessionStats` session data key's format, which both sides of a room
+  read; keep it `{"<id>": value}`.
 - **A framework-owned name that shadows a vanilla one is a framework bug**, caught at
   registration by the `StatTable` collision check.
 - Regenerating `docs/stat-names.csv` after a game update uses
