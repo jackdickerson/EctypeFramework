@@ -32,6 +32,7 @@ namespace Ectype
             DevLayout.Reload();
             NetSelfTest.Run();
             StatusSelfTest.RunOutbox();
+            CharacterStatusSelfTest.RunOffline();
         }
 
         private static void Bind(ConfigFile cfg)
