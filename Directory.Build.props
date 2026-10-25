@@ -64,11 +64,14 @@
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <!-- Progression-flag build variant:
+  <!-- Modded-flag build variant (the property keeps its historical name):
          dotnet build                              normal
          dotnet build -p:NoProgressionFlag=true    defines NO_SESSION_FLAG
-       The framework declares MultiplayerType.All either way; the switch changes only the
-       ModCategories metadata and the build tag ModFlagPolicy reports. -->
+       The switch registers the network-contract marker and every role asset outside the
+       game's required set (ModFlagPolicy.RequiredEffect), so rooms the build hosts are not
+       tagged modded and the game's join check no longer compares them; it also drops
+       "Mod_Session Required" from the ModCategories metadata and changes the build tag
+       ModFlagPolicy reports. Neither variant touches progression. -->
   <PropertyGroup Condition="'$(NoProgressionFlag)' == 'true'">
     <DefineConstants>$(DefineConstants);NO_SESSION_FLAG</DefineConstants>
   </PropertyGroup>
